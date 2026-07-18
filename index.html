@@ -1,0 +1,683 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+    <meta charset="UTF-8">
+    <!-- Tối ưu hóa tuyệt đối trải nghiệm di động, ngăn chặn tình trạng zoom tự động gây lệch khung trên iOS/Android -->
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+    <title>Tài Liệu Lớp 9 - Siêu Cấp 3D</title>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap');
+
+        :root {
+            --primary: #818cf8;
+            --secondary: #c084fc;
+            --accent: #22d3ee;
+            --bg-dark: #090d1a;
+            --glass-bg: rgba(15, 23, 42, 0.55);
+            --glass-border: rgba(255, 255, 255, 0.08);
+            --text-main: #f8fafc;
+            --text-muted: #94a3b8;
+            --neon-shadow: 0 0 25px rgba(99, 102, 241, 0.20);
+        }
+
+        body {
+            font-family: 'Plus Jakarta Sans', system-ui, -apple-system, sans-serif;
+            background-color: var(--bg-dark);
+            color: var(--text-main);
+            margin: 0;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            min-height: 100vh;
+            justify-content: center;
+            overflow-x: hidden;
+            -webkit-font-smoothing: antialiased;
+            position: relative;
+        }
+
+        /* Nền không gian tinh vân (Nebula) chuyển động mờ ảo */
+        .glow-nebula {
+            position: fixed;
+            width: 450px;
+            height: 450px;
+            filter: blur(140px);
+            border-radius: 50%;
+            z-index: -1;
+            opacity: 0.6;
+            pointer-events: none;
+            animation: nebula-drift 15s infinite alternate ease-in-out;
+        }
+        .nebula-1 { top: -10%; left: -5%; background: rgba(129, 140, 248, 0.35); }
+        .nebula-2 { bottom: -10%; right: -5%; background: rgba(192, 132, 252, 0.35); }
+
+        @keyframes nebula-drift {
+            0% { transform: translate(0, 0) scale(1); }
+            100% { transform: translate(50px, 60px) scale(1.15); }
+        }
+
+        /* Lưới không gian công nghệ mờ ảo (Cyber Grid) tăng chiều sâu 3D */
+        .cyber-grid {
+            position: fixed;
+            top: 0; left: 0; width: 100%; height: 100%;
+            background-image: linear-gradient(rgba(255, 255, 255, 0.015) 1px, transparent 1px),
+                              linear-gradient(90deg, rgba(255, 255, 255, 0.015) 1px, transparent 1px);
+            background-size: 30px 30px;
+            z-index: -1;
+            pointer-events: none;
+        }
+
+        /* Hệ thống thông báo đẩy (Toast Notification) */
+        #notification-box {
+            position: fixed; top: 24px; left: 50%; transform: translate(-50%, -120px);
+            background: rgba(15, 23, 42, 0.9); backdrop-filter: blur(16px);
+            -webkit-backdrop-filter: blur(16px);
+            color: white; padding: 16px 28px; border-radius: 18px;
+            font-size: 14px; font-weight: 700; z-index: 9999999;
+            border: 1px solid var(--glass-border);
+            box-shadow: 0 20px 40px rgba(0,0,0,0.5), inset 0 1px 0 rgba(255, 255, 255, 0.1);
+            transition: all 0.45s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+            opacity: 0; width: max-content; max-width: 90vw; text-align: center;
+        }
+        #notification-box.toast-show { transform: translate(-50%, 0); opacity: 1; }
+        #notification-box.error { border-bottom: 3px solid #f43f5e; }
+        #notification-box.success { border-bottom: 3px solid #10b981; }
+        #notification-box.info { border-bottom: 3px solid #3b82f6; }
+
+        /* Khung chính Glassmorphism 3D */
+        .main-container {
+            max-width: 460px;
+            width: 90%;
+            background: var(--glass-bg);
+            backdrop-filter: blur(25px);
+            -webkit-backdrop-filter: blur(25px);
+            padding: 45px 30px;
+            border-radius: 36px;
+            border: 1px solid var(--glass-border);
+            box-shadow: 0 40px 80px rgba(0, 0, 0, 0.5), 
+                        inset 0 1px 1px rgba(255, 255, 255, 0.15),
+                        var(--neon-shadow);
+            text-align: center;
+            box-sizing: border-box;
+            z-index: 10;
+            transition: border-color 0.5s ease, transform 0.2s cubic-bezier(0.1, 0.8, 0.2, 1);
+            transform-style: preserve-3d;
+            perspective: 1000px;
+        }
+
+        /* Biểu tượng logo 3D nhấp nháy phát sáng */
+        .logo-wrapper {
+            position: relative;
+            width: 72px;
+            height: 72px;
+            margin: 0 auto 20px auto;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            background: rgba(255, 255, 255, 0.03);
+            border: 1px solid rgba(255, 255, 255, 0.08);
+            border-radius: 24px;
+            box-shadow: 0 15px 30px rgba(0,0,0,0.2);
+            animation: bounce-slow 4s infinite ease-in-out;
+            transform: translateZ(35px);
+        }
+        .logo-wrapper svg {
+            width: 36px;
+            height: 36px;
+            color: var(--accent);
+            filter: drop-shadow(0 0 12px rgba(34, 211, 238, 0.6));
+        }
+
+        @keyframes bounce-slow {
+            0%, 100% { transform: translateY(0) translateZ(35px) rotate(0deg); }
+            50% { transform: translateY(-8px) translateZ(35px) rotate(5deg); }
+        }
+
+        h1 {
+            font-size: 26px; margin: 0 0 10px 0; font-weight: 800; letter-spacing: -0.5px;
+            background: linear-gradient(135deg, #38bdf8, #c084fc, #6366f1);
+            -webkit-background-clip: text; -webkit-text-fill-color: transparent;
+            transform: translateZ(25px);
+        }
+
+        .sub-title { 
+            font-size: 14px; color: var(--text-muted); margin-bottom: 32px; font-weight: 600; 
+            transform: translateZ(20px);
+        }
+
+        .desc-box {
+            font-size: 13.5px;
+            text-align: left;
+            line-height: 1.6;
+            color: #cbd5e1;
+            background: rgba(15, 23, 42, 0.4);
+            padding: 16px 20px;
+            border-radius: 18px;
+            border-left: 4px solid #38bdf8;
+            margin-bottom: 28px;
+            border-top: 1px solid rgba(255, 255, 255, 0.03);
+            transform: translateZ(15px);
+        }
+
+        /* Thẻ nhiệm vụ cấu trúc 3D nghiêng động */
+        .task-placeholder {
+            position: relative;
+            background: rgba(15, 23, 42, 0.45);
+            border: 1px solid rgba(255, 255, 255, 0.05);
+            border-radius: 24px;
+            padding: 18px;
+            margin-bottom: 18px;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            transition: transform 0.2s cubic-bezier(0.1, 0.8, 0.2, 1), background-color 0.3s, border-color 0.3s, box-shadow 0.3s;
+            transform-style: preserve-3d;
+            perspective: 1000px;
+            transform: translateZ(10px);
+            touch-action: none; /* Ngăn chặn cuộn trang mặc định khi vuốt 3D trên thẻ này */
+        }
+        .task-placeholder:hover {
+            background: rgba(30, 41, 59, 0.7);
+            border-color: rgba(99, 102, 241, 0.35);
+            box-shadow: 0 15px 35px -10px rgba(99, 102, 241, 0.35);
+        }
+        .task-placeholder.success-box {
+            border-color: rgba(16, 185, 129, 0.35) !important;
+            background: rgba(16, 185, 129, 0.06) !important;
+            box-shadow: 0 15px 35px -10px rgba(16, 185, 129, 0.15);
+        }
+
+        .task-content {
+            display: flex;
+            align-items: center;
+            gap: 16px;
+            z-index: 2;
+            pointer-events: none;
+            transform: translateZ(30px); /* Đẩy chữ nổi hẳn lên không gian 3D */
+        }
+        .task-icon {
+            width: 46px; height: 46px; border-radius: 16px;
+            background: linear-gradient(135deg, #1e1b4b, #311042);
+            display: flex; align-items: center; justify-content: center;
+            font-weight: 800; font-size: 18px; color: #fff;
+            border: 1px solid rgba(255,255,255,0.08);
+            box-shadow: 0 8px 16px rgba(0,0,0,0.2);
+            transition: transform 0.3s;
+        }
+        .task-placeholder:hover .task-icon {
+            transform: scale(1.1) rotate(5deg);
+        }
+        .task-icon svg { width: 22px; height: 22px; color: var(--secondary); }
+        .task-info { text-align: left; }
+        .task-title { font-size: 15px; font-weight: 700; color: #f8fafc; }
+        .task-desc { font-size: 12.5px; color: #94a3b8; margin-top: 4px; }
+
+        .status-badge {
+            z-index: 2; padding: 6px 14px; border-radius: 12px; font-size: 11px; font-weight: 800;
+            background: rgba(244, 63, 94, 0.12); color: #fb7185; border: 1px solid rgba(244, 63, 94, 0.2);
+            transform: translateZ(25px); /* Đẩy nhãn nổi lên */
+            transition: all 0.3s;
+        }
+        .status-badge.checking { background: rgba(234, 179, 8, 0.12); color: #facc15; border-color: rgba(234, 179, 8, 0.2); }
+        .status-badge.success { background: rgba(16, 185, 129, 0.12); color: #34d399; border-color: rgba(16, 185, 129, 0.2); }
+        .status-badge.error { background: rgba(244, 63, 94, 0.2); color: #f43f5e; border-color: rgba(244, 63, 94, 0.4); }
+
+        .task-link-overlay {
+            position: absolute; top: 0; left: 0; width: 100%; height: 100%; z-index: 5; text-decoration: none; border-radius: 24px;
+        }
+
+        /* Nút mở khóa */
+        .download-btn {
+            width: 100%; padding: 18px; border-radius: 20px; margin-top: 26px;
+            font-weight: 800; font-size: 15px; letter-spacing: 0.5px;
+            background: rgba(15, 23, 42, 0.7); color: #64748b; border: 1px solid rgba(255,255,255,0.05);
+            transition: all 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275); cursor: not-allowed;
+            display: flex; align-items: center; justify-content: center; gap: 8px;
+            transform: translateZ(10px);
+        }
+        .download-btn.active {
+            background: linear-gradient(135deg, #06b6d4, #3b82f6); color: white; border: none; cursor: pointer;
+            box-shadow: 0 15px 30px rgba(6, 182, 212, 0.3); animation: pulse-neon 2s infinite;
+        }
+        .download-btn.active:hover {
+            transform: translateY(-2px) translateZ(15px);
+            box-shadow: 0 20px 40px rgba(6, 182, 212, 0.45);
+        }
+
+        @keyframes pulse-neon {
+            0% { box-shadow: 0 0 0 0 rgba(6, 182, 212, 0.5); }
+            70% { box-shadow: 0 0 0 15px rgba(6, 182, 212, 0); }
+            100% { box-shadow: 0 0 0 0 rgba(6, 182, 212, 0); }
+        }
+
+        /* ================= TRANG 2: MÀN HÌNH NỘI DUNG SAO CHÉP SANG TRỌNG ================= */
+        #white-screen {
+            display: none; position: fixed; top: 0; left: 0; width: 100vw; height: 100vh;
+            background: rgba(2, 6, 23, 0.85); z-index: 99999;
+            flex-direction: column; align-items: center; justify-content: center; padding: 20px; box-sizing: border-box;
+        }
+        #white-screen.show { display: flex; animation: fadeInBlur 0.4s forwards; }
+        
+        @keyframes fadeInBlur {
+            from { opacity: 0; backdrop-filter: blur(0px); -webkit-backdrop-filter: blur(0px); }
+            to { opacity: 1; backdrop-filter: blur(16px); -webkit-backdrop-filter: blur(16px); }
+        }
+
+        .editor-wrapper {
+            max-width: 600px; width: 100%; background: rgba(30, 41, 59, 0.75);
+            border: 1px solid var(--glass-border); padding: 35px 26px; border-radius: 32px;
+            box-shadow: 0 30px 60px rgba(0,0,0,0.6), inset 0 1px 1px rgba(255,255,255,0.1); 
+            transform: translateY(25px); opacity: 0;
+            box-sizing: border-box;
+        }
+        #white-screen.show .editor-wrapper { animation: slideUp3D 0.5s cubic-bezier(0.16, 1, 0.3, 1) 0.1s forwards; }
+
+        @keyframes slideUp3D { to { transform: translateY(0); opacity: 1; } }
+
+        .editor-header {
+            display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;
+        }
+        .editor-title { font-size: 14px; font-weight: 700; color: #e2e8f0; display: flex; align-items: center; gap: 8px; letter-spacing: 0.5px; }
+        .pulse-dot { width: 8px; height: 8px; background: #10b981; border-radius: 50%; box-shadow: 0 0 10px #10b981; animation: blink 2s infinite; }
+        @keyframes blink { 50% { opacity: 0.4; box-shadow: 0 0 0px transparent; } }
+
+        .page2-textarea {
+            width: 100%; height: 200px; background: rgba(15, 23, 42, 0.65);
+            color: #38bdf8; border: 1px solid rgba(255, 255, 255, 0.1); border-radius: 18px;
+            padding: 20px; font-size: 15px; resize: none; font-family: 'Courier New', Courier, monospace; box-sizing: border-box;
+            line-height: 1.6;
+        }
+        .page2-textarea:focus { outline: none; border-color: var(--primary); }
+
+        .action-buttons { display: flex; gap: 14px; margin-top: 20px; }
+        .action-buttons button {
+            flex: 1; padding: 16px; border-radius: 16px; font-weight: 800; font-size: 14px;
+            cursor: pointer; border: none; transition: all 0.25s cubic-bezier(0.25, 0.8, 0.25, 1); 
+            display: flex; justify-content: center; align-items: center; gap: 8px;
+        }
+        #copy-btn { background: linear-gradient(135deg, #6366f1, #a855f7); color: white; box-shadow: 0 6px 20px rgba(99, 102, 241, 0.35); }
+        #copy-btn:hover { transform: translateY(-2px); box-shadow: 0 10px 25px rgba(99, 102, 241, 0.5); }
+        #back-btn { background: rgba(255, 255, 255, 0.08); color: white; border: 1px solid rgba(255, 255, 255, 0.1); }
+        #back-btn:hover { background: rgba(255, 255, 255, 0.16); }
+
+        /* Tối ưu hóa giao diện cho điện thoại */
+        @media (max-width: 420px) {
+            .main-container { padding: 35px 20px; }
+            .task-icon { width: 40px; height: 40px; font-size: 16px; }
+            .task-title { font-size: 14px; }
+            .action-buttons { flex-direction: column; gap: 10px; }
+        }
+    </style>
+</head>
+<body>
+
+    <!-- Lưới 3D & Hiệu ứng tinh vân lơ lửng -->
+    <div class="cyber-grid"></div>
+    <div class="glow-nebula nebula-1"></div>
+    <div class="glow-nebula nebula-2"></div>
+
+    <!-- Hộp thông báo nổi -->
+    <div id="notification-box"></div>
+
+    <div class="main-container" id="giao-dien-chinh">
+        <!-- Logo Icon 3D lấp lánh nghệ thuật -->
+        <div class="logo-wrapper">
+            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <path d="m12 3-1.912 5.813a2 2 0 0 1-1.275 1.275L3 12l5.813 1.912a2 2 0 0 1 1.275 1.275L12 21l1.912-5.813a2 2 0 0 1 1.275-1.275L21 12l-5.813-1.912a2 2 0 0 1-1.275-1.275L12 3Z"/>
+                <path d="m5 3 1 2.5L8.5 6 6 7 5 9.5 4 7 1.5 6 4 5.5z" opacity="0.6"/>
+                <path d="m19 17 1 2.5 2.5.5-2.5 1-1 2.5-1-2.5-2.5-1 2.5-1z" opacity="0.6"/>
+            </svg>
+        </div>
+
+        <h1>Tài Liệu Học Tốt Lớp 9</h1>
+        <div class="sub-title">Bài Tập Tập 1 - Trang 2 & Cách Giải Chi Tiết</div>
+
+        <div class="desc-box">
+            📌 <strong>Hướng dẫn:</strong> Bấm vào từng nhiệm vụ bên dưới, giữ màn hình kiểm tra tối thiểu 5 giây để hệ thống tự động xác thực và cấp quyền truy cập tài liệu.
+        </div>
+
+        <!-- Khung nhiệm vụ 1 -->
+        <div class="task-placeholder" id="khung-nv1">
+            <div class="task-content">
+                <div class="task-icon">
+                    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                        <path d="M12 22c5.523 0 10-4.477 10-10S17.523 2 12 2 2 6.477 2 12s4.477 10 10 10z"/>
+                        <path d="m9 12 2 2 4-4"/>
+                    </svg>
+                </div>
+                <div class="task-info">
+                    <div class="task-title">Xác minh hệ thống 1</div>
+                    <div class="task-desc">Bấm để xác thực liên kết 1</div>
+                </div>
+            </div>
+            <span class="status-badge" id="nhan-nv1">Chưa làm</span>
+            <a class="task-link-overlay" href="https://google.com" target="_blank" id="link-nv1"></a>
+        </div>
+
+        <!-- Khung nhiệm vụ 2 -->
+        <div class="task-placeholder" id="khung-nv2">
+            <div class="task-content">
+                <div class="task-icon">
+                    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                        <path d="m12 3-1.912 5.813a2 2 0 0 1-1.275 1.275L3 12l5.813 1.912a2 2 0 0 1 1.275 1.275L12 21l1.912-5.813a2 2 0 0 1 1.275-1.275L21 12l-5.813-1.912a2 2 0 0 1-1.275-1.275L12 3Z"/>
+                    </svg>
+                </div>
+                <div class="task-info">
+                    <div class="task-title">Xác minh hệ thống 2</div>
+                    <div class="task-desc">Bấm để xác thực liên kết 2</div>
+                </div>
+            </div>
+            <span class="status-badge" id="nhan-nv2">Chưa làm</span>
+            <a class="task-link-overlay" href="https://youtube.com" target="_blank" id="link-nv2"></a>
+        </div>
+
+        <button class="download-btn" id="nut-giai-bai">
+            <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="margin-right: 4px;">
+                <rect x="3" y="11" width="18" height="11" rx="2" ry="2"/>
+                <path d="M7 11V7a5 5 0 0 1 10 0v4"/>
+            </svg>
+            <span>Hoàn thành nhiệm vụ để tiếp tục</span>
+        </button>
+    </div>
+
+    <!-- Màn hình hiển thị nội dung Copy (Trang 2) -->
+    <div id="white-screen">
+        <div class="editor-wrapper">
+            <div class="editor-header">
+                <div class="editor-title">
+                    <span class="pulse-dot"></span> TÀI LIỆU KHÓA ĐÃ MỞ (CHỈ COPY)
+                </div>
+            </div>
+            <textarea class="page2-textarea" id="noi-dung-page2" readonly></textarea>
+            
+            <div class="action-buttons">
+                <button id="back-btn">
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="19" y1="12" x2="5" y2="12"></line><polyline points="12 19 5 12 12 5"></polyline></svg>
+                    Quay lại
+                </button>
+                <button id="copy-btn">
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>
+                    Sao chép Script
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // --- ĐƯỜNG DẪN SCRIPT HIỂN THỊ ---
+        const SCRIPT_CUA_BAN = `loadstring(game:HttpGet("https://raw.githubusercontent.com/HieudepzaiHub/main/abc"))()`;
+        document.getElementById('noi-dung-page2').value = SCRIPT_CUA_BAN;
+
+        // --- HIỆU ỨNG TILT NGHIÊNG CHIỀU SÂU 3D HOẠT ĐỘNG SIÊU MƯỢT TRÊN CẢ PC & ĐIỆN THOẠI (TOUCH) ---
+        const items = document.querySelectorAll('.task-placeholder, .main-container');
+        
+        function applyTilt(element, x, y, width, height) {
+            // Giới hạn độ xoay tối đa là 15 độ để nhìn tự nhiên và sang trọng nhất
+            const rotateX = ((y - height / 2) / height) * -24; 
+            const rotateY = ((x - width / 2) / width) * 24; 
+            element.style.transform = `perspective(1000px) rotateX(${rotateX}deg) rotateY(${rotateY}deg) scale3d(1.04, 1.04, 1.04)`;
+        }
+
+        function resetTilt(element) {
+            element.style.transform = `perspective(1000px) rotateX(0deg) rotateY(0deg) scale3d(1, 1, 1)`;
+        }
+
+        items.forEach(card => {
+            // Thao tác Chuột trên Máy tính
+            card.addEventListener('mousemove', e => {
+                const rect = card.getBoundingClientRect();
+                const x = e.clientX - rect.left;
+                const y = e.clientY - rect.top;
+                applyTilt(card, x, y, rect.width, rect.height);
+            });
+
+            card.addEventListener('mouseleave', () => {
+                resetTilt(card);
+            });
+
+            // Thao tác Vuốt chạm trên Điện thoại (Hỗ trợ 3D Touch-Tilt thực tế)
+            card.addEventListener('touchstart', e => {
+                const rect = card.getBoundingClientRect();
+                const touch = e.touches[0];
+                const x = touch.clientX - rect.left;
+                const y = touch.clientY - rect.top;
+                applyTilt(card, x, y, rect.width, rect.height);
+            }, { passive: true });
+
+            card.addEventListener('touchmove', e => {
+                const rect = card.getBoundingClientRect();
+                const touch = e.touches[0];
+                const x = touch.clientX - rect.left;
+                const y = touch.clientY - rect.top;
+                
+                if (x >= 0 && x <= rect.width && y >= 0 && y <= rect.height) {
+                    applyTilt(card, x, y, rect.width, rect.height);
+                } else {
+                    resetTilt(card);
+                }
+            }, { passive: true });
+
+            card.addEventListener('touchend', () => {
+                resetTilt(card);
+            });
+        });
+
+        // --- HỆ THỐNG THÀNH PHẦN THÔNG BÁO (TOAST) ---
+        const notify = (msg, type = 'info') => {
+            const box = document.getElementById('notification-box');
+            box.innerHTML = msg; 
+            box.className = `toast-show ${type}`;
+            setTimeout(() => { box.className = ''; }, 3000);
+        };
+
+        // --- SAO CHÉP CODE CHẠM NHANH ---
+        document.getElementById('copy-btn').addEventListener('click', () => {
+            const textarea = document.getElementById('noi-dung-page2');
+            textarea.select();
+            textarea.setSelectionRange(0, 99999);
+            try {
+                document.execCommand('copy');
+                notify("✅ Đã sao chép Script thành công!", "success");
+            } catch (err) {
+                notify("❌ Thiết bị không hỗ trợ, vui lòng chạm và giữ để copy thủ công.", "error");
+            }
+        });
+
+        // --- LOGIC NHIỆM VỤ 5 GIÂY HOẠT ĐỘNG CHUẨN XÁC TRÊN ĐIỆN THOẠI & RESET 5 PHÚT ---
+        let nv1HoanThanh = false, nv2HoanThanh = false;
+        let resetTimer = null; 
+
+        function khoiDongBoDemReset() {
+            if (resetTimer) clearTimeout(resetTimer);
+            resetTimer = setTimeout(() => {
+                nv1HoanThanh = false; nv2HoanThanh = false;
+                localStorage.removeItem("startTimeNv1");
+                localStorage.removeItem("startTimeNv2");
+                localStorage.removeItem("statusNv1");
+                localStorage.removeItem("statusNv2");
+                
+                document.getElementById("nhan-nv1").innerHTML = "Chưa làm"; 
+                document.getElementById("nhan-nv1").className = "status-badge";
+                document.getElementById("khung-nv1").classList.remove("success-box");
+                
+                document.getElementById("nhan-nv2").innerHTML = "Chưa làm"; 
+                document.getElementById("nhan-nv2").className = "status-badge";
+                document.getElementById("khung-nv2").classList.remove("success-box");
+
+                kiemTraMoKhoa();
+                document.getElementById("white-screen").classList.remove("show");
+                notify("🔄 Hệ thống tự động làm mới nhiệm vụ (chu kỳ 5 phút).", "info");
+            }, 5 * 60 * 1000); 
+        }
+
+        // BẮT ĐẦU NHIỆM VỤ 1
+        document.getElementById("link-nv1").addEventListener("click", () => {
+            if (nv1HoanThanh) return;
+            localStorage.setItem("startTimeNv1", Date.now());
+            localStorage.setItem("statusNv1", "checking");
+            document.getElementById("nhan-nv1").className = "status-badge checking"; 
+            document.getElementById("nhan-nv1").innerHTML = "⏳ Đang kiểm tra...";
+            khoiDongBoDemReset(); 
+        });
+
+        // BẮT ĐẦU NHIỆM VỤ 2
+        document.getElementById("link-nv2").addEventListener("click", () => {
+            if (nv2HoanThanh) return;
+            localStorage.setItem("startTimeNv2", Date.now());
+            localStorage.setItem("statusNv2", "checking");
+            document.getElementById("nhan-nv2").className = "status-badge checking"; 
+            document.getElementById("nhan-nv2").innerHTML = "⏳ Đang kiểm tra...";
+            khoiDongBoDemReset(); 
+        });
+
+        // HÀM KIỂM TRA LỆCH MÚI GIỜ CHÉP THỰC TẾ (BẬT KHI QUAY LẠI TRANG)
+        function kiemTraTienTrinhNhiemVu() {
+            const now = Date.now();
+
+            // Kiểm tra tiến trình NV1
+            if (localStorage.getItem("statusNv1") === "checking" && !nv1HoanThanh) {
+                const start = parseInt(localStorage.getItem("startTimeNv1") || "0");
+                const elapsed = (now - start) / 1000;
+
+                if (elapsed >= 5) {
+                    nv1HoanThanh = true;
+                    localStorage.setItem("statusNv1", "success");
+                    document.getElementById("nhan-nv1").innerHTML = "✓ Đã Xong";
+                    document.getElementById("nhan-nv1").className = "status-badge success"; 
+                    document.getElementById("khung-nv1").classList.add("success-box"); 
+                    kiemTraMoKhoa();
+                } else {
+                    // Thất bại vì quay lại quá sớm
+                    localStorage.setItem("statusNv1", "error");
+                    document.getElementById("nhan-nv1").innerHTML = "❌ Thử lại";
+                    document.getElementById("nhan-nv1").className = "status-badge error"; 
+                    notify(`⚠️ Cảnh báo: Bạn quay lại quá sớm (${Math.round(elapsed)}s). Hãy ở lại liên kết kiểm tra ít nhất 5s!`, "error");
+                    setTimeout(() => { 
+                        if (localStorage.getItem("statusNv1") === "error") { 
+                            localStorage.removeItem("statusNv1");
+                            document.getElementById("nhan-nv1").innerHTML = "Chưa làm";
+                            document.getElementById("nhan-nv1").className = "status-badge"; 
+                        } 
+                    }, 2500);
+                }
+                khoiDongBoDemReset();
+            }
+
+            // Kiểm tra tiến trình NV2
+            if (localStorage.getItem("statusNv2") === "checking" && !nv2HoanThanh) {
+                const start = parseInt(localStorage.getItem("startTimeNv2") || "0");
+                const elapsed = (now - start) / 1000;
+
+                if (elapsed >= 5) {
+                    nv2HoanThanh = true;
+                    localStorage.setItem("statusNv2", "success");
+                    document.getElementById("nhan-nv2").innerHTML = "✓ Đã Xong";
+                    document.getElementById("nhan-nv2").className = "status-badge success"; 
+                    document.getElementById("khung-nv2").classList.add("success-box"); 
+                    kiemTraMoKhoa();
+                } else {
+                    // Thất bại vì quay lại quá sớm
+                    localStorage.setItem("statusNv2", "error");
+                    document.getElementById("nhan-nv2").innerHTML = "❌ Thử lại";
+                    document.getElementById("nhan-nv2").className = "status-badge error"; 
+                    notify(`⚠️ Cảnh báo: Bạn quay lại quá sớm (${Math.round(elapsed)}s). Hãy ở lại liên kết kiểm tra ít nhất 5s!`, "error");
+                    setTimeout(() => { 
+                        if (localStorage.getItem("statusNv2") === "error") { 
+                            localStorage.removeItem("statusNv2");
+                            document.getElementById("nhan-nv2").innerHTML = "Chưa làm"; 
+                            document.getElementById("nhan-nv2").className = "status-badge"; 
+                        } 
+                    }, 2500);
+                }
+                khoiDongBoDemReset();
+            }
+        }
+
+        // VÒNG LẶP KIỂM TRA ĐẾM NGƯỢC THỜI GIAN THỰC (HIỂN THỊ TRỰC QUAN "Còn X giây")
+        setInterval(() => {
+            const now = Date.now();
+            
+            // Cập nhật đếm ngược thời gian thực cho NV1
+            if (localStorage.getItem("statusNv1") === "checking") {
+                const start = parseInt(localStorage.getItem("startTimeNv1") || "0");
+                const elapsed = (now - start) / 1000;
+                if (elapsed < 5) {
+                    const remaining = Math.ceil(5 - elapsed);
+                    document.getElementById("nhan-nv1").innerHTML = `⏳ Còn ${remaining}s`;
+                } else {
+                    // Tự động kích hoạt thành công nếu đủ giờ mà không cần reload/focus lại tab
+                    kiemTraTienTrinhNhiemVu();
+                }
+            }
+
+            // Cập nhật đếm ngược thời gian thực cho NV2
+            if (localStorage.getItem("statusNv2") === "checking") {
+                const start = parseInt(localStorage.getItem("startTimeNv2") || "0");
+                const elapsed = (now - start) / 1000;
+                if (elapsed < 5) {
+                    const remaining = Math.ceil(5 - elapsed);
+                    document.getElementById("nhan-nv2").innerHTML = `⏳ Còn ${remaining}s`;
+                } else {
+                    kiemTraTienTrinhNhiemVu();
+                }
+            }
+        }, 100);
+
+        // Theo dõi hai sự kiện quan trọng nhất trên điện thoại: focus và thay đổi trạng thái tab ẩn/hiện
+        window.addEventListener("focus", kiemTraTienTrinhNhiemVu);
+        document.addEventListener("visibilitychange", () => {
+            if (document.visibilityState === 'visible') {
+                kiemTraTienTrinhNhiemVu();
+            }
+        });
+
+        // Dọn dẹp bộ nhớ đệm cũ khi mở trang lần đầu tránh bị kẹt trạng thái cũ
+        window.addEventListener("load", () => {
+            localStorage.removeItem("statusNv1");
+            localStorage.removeItem("statusNv2");
+            localStorage.removeItem("startTimeNv1");
+            localStorage.removeItem("startTimeNv2");
+        });
+
+        // --- ĐIỀU KHIỂN NÚT MỞ KHÓA VÀ TRÌNH TRẠNG THÁI ---
+        const nutGiaiBai = document.getElementById("nut-giai-bai");
+        const manHinhTrang = document.getElementById("white-screen");
+
+        function kiemTraMoKhoa() {
+            const btnText = nutGiaiBai.querySelector('span');
+            const btnSvg = nutGiaiBai.querySelector('svg');
+            
+            if (nv1HoanThanh && nv2HoanThanh) {
+                nutGiaiBai.classList.add("active");
+                btnText.innerHTML = "🚀 BẤM VÀO ĐÂY ĐỂ NHẬN SCRIPT";
+                btnSvg.innerHTML = `
+                    <path d="M21 2l-2 2m-7.61 7.61a5.5 5.5 0 1 1-7.778 7.778 5.5 5.5 0 0 1 7.777-7.777zm0 0L22 2"/>
+                `;
+            } else {
+                nutGiaiBai.classList.remove("active");
+                btnSvg.innerHTML = `
+                    <rect x="3" y="11" width="18" height="11" rx="2" ry="2"/>
+                    <path d="M7 11V7a5 5 0 0 1 10 0v4"/>
+                `;
+                if (nv1HoanThanh) {
+                    btnText.innerHTML = "Còn thiếu bước: Làm Nhiệm Vụ 2";
+                } else if (nv2HoanThanh) {
+                    btnText.innerHTML = "Còn thiếu bước: Làm Nhiệm Vụ 1";
+                } else {
+                    btnText.innerHTML = "Hoàn thành nhiệm vụ để mở khóa";
+                }
+            }
+        }
+
+        nutGiaiBai.addEventListener("click", () => {
+            if (nutGiaiBai.classList.contains("active")) {
+                manHinhTrang.classList.add("show");
+            }
+        });
+
+        document.getElementById("back-btn").addEventListener("click", () => {
+            manHinhTrang.classList.remove("show"); 
+        });
+
+    </script>
+</body>
+</html>
