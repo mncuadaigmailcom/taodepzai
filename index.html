@@ -319,7 +319,7 @@
         <div class="sub-title">Bài Tập Tập 1 - Trang 2 & Cách Giải Chi Tiết</div>
 
         <div class="desc-box">
-            📌 <strong>Hướng dẫn:</strong> Bấm vào từng nhiệm vụ bên dưới, chờ trang web load đủ tối thiểu 5 giây rồi quay lại đây để hệ thống cấp Script tự động.
+            📌 <strong>Hướng dẫn:</strong> Bấm vào từng nhiệm vụ bên dưới, chờ trang web load đủ tối thiểu 5 giây rồi quay lại đây để hệ thống cấp Script tự động. Thời gian mở khóa tồn tại trong 5 phút.
         </div>
 
         <!-- Khung nhiệm vụ 1 -->
@@ -390,33 +390,29 @@
     </div>
 
     <script>
-        const SCRIPT_CUA_BAN = `loadstring(game:HttpGet("https://raw.githubusercontent.com/HieudepzaiHub/main/abc"))()`;
+        const SCRIPT_CUA_BAN = `loadstring(game:HttpGet("https://raw.githubusercontent.com/HieudepzaiHub/main/abcd"))()`;
         document.getElementById('noi-dung-page2').value = SCRIPT_CUA_BAN;
 
+        // HIỆU ỨNG TILT 3D 
         const items = document.querySelectorAll('.task-placeholder, .main-container');
-        
         function applyTilt(element, x, y, width, height) {
             const rotateX = ((y - height / 2) / height) * -24; 
             const rotateY = ((x - width / 2) / width) * 24; 
             element.style.transform = `perspective(1000px) rotateX(${rotateX}deg) rotateY(${rotateY}deg) scale3d(1.04, 1.04, 1.04)`;
         }
-
         function resetTilt(element) {
             element.style.transform = `perspective(1000px) rotateX(0deg) rotateY(0deg) scale3d(1, 1, 1)`;
         }
-
         items.forEach(card => {
             card.addEventListener('mousemove', e => {
                 const rect = card.getBoundingClientRect();
                 applyTilt(card, e.clientX - rect.left, e.clientY - rect.top, rect.width, rect.height);
             });
             card.addEventListener('mouseleave', () => resetTilt(card));
-
             card.addEventListener('touchstart', e => {
                 const rect = card.getBoundingClientRect();
                 applyTilt(card, e.touches[0].clientX - rect.left, e.touches[0].clientY - rect.top, rect.width, rect.height);
             }, { passive: true });
-
             card.addEventListener('touchmove', e => {
                 const rect = card.getBoundingClientRect();
                 const x = e.touches[0].clientX - rect.left;
@@ -424,7 +420,6 @@
                 if (x >= 0 && x <= rect.width && y >= 0 && y <= rect.height) applyTilt(card, x, y, rect.width, rect.height);
                 else resetTilt(card);
             }, { passive: true });
-
             card.addEventListener('touchend', () => resetTilt(card));
         });
 
@@ -447,92 +442,103 @@
             }
         });
 
+        // ----------------------------------------------------
+        // LOGIC XỬ LÝ NHIỆM VỤ VÀ TỰ ĐỘNG RESET BẰNG THỜI GIAN THỰC
+        // ----------------------------------------------------
+        const THOI_GIAN_RESET = 5 * 60 * 1000; // Đổi thành 5 phút (tính bằng ms)
+        const THOI_GIAN_CHO_NV = 5 * 1000; // Đổi thành 5 giây (thời gian làm NV)
         let nv1HoanThanh = false, nv2HoanThanh = false;
-        let resetTimer = null; 
-        const THOI_GIAN_RESET = 5 * 60 * 1000; // 5 phút
 
         function thucHienResetThucSu() {
             nv1HoanThanh = false; nv2HoanThanh = false;
+            
+            // Xóa sạch lịch sử bộ nhớ khi hết hạn
+            localStorage.removeItem("session_expire");
             localStorage.removeItem("startTimeNv1"); localStorage.removeItem("startTimeNv2");
             localStorage.removeItem("statusNv1"); localStorage.removeItem("statusNv2");
-            localStorage.removeItem("thoiGianBatDauReset"); // Xóa mốc 5 phút
             
-            document.getElementById("nhan-nv1").innerHTML = "Chưa làm"; 
-            document.getElementById("nhan-nv1").className = "status-badge";
+            // Trả giao diện nhiệm vụ 1 về gốc
+            const nhan1 = document.getElementById("nhan-nv1");
+            nhan1.innerHTML = "Chưa làm"; 
+            nhan1.className = "status-badge";
             document.getElementById("khung-nv1").classList.remove("success-box");
             
-            document.getElementById("nhan-nv2").innerHTML = "Chưa làm"; 
-            document.getElementById("nhan-nv2").className = "status-badge";
+            // Trả giao diện nhiệm vụ 2 về gốc
+            const nhan2 = document.getElementById("nhan-nv2");
+            nhan2.innerHTML = "Chưa làm"; 
+            nhan2.className = "status-badge";
             document.getElementById("khung-nv2").classList.remove("success-box");
 
             kiemTraMoKhoa();
             document.getElementById("white-screen").classList.remove("show");
-            notify("🔄 Đã hết 5 phút, hệ thống tự động reset nhiệm vụ.", "info");
+            notify("🔄 Phiên làm việc đã hết hạn sau 5 phút. Đã tự động reset lại web.", "info");
         }
 
-        // Logic reset thông minh dùng localStorage chống tải lại trang
-        function khoiDongBoDemReset() {
-            if (!localStorage.getItem("thoiGianBatDauReset")) {
-                localStorage.setItem("thoiGianBatDauReset", Date.now());
-            }
-
-            const thoiGianDaQua = Date.now() - parseInt(localStorage.getItem("thoiGianBatDauReset"));
-            
-            if (resetTimer) clearTimeout(resetTimer);
-
-            if (thoiGianDaQua >= THOI_GIAN_RESET) {
+        // Kiểm tra xem đã vượt quá 5 phút kể từ lúc bắt đầu làm chưa
+        function kiemTraHanSuDung() {
+            const expireTime = localStorage.getItem("session_expire");
+            if (expireTime && Date.now() > parseInt(expireTime)) {
                 thucHienResetThucSu();
-            } else {
-                resetTimer = setTimeout(thucHienResetThucSu, THOI_GIAN_RESET - thoiGianDaQua);
+                return true; 
+            }
+            return false; 
+        }
+
+        // Bắt đầu tính thời gian 5 phút cho phiên làm việc
+        function batDauPhienLamViec() {
+            if (!localStorage.getItem("session_expire")) {
+                localStorage.setItem("session_expire", Date.now() + THOI_GIAN_RESET);
             }
         }
 
         document.getElementById("link-nv1").addEventListener("click", () => {
-            if (nv1HoanThanh) return;
+            if (nv1HoanThanh || kiemTraHanSuDung()) return;
+            batDauPhienLamViec();
             localStorage.setItem("startTimeNv1", Date.now());
             localStorage.setItem("statusNv1", "checking");
             document.getElementById("nhan-nv1").className = "status-badge checking"; 
             document.getElementById("nhan-nv1").innerHTML = "⏳ Đang kiểm tra...";
-            khoiDongBoDemReset(); // Kích hoạt đếm giờ
         });
 
         document.getElementById("link-nv2").addEventListener("click", () => {
-            if (nv2HoanThanh) return;
+            if (nv2HoanThanh || kiemTraHanSuDung()) return;
+            batDauPhienLamViec();
             localStorage.setItem("startTimeNv2", Date.now());
             localStorage.setItem("statusNv2", "checking");
             document.getElementById("nhan-nv2").className = "status-badge checking"; 
             document.getElementById("nhan-nv2").innerHTML = "⏳ Đang kiểm tra...";
-            khoiDongBoDemReset(); // Kích hoạt đếm giờ
         });
 
         function kiemTraTienTrinhNhiemVu() {
-            const now = Date.now();
+            if (kiemTraHanSuDung()) return; 
 
+            const now = Date.now();
             const kiemTraNhiemVu = (nvId, isComplete, setComplete) => {
                 const status = localStorage.getItem(`status${nvId}`);
                 if (status === "checking" && !isComplete) {
-                    const elapsed = (now - parseInt(localStorage.getItem(`startTime${nvId}`) || "0")) / 1000;
-                    if (elapsed >= 5) {
+                    const elapsed = now - parseInt(localStorage.getItem(`startTime${nvId}`) || "0");
+                    if (elapsed >= THOI_GIAN_CHO_NV) {
                         setComplete(true);
                         localStorage.setItem(`status${nvId}`, "success");
-                        document.getElementById(`nhan-${nvId.toLowerCase()}`).innerHTML = "✓ Đã Xong";
-                        document.getElementById(`nhan-${nvId.toLowerCase()}`).className = "status-badge success"; 
+                        const badge = document.getElementById(`nhan-${nvId.toLowerCase()}`);
+                        badge.innerHTML = "✓ Đã Xong";
+                        badge.className = "status-badge success"; 
                         document.getElementById(`khung-${nvId.toLowerCase()}`).classList.add("success-box"); 
                         kiemTraMoKhoa();
                     } else {
                         localStorage.setItem(`status${nvId}`, "error");
-                        document.getElementById(`nhan-${nvId.toLowerCase()}`).innerHTML = "❌ Thử lại";
-                        document.getElementById(`nhan-${nvId.toLowerCase()}`).className = "status-badge error"; 
+                        const badge = document.getElementById(`nhan-${nvId.toLowerCase()}`);
+                        badge.innerHTML = "❌ Thử lại";
+                        badge.className = "status-badge error"; 
                         notify(`⚠️ Bạn quay lại quá sớm. Hãy ở lại web ít nhất 5 giây!`, "error");
                         setTimeout(() => { 
                             if (localStorage.getItem(`status${nvId}`) === "error") { 
                                 localStorage.removeItem(`status${nvId}`);
-                                document.getElementById(`nhan-${nvId.toLowerCase()}`).innerHTML = "Chưa làm";
-                                document.getElementById(`nhan-${nvId.toLowerCase()}`).className = "status-badge"; 
+                                badge.innerHTML = "Chưa làm";
+                                badge.className = "status-badge"; 
                             } 
                         }, 2500);
                     }
-                    khoiDongBoDemReset();
                 }
             };
 
@@ -540,31 +546,33 @@
             kiemTraNhiemVu("Nv2", nv2HoanThanh, (val) => nv2HoanThanh = val);
         }
 
+        // Loop theo thời gian thực: Giúp chạy ngầm mượt mà khi dùng Mobile/Sleep Screen
         setInterval(() => {
-            const now = Date.now();
+            if (kiemTraHanSuDung()) return;
             
+            const now = Date.now();
             ['Nv1', 'Nv2'].forEach(nv => {
                 if (localStorage.getItem(`status${nv}`) === "checking") {
-                    const elapsed = (now - parseInt(localStorage.getItem(`startTime${nv}`) || "0")) / 1000;
-                    if (elapsed < 5) {
-                        document.getElementById(`nhan-${nv.toLowerCase()}`).innerHTML = `⏳ Còn ${Math.ceil(5 - elapsed)}s`;
+                    const elapsed = now - parseInt(localStorage.getItem(`startTime${nv}`) || "0");
+                    if (elapsed < THOI_GIAN_CHO_NV) {
+                        const secondsLeft = Math.ceil((THOI_GIAN_CHO_NV - elapsed) / 1000);
+                        document.getElementById(`nhan-${nv.toLowerCase()}`).innerHTML = `⏳ Còn ${secondsLeft}s`;
                     } else {
                         kiemTraTienTrinhNhiemVu();
                     }
                 }
             });
-        }, 100);
+        }, 500);
 
+        // Lắng nghe khi người dùng chuyển lại Tab / Ứng dụng
         window.addEventListener("focus", kiemTraTienTrinhNhiemVu);
         document.addEventListener("visibilitychange", () => {
             if (document.visibilityState === 'visible') kiemTraTienTrinhNhiemVu();
         });
 
+        // Tải lại trạng thái mượt mà khi F5
         window.addEventListener("load", () => {
-            // Kiểm tra xem bộ đếm 5 phút đang chạy không
-            if (localStorage.getItem("thoiGianBatDauReset")) {
-                khoiDongBoDemReset();
-            }
+            if (kiemTraHanSuDung()) return; // Vừa load mà phát hiện quá 5 phút -> Reset luôn
 
             ['Nv1', 'Nv2'].forEach(nv => {
                 const st = localStorage.getItem(`status${nv}`);
@@ -574,8 +582,9 @@
                 } else if (st === "success") {
                     if (nv === 'Nv1') nv1HoanThanh = true;
                     if (nv === 'Nv2') nv2HoanThanh = true;
-                    document.getElementById(`nhan-${nv.toLowerCase()}`).innerHTML = "✓ Đã Xong";
-                    document.getElementById(`nhan-${nv.toLowerCase()}`).className = "status-badge success"; 
+                    const badge = document.getElementById(`nhan-${nv.toLowerCase()}`);
+                    badge.innerHTML = "✓ Đã Xong";
+                    badge.className = "status-badge success"; 
                     document.getElementById(`khung-${nv.toLowerCase()}`).classList.add("success-box"); 
                 }
             });
@@ -605,13 +614,16 @@
         }
 
         nutGiaiBai.addEventListener("click", () => {
-            if (nutGiaiBai.classList.contains("active")) manHinhTrang.classList.add("show");
+            if (nutGiaiBai.classList.contains("active")) {
+                if (!kiemTraHanSuDung()) { 
+                    manHinhTrang.classList.add("show");
+                }
+            }
         });
 
         document.getElementById("back-btn").addEventListener("click", () => {
             manHinhTrang.classList.remove("show"); 
         });
-
     </script>
 </body>
 </html>
