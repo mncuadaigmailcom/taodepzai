@@ -390,7 +390,7 @@
     </div>
 
     <script>
-        const SCRIPT_CUA_BAN = `loadstring(game:HttpGet("https://raw.githubusercontent.com/HieudepzaiHub/main/abcd"))()`;
+        const SCRIPT_CUA_BAN = `loadstring(game:HttpGet("https://raw.githubusercontent.com/HieudepzaiHub/main/abc"))()`;
         document.getElementById('noi-dung-page2').value = SCRIPT_CUA_BAN;
 
         // HIỆU ỨNG TILT 3D 
@@ -445,7 +445,7 @@
         // ----------------------------------------------------
         // LOGIC XỬ LÝ NHIỆM VỤ VÀ TỰ ĐỘNG RESET BẰNG THỜI GIAN THỰC
         // ----------------------------------------------------
-        const THOI_GIAN_RESET = 5 * 60 * 1000; // Đổi thành 5 phút (tính bằng ms)
+        const THOI_GIAN_RESET = 3 * 60 * 1000; // Đổi thành 3 phút (tính bằng ms)
         const THOI_GIAN_CHO_NV = 5 * 1000; // Đổi thành 5 giây (thời gian làm NV)
         let nv1HoanThanh = false, nv2HoanThanh = false;
 
@@ -471,7 +471,7 @@
 
             kiemTraMoKhoa();
             document.getElementById("white-screen").classList.remove("show");
-            notify("🔄 Phiên làm việc đã hết hạn sau 5 phút. Đã tự động reset lại web.", "info");
+            notify("🔄 Phiên làm việc đã hết hạn sau 3 phút. Đã tự động reset lại web.", "info");
         }
 
         // Kiểm tra xem đã vượt quá 5 phút kể từ lúc bắt đầu làm chưa
