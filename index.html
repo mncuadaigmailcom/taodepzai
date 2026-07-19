@@ -449,26 +449,42 @@
 
         let nv1HoanThanh = false, nv2HoanThanh = false;
         let resetTimer = null; 
+        const THOI_GIAN_RESET = 5 * 60 * 1000; // 5 phút
 
+        function thucHienResetThucSu() {
+            nv1HoanThanh = false; nv2HoanThanh = false;
+            localStorage.removeItem("startTimeNv1"); localStorage.removeItem("startTimeNv2");
+            localStorage.removeItem("statusNv1"); localStorage.removeItem("statusNv2");
+            localStorage.removeItem("thoiGianBatDauReset"); // Xóa mốc 5 phút
+            
+            document.getElementById("nhan-nv1").innerHTML = "Chưa làm"; 
+            document.getElementById("nhan-nv1").className = "status-badge";
+            document.getElementById("khung-nv1").classList.remove("success-box");
+            
+            document.getElementById("nhan-nv2").innerHTML = "Chưa làm"; 
+            document.getElementById("nhan-nv2").className = "status-badge";
+            document.getElementById("khung-nv2").classList.remove("success-box");
+
+            kiemTraMoKhoa();
+            document.getElementById("white-screen").classList.remove("show");
+            notify("🔄 Đã hết 5 phút, hệ thống tự động reset nhiệm vụ.", "info");
+        }
+
+        // Logic reset thông minh dùng localStorage chống tải lại trang
         function khoiDongBoDemReset() {
-            if (resetTimer) clearTimeout(resetTimer);
-            resetTimer = setTimeout(() => {
-                nv1HoanThanh = false; nv2HoanThanh = false;
-                localStorage.removeItem("startTimeNv1"); localStorage.removeItem("startTimeNv2");
-                localStorage.removeItem("statusNv1"); localStorage.removeItem("statusNv2");
-                
-                document.getElementById("nhan-nv1").innerHTML = "Chưa làm"; 
-                document.getElementById("nhan-nv1").className = "status-badge";
-                document.getElementById("khung-nv1").classList.remove("success-box");
-                
-                document.getElementById("nhan-nv2").innerHTML = "Chưa làm"; 
-                document.getElementById("nhan-nv2").className = "status-badge";
-                document.getElementById("khung-nv2").classList.remove("success-box");
+            if (!localStorage.getItem("thoiGianBatDauReset")) {
+                localStorage.setItem("thoiGianBatDauReset", Date.now());
+            }
 
-                kiemTraMoKhoa();
-                document.getElementById("white-screen").classList.remove("show");
-                notify("🔄 Hệ thống tự động làm mới nhiệm vụ.", "info");
-            }, 5 * 60 * 1000); 
+            const thoiGianDaQua = Date.now() - parseInt(localStorage.getItem("thoiGianBatDauReset"));
+            
+            if (resetTimer) clearTimeout(resetTimer);
+
+            if (thoiGianDaQua >= THOI_GIAN_RESET) {
+                thucHienResetThucSu();
+            } else {
+                resetTimer = setTimeout(thucHienResetThucSu, THOI_GIAN_RESET - thoiGianDaQua);
+            }
         }
 
         document.getElementById("link-nv1").addEventListener("click", () => {
@@ -477,7 +493,7 @@
             localStorage.setItem("statusNv1", "checking");
             document.getElementById("nhan-nv1").className = "status-badge checking"; 
             document.getElementById("nhan-nv1").innerHTML = "⏳ Đang kiểm tra...";
-            khoiDongBoDemReset(); 
+            khoiDongBoDemReset(); // Kích hoạt đếm giờ
         });
 
         document.getElementById("link-nv2").addEventListener("click", () => {
@@ -486,7 +502,7 @@
             localStorage.setItem("statusNv2", "checking");
             document.getElementById("nhan-nv2").className = "status-badge checking"; 
             document.getElementById("nhan-nv2").innerHTML = "⏳ Đang kiểm tra...";
-            khoiDongBoDemReset(); 
+            khoiDongBoDemReset(); // Kích hoạt đếm giờ
         });
 
         function kiemTraTienTrinhNhiemVu() {
@@ -544,8 +560,12 @@
             if (document.visibilityState === 'visible') kiemTraTienTrinhNhiemVu();
         });
 
-        // ĐÃ SỬA LỖI ĐIỆN THOẠI: Chỉ xóa dữ liệu rác, giữ lại dữ liệu đang làm nhiệm vụ
         window.addEventListener("load", () => {
+            // Kiểm tra xem bộ đếm 5 phút đang chạy không
+            if (localStorage.getItem("thoiGianBatDauReset")) {
+                khoiDongBoDemReset();
+            }
+
             ['Nv1', 'Nv2'].forEach(nv => {
                 const st = localStorage.getItem(`status${nv}`);
                 if (st !== "checking" && st !== "success") {
@@ -561,7 +581,6 @@
             });
             kiemTraMoKhoa();
             
-            // Ép hệ thống kiểm tra ngay lập tức để hoàn thành vòng lặp nếu Mobile vừa load lại trang
             setTimeout(kiemTraTienTrinhNhiemVu, 500);
         });
 
