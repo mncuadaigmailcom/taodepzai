@@ -32,6 +32,8 @@
             overflow-x: hidden;
             -webkit-font-smoothing: antialiased;
             position: relative;
+            -webkit-tap-highlight-color: transparent;
+            touch-action: manipulation;
         }
 
         .glow-nebula {
@@ -166,12 +168,14 @@
             transform-style: preserve-3d;
             perspective: 1000px;
             transform: translateZ(10px);
-            touch-action: none; 
+            touch-action: pan-y; 
         }
-        .task-placeholder:hover {
-            background: rgba(30, 41, 59, 0.7);
-            border-color: rgba(99, 102, 241, 0.35);
-            box-shadow: 0 15px 35px -10px rgba(99, 102, 241, 0.35);
+        @media (hover: hover) and (pointer: fine) {
+            .task-placeholder:hover {
+                background: rgba(30, 41, 59, 0.7);
+                border-color: rgba(99, 102, 241, 0.35);
+                box-shadow: 0 15px 35px -10px rgba(99, 102, 241, 0.35);
+            }
         }
         .task-placeholder.success-box {
             border-color: rgba(16, 185, 129, 0.35) !important;
@@ -196,8 +200,10 @@
             box-shadow: 0 8px 16px rgba(0,0,0,0.2);
             transition: transform 0.3s;
         }
-        .task-placeholder:hover .task-icon {
-            transform: scale(1.1) rotate(5deg);
+        @media (hover: hover) and (pointer: fine) {
+            .task-placeholder:hover .task-icon {
+                transform: scale(1.1) rotate(5deg);
+            }
         }
         .task-icon svg { width: 22px; height: 22px; color: var(--secondary); }
         .task-info { text-align: left; }
@@ -230,9 +236,11 @@
             background: linear-gradient(135deg, #06b6d4, #3b82f6); color: white; border: none; cursor: pointer;
             box-shadow: 0 15px 30px rgba(6, 182, 212, 0.3); animation: pulse-neon 2s infinite;
         }
-        .download-btn.active:hover {
-            transform: translateY(-2px) translateZ(15px);
-            box-shadow: 0 20px 40px rgba(6, 182, 212, 0.45);
+        @media (hover: hover) and (pointer: fine) {
+            .download-btn.active:hover {
+                transform: translateY(-2px) translateZ(15px);
+                box-shadow: 0 20px 40px rgba(6, 182, 212, 0.45);
+            }
         }
 
         @keyframes pulse-neon {
@@ -286,9 +294,11 @@
             display: flex; justify-content: center; align-items: center; gap: 8px;
         }
         #copy-btn { background: linear-gradient(135deg, #6366f1, #a855f7); color: white; box-shadow: 0 6px 20px rgba(99, 102, 241, 0.35); }
-        #copy-btn:hover { transform: translateY(-2px); box-shadow: 0 10px 25px rgba(99, 102, 241, 0.5); }
         #back-btn { background: rgba(255, 255, 255, 0.08); color: white; border: 1px solid rgba(255, 255, 255, 0.1); }
-        #back-btn:hover { background: rgba(255, 255, 255, 0.16); }
+        @media (hover: hover) and (pointer: fine) {
+            #copy-btn:hover { transform: translateY(-2px); box-shadow: 0 10px 25px rgba(99, 102, 241, 0.5); }
+            #back-btn:hover { background: rgba(255, 255, 255, 0.16); }
+        }
 
         @media (max-width: 420px) {
             .main-container { padding: 35px 20px; }
