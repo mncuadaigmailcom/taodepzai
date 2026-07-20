@@ -34,6 +34,7 @@
             position: relative;
             -webkit-tap-highlight-color: transparent;
             touch-action: manipulation;
+            padding: 20px 0;
         }
 
         .glow-nebula {
@@ -87,7 +88,7 @@
             background: var(--glass-bg);
             backdrop-filter: blur(25px);
             -webkit-backdrop-filter: blur(25px);
-            padding: 45px 30px;
+            padding: 40px 30px;
             border-radius: 36px;
             border: 1px solid var(--glass-border);
             box-shadow: 0 40px 80px rgba(0, 0, 0, 0.5), 
@@ -99,6 +100,40 @@
             transition: border-color 0.5s ease, transform 0.2s cubic-bezier(0.1, 0.8, 0.2, 1);
             transform-style: preserve-3d;
             perspective: 1000px;
+        }
+
+        /* --- THỜI GIAN RESET (Tính năng mới) --- */
+        .timer-badge {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            gap: 8px;
+            background: rgba(56, 189, 248, 0.1);
+            border: 1px solid rgba(56, 189, 248, 0.3);
+            color: #38bdf8;
+            padding: 8px 20px;
+            border-radius: 20px;
+            font-size: 13px;
+            font-weight: 700;
+            margin-bottom: 24px;
+            transform: translateZ(25px);
+            transition: all 0.3s;
+            box-shadow: 0 8px 20px rgba(0,0,0,0.2);
+        }
+        .timer-badge.active {
+            background: rgba(16, 185, 129, 0.15);
+            border-color: rgba(16, 185, 129, 0.3);
+            color: #34d399;
+        }
+        .timer-badge.warning {
+            background: rgba(244, 63, 94, 0.15);
+            border-color: rgba(244, 63, 94, 0.3);
+            color: #fb7185;
+            animation: pulse-warning 1s infinite alternate;
+        }
+        @keyframes pulse-warning {
+            from { box-shadow: 0 0 5px rgba(244, 63, 94, 0.2); }
+            to { box-shadow: 0 0 15px rgba(244, 63, 94, 0.5); }
         }
 
         .logo-wrapper {
@@ -249,6 +284,23 @@
             100% { box-shadow: 0 0 0 0 rgba(6, 182, 212, 0); }
         }
 
+        /* --- NÚT RESET THỦ CÔNG (Tính năng mới) --- */
+        .reset-manual-btn {
+            width: 100%; padding: 14px; border-radius: 16px; margin-top: 15px;
+            font-weight: 700; font-size: 13px;
+            background: rgba(244, 63, 94, 0.08); color: #fb7185; 
+            border: 1px solid rgba(244, 63, 94, 0.2); cursor: pointer;
+            transition: all 0.3s ease; display: flex; align-items: center; justify-content: center; gap: 8px;
+            transform: translateZ(10px);
+        }
+        @media (hover: hover) and (pointer: fine) {
+            .reset-manual-btn:hover {
+                background: rgba(244, 63, 94, 0.2);
+                transform: translateY(-2px) translateZ(15px);
+                box-shadow: 0 10px 20px rgba(244, 63, 94, 0.15);
+            }
+        }
+
         #white-screen {
             display: none; position: fixed; top: 0; left: 0; width: 100vw; height: 100vh;
             background: rgba(2, 6, 23, 0.85); z-index: 99999;
@@ -317,6 +369,16 @@
     <div id="notification-box"></div>
 
     <div class="main-container" id="giao-dien-chinh">
+        
+        <!-- THÊM ĐỒNG HỒ ĐẾM NGƯỢC Ở ĐÂY -->
+        <div class="timer-badge" id="timer-badge">
+            <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+                <circle cx="12" cy="12" r="10"></circle>
+                <polyline points="12 6 12 12 16 14"></polyline>
+            </svg>
+            <span id="countdown-text">Phiên chưa bắt đầu</span>
+        </div>
+
         <div class="logo-wrapper">
             <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
                 <path d="m12 3-1.912 5.813a2 2 0 0 1-1.275 1.275L3 12l5.813 1.912a2 2 0 0 1 1.275 1.275L12 21l1.912-5.813a2 2 0 0 1 1.275-1.275L21 12l-5.813-1.912a2 2 0 0 1-1.275-1.275L12 3Z"/>
@@ -329,7 +391,7 @@
         <div class="sub-title">Bài Tập Tập 1 - Trang 2 & Cách Giải Chi Tiết</div>
 
         <div class="desc-box">
-            📌 <strong>Hướng dẫn:</strong> Bấm vào từng nhiệm vụ bên dưới, chờ trang web load đủ tối thiểu 5 giây rồi quay lại đây để hệ thống cấp Script tự động. Thời gian mở khóa tồn tại trong 5 phút.
+            📌 <strong>Hướng dẫn:</strong> Bấm vào từng nhiệm vụ bên dưới, chờ trang web load đủ tối thiểu 5 giây rồi quay lại đây để hệ thống cấp Script tự động. Thời gian mở khóa tồn tại trong 3 phút.
         </div>
 
         <!-- Khung nhiệm vụ 1 -->
@@ -374,9 +436,18 @@
             </svg>
             <span>Hoàn thành nhiệm vụ để tiếp tục</span>
         </button>
+
+        <!-- THÊM NÚT RESET THỦ CÔNG Ở ĐÂY -->
+        <button class="reset-manual-btn" id="nut-reset-thu-cong">
+            <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"></path>
+                <path d="M3 3v5h5"></path>
+            </svg>
+            <span>Làm Mới Trang & Nhiệm Vụ</span>
+        </button>
     </div>
 
-    <!-- Màn hình hiển thị nội dung Copy (Trang 2) -->
+    <!-- Màn hình hiển thị nội dung Copy -->
     <div id="white-screen">
         <div class="editor-wrapper">
             <div class="editor-header">
@@ -453,16 +524,46 @@
         });
 
         // ----------------------------------------------------
-        // LOGIC XỬ LÝ NHIỆM VỤ VÀ TỰ ĐỘNG RESET BẰNG THỜI GIAN THỰC
+        // LOGIC XỬ LÝ NHIỆM VỤ, RESET VÀ ĐỒNG HỒ
         // ----------------------------------------------------
-        const THOI_GIAN_RESET = 3 * 60 * 1000; // Đổi thành 3 phút (tính bằng ms)
-        const THOI_GIAN_CHO_NV = 5 * 1000; // Đổi thành 5 giây (thời gian làm NV)
+        const THOI_GIAN_RESET = 3 * 60 * 1000; // 3 phút
+        const THOI_GIAN_CHO_NV = 5 * 1000; // 5 giây
         let nv1HoanThanh = false, nv2HoanThanh = false;
+        const timerBadge = document.getElementById("timer-badge");
+        const countdownText = document.getElementById("countdown-text");
 
-        function thucHienResetThucSu() {
+        // Cập nhật giao diện đồng hồ
+        function updateTimerDisplay() {
+            const expireTime = localStorage.getItem("session_expire");
+            if (!expireTime) {
+                countdownText.innerText = "Phiên chưa bắt đầu";
+                timerBadge.className = "timer-badge";
+                return;
+            }
+
+            const timeLeft = parseInt(expireTime) - Date.now();
+            
+            if (timeLeft <= 0) {
+                countdownText.innerText = "Đã hết hạn";
+                timerBadge.className = "timer-badge warning";
+            } else {
+                const m = Math.floor(timeLeft / 60000);
+                const s = Math.floor((timeLeft % 60000) / 1000);
+                countdownText.innerText = `Làm mới sau: ${m.toString().padStart(2, '0')}:${s.toString().padStart(2, '0')}`;
+                
+                // Đổi màu đỏ khi dưới 30 giây
+                if (timeLeft < 30000) {
+                    timerBadge.className = "timer-badge warning";
+                } else {
+                    timerBadge.className = "timer-badge active";
+                }
+            }
+        }
+
+        function thucHienResetThucSu(isManual = false) {
             nv1HoanThanh = false; nv2HoanThanh = false;
             
-            // Xóa sạch lịch sử bộ nhớ khi hết hạn
+            // Xóa sạch lịch sử bộ nhớ
             localStorage.removeItem("session_expire");
             localStorage.removeItem("startTimeNv1"); localStorage.removeItem("startTimeNv2");
             localStorage.removeItem("statusNv1"); localStorage.removeItem("statusNv2");
@@ -481,23 +582,34 @@
 
             kiemTraMoKhoa();
             document.getElementById("white-screen").classList.remove("show");
-            notify("🔄 Phiên làm việc đã hết hạn sau 3 phút. Đã tự động reset lại web.", "info");
+            updateTimerDisplay(); // Reset đồng hồ
+
+            if (isManual) {
+                notify("🔄 Đã làm mới trang và các nhiệm vụ!", "success");
+            } else {
+                notify("🔄 Phiên làm việc đã hết hạn sau 3 phút. Đã tự động reset lại web.", "info");
+            }
         }
 
-        // Kiểm tra xem đã vượt quá 5 phút kể từ lúc bắt đầu làm chưa
+        // Bắt sự kiện nút Reset thủ công
+        document.getElementById("nut-reset-thu-cong").addEventListener("click", () => {
+            thucHienResetThucSu(true);
+        });
+
+        // Kiểm tra xem đã vượt quá 3 phút kể từ lúc bắt đầu làm chưa
         function kiemTraHanSuDung() {
             const expireTime = localStorage.getItem("session_expire");
             if (expireTime && Date.now() > parseInt(expireTime)) {
-                thucHienResetThucSu();
+                thucHienResetThucSu(false);
                 return true; 
             }
             return false; 
         }
 
-        // Bắt đầu tính thời gian 5 phút cho phiên làm việc
         function batDauPhienLamViec() {
             if (!localStorage.getItem("session_expire")) {
                 localStorage.setItem("session_expire", Date.now() + THOI_GIAN_RESET);
+                updateTimerDisplay(); // Cập nhật đồng hồ ngay lập tức
             }
         }
 
@@ -556,8 +668,10 @@
             kiemTraNhiemVu("Nv2", nv2HoanThanh, (val) => nv2HoanThanh = val);
         }
 
-        // Loop theo thời gian thực: Giúp chạy ngầm mượt mà khi dùng Mobile/Sleep Screen
+        // Vòng lặp tối ưu: Xử lý đồng thời Đồng Hồ Đếm Ngược + Logic Check Nhiệm Vụ 
         setInterval(() => {
+            updateTimerDisplay(); // Cập nhật đồng hồ mỗi 500ms
+            
             if (kiemTraHanSuDung()) return;
             
             const now = Date.now();
@@ -582,7 +696,8 @@
 
         // Tải lại trạng thái mượt mà khi F5
         window.addEventListener("load", () => {
-            if (kiemTraHanSuDung()) return; // Vừa load mà phát hiện quá 5 phút -> Reset luôn
+            updateTimerDisplay(); // Khởi tạo đồng hồ lúc load
+            if (kiemTraHanSuDung()) return; 
 
             ['Nv1', 'Nv2'].forEach(nv => {
                 const st = localStorage.getItem(`status${nv}`);
