@@ -27,3 +27,19 @@ Công cụ in ra tên gốc (cả chữ hoa và dấu tiếng Việt), ID nhiệ
 Trang vẫn có đếm ngược, reset thủ công/tự động, thông báo, hiệu ứng 3D, sao chép mã demo và sao chép script cũ. Tên trên cửa sổ nhận mã được thu gọn theo mặc định để không lộ ngay khi chia sẻ ảnh; trường tên trong trang chính vẫn hiển thị khi người dùng nhập.
 
 **Lưu ý quan trọng:** Mã `Free_` này **chỉ để minh họa, không kích hoạt script Taodepzai**. Cách che tên trong mã **không phải mã hóa bảo mật**: bất kỳ ai xem mã nguồn công khai cũng có thể đọc lại tên từ mã, nên không nhập tên thật hay thông tin nhạy cảm nếu cần riêng tư. Thời gian/trạng thái trong trình duyệt có thể bị chỉnh sửa và trang không xác minh người dùng đã xem liên kết. Muốn cấp key sử dụng được và chỉ chủ trang tra tên, cần máy chủ lưu key–tên cùng trang quản trị có xác thực; không để bí mật trong mã nguồn trình duyệt.
+
+## Script nhập key cho Roblox (`key-system.lua`)
+
+Mở bảng nhập key trong game. Key **chỉ cần chứa** `Free_v2__` (phân biệt hoa/thường, tự bỏ khoảng trắng đầu/cuối) là được chấp nhận. Mọi mã do trang này tạo ra đều bắt đầu bằng `Free_v2__`. Khi key đúng, script tải `https://mncuadaigmailcom.github.io/aiaiaitao2/script.js`, **xoá bảng nhập key** rồi chạy script chính. Nếu tải lỗi hoặc script lỗi cú pháp, bảng vẫn giữ lại, hiện lỗi và cho bấm thử lại. Nút “Lấy key” sao chép link trang tạo mã. Có thể nhấn Enter trong ô key để xác nhận.
+
+Sau khi GitHub Pages cập nhật, chạy trong executor:
+
+```lua
+loadstring(game:HttpGet("https://mncuadaigmailcom.github.io/taodepzai/key-system.lua"))()
+```
+
+Muốn đổi chuỗi key, link script hoặc link lấy key, sửa bảng `CAU_HINH` ở đầu file.
+
+Chạy test (giả lập Roblox bằng Lua 5.1): `pip install lupa` rồi `python3 tests/key_system_test.py`.
+
+**Lưu ý:** việc kiểm tra key chạy ở máy người chơi, nên ai đọc mã nguồn cũng có thể bỏ qua hoặc tự tạo key. Đây chỉ là cổng đơn giản, không phải bảo mật thật.
