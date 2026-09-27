@@ -2,8 +2,9 @@
 <html lang="vi">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
-    <title>Tài Liệu Lớp 9 - Siêu Cấp 3D</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+    <meta name="theme-color" content="#090d1a">
+    <title>Tạo mã demo Free_ | Taodepzai</title>
     <style>
         @import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap');
 
@@ -19,135 +20,112 @@
             --neon-shadow: 0 0 25px rgba(99, 102, 241, 0.20);
         }
 
+        * { box-sizing: border-box; }
+
         body {
-            font-family: 'Plus Jakarta Sans', system-ui, -apple-system, sans-serif;
-            background-color: var(--bg-dark);
-            color: var(--text-main);
             margin: 0;
-            display: flex;
-            flex-direction: column;
-            align-items: center;
             min-height: 100vh;
+            min-height: 100svh;
+            padding: 36px 16px;
+            display: flex;
+            align-items: center;
             justify-content: center;
-            overflow-x: hidden;
+            background: var(--bg-dark);
+            color: var(--text-main);
+            font-family: 'Plus Jakarta Sans', system-ui, -apple-system, sans-serif;
             -webkit-font-smoothing: antialiased;
+            overflow-x: hidden;
             position: relative;
             -webkit-tap-highlight-color: transparent;
-            touch-action: manipulation;
-            padding: 20px 0;
-        }
-
-        .glow-nebula {
-            position: fixed;
-            width: 450px;
-            height: 450px;
-            filter: blur(140px);
-            border-radius: 50%;
-            z-index: -1;
-            opacity: 0.6;
-            pointer-events: none;
-            animation: nebula-drift 15s infinite alternate ease-in-out;
-        }
-        .nebula-1 { top: -10%; left: -5%; background: rgba(129, 140, 248, 0.35); }
-        .nebula-2 { bottom: -10%; right: -5%; background: rgba(192, 132, 252, 0.35); }
-
-        @keyframes nebula-drift {
-            0% { transform: translate(0, 0) scale(1); }
-            100% { transform: translate(50px, 60px) scale(1.15); }
         }
 
         .cyber-grid {
             position: fixed;
-            top: 0; left: 0; width: 100%; height: 100%;
-            background-image: linear-gradient(rgba(255, 255, 255, 0.015) 1px, transparent 1px),
-                              linear-gradient(90deg, rgba(255, 255, 255, 0.015) 1px, transparent 1px);
-            background-size: 30px 30px;
-            z-index: -1;
+            inset: 0;
+            z-index: 0;
             pointer-events: none;
+            background-image: linear-gradient(rgba(255,255,255,.025) 1px, transparent 1px),
+                              linear-gradient(90deg, rgba(255,255,255,.025) 1px, transparent 1px);
+            background-size: 32px 32px;
+            mask-image: linear-gradient(to bottom, black, transparent 95%);
+        }
+
+        .glow-nebula {
+            position: fixed;
+            z-index: 0;
+            width: 450px;
+            height: 450px;
+            border-radius: 50%;
+            filter: blur(130px);
+            opacity: .55;
+            pointer-events: none;
+            animation: nebula-drift 15s infinite alternate ease-in-out;
+        }
+        .nebula-1 { top: -15%; left: -8%; background: rgba(129, 140, 248, .44); }
+        .nebula-2 { bottom: -15%; right: -8%; background: rgba(192, 132, 252, .40); }
+        @keyframes nebula-drift {
+            to { transform: translate(48px, 52px) scale(1.14); }
         }
 
         #notification-box {
-            position: fixed; top: 24px; left: 50%; transform: translate(-50%, -120px);
-            background: rgba(15, 23, 42, 0.9); backdrop-filter: blur(16px);
-            -webkit-backdrop-filter: blur(16px);
-            color: white; padding: 16px 28px; border-radius: 18px;
-            font-size: 14px; font-weight: 700; z-index: 9999999;
+            position: fixed;
+            top: max(18px, env(safe-area-inset-top));
+            left: 50%;
+            z-index: 999;
+            width: max-content;
+            max-width: calc(100vw - 32px);
+            padding: 14px 22px;
             border: 1px solid var(--glass-border);
-            box-shadow: 0 20px 40px rgba(0,0,0,0.5), inset 0 1px 0 rgba(255, 255, 255, 0.1);
-            transition: all 0.45s cubic-bezier(0.175, 0.885, 0.32, 1.275);
-            opacity: 0; width: max-content; max-width: 90vw; text-align: center;
-        }
-        #notification-box.toast-show { transform: translate(-50%, 0); opacity: 1; }
-        #notification-box.error { border-bottom: 3px solid #f43f5e; }
-        #notification-box.success { border-bottom: 3px solid #10b981; }
-        #notification-box.info { border-bottom: 3px solid #3b82f6; }
-
-        .main-container {
-            max-width: 460px;
-            width: 90%;
-            background: var(--glass-bg);
-            backdrop-filter: blur(25px);
-            -webkit-backdrop-filter: blur(25px);
-            padding: 40px 30px;
-            border-radius: 36px;
-            border: 1px solid var(--glass-border);
-            box-shadow: 0 40px 80px rgba(0, 0, 0, 0.5), 
-                        inset 0 1px 1px rgba(255, 255, 255, 0.15),
-                        var(--neon-shadow);
+            border-radius: 15px;
+            background: rgba(15, 23, 42, .97);
+            color: white;
+            box-shadow: 0 18px 38px rgba(0,0,0,.45);
             text-align: center;
-            box-sizing: border-box;
-            z-index: 10;
-            transition: border-color 0.5s ease, transform 0.2s cubic-bezier(0.1, 0.8, 0.2, 1);
-            transform-style: preserve-3d;
-            perspective: 1000px;
-        }
-
-        /* --- THỜI GIAN RESET (Tính năng mới) --- */
-        .timer-badge {
-            display: inline-flex;
-            align-items: center;
-            justify-content: center;
-            gap: 8px;
-            background: rgba(56, 189, 248, 0.1);
-            border: 1px solid rgba(56, 189, 248, 0.3);
-            color: #38bdf8;
-            padding: 8px 20px;
-            border-radius: 20px;
             font-size: 13px;
             font-weight: 700;
-            margin-bottom: 24px;
-            transform: translateZ(25px);
-            transition: all 0.3s;
-            box-shadow: 0 8px 20px rgba(0,0,0,0.2);
+            line-height: 1.5;
+            opacity: 0;
+            pointer-events: none;
+            transform: translate(-50%, -100px);
+            transition: transform .35s ease, opacity .35s ease;
         }
-        .timer-badge.active {
-            background: rgba(16, 185, 129, 0.15);
-            border-color: rgba(16, 185, 129, 0.3);
-            color: #34d399;
-        }
-        .timer-badge.warning {
-            background: rgba(244, 63, 94, 0.15);
-            border-color: rgba(244, 63, 94, 0.3);
-            color: #fb7185;
-            animation: pulse-warning 1s infinite alternate;
-        }
-        @keyframes pulse-warning {
-            from { box-shadow: 0 0 5px rgba(244, 63, 94, 0.2); }
-            to { box-shadow: 0 0 15px rgba(244, 63, 94, 0.5); }
+        #notification-box.toast-show { opacity: 1; transform: translate(-50%, 0); }
+        #notification-box.error { border-bottom: 3px solid #fb7185; }
+        #notification-box.success { border-bottom: 3px solid #34d399; }
+        #notification-box.info { border-bottom: 3px solid #38bdf8; }
+
+        .main-container {
+            position: relative;
+            z-index: 1;
+            width: 100%;
+            max-width: 460px;
+            padding: 40px 30px;
+            border: 1px solid var(--glass-border);
+            border-radius: 36px;
+            background: var(--glass-bg);
+            box-shadow: 0 40px 80px rgba(0, 0, 0, 0.5),
+                        inset 0 1px 1px rgba(255, 255, 255, 0.15),
+                        var(--neon-shadow);
+            backdrop-filter: blur(25px);
+            -webkit-backdrop-filter: blur(25px);
+            text-align: center;
+            transform-style: preserve-3d;
+            perspective: 1000px;
+            transition: border-color .5s ease, transform .2s cubic-bezier(.1, .8, .2, 1);
         }
 
         .logo-wrapper {
             position: relative;
-            width: 72px;
-            height: 72px;
-            margin: 0 auto 20px auto;
             display: flex;
             align-items: center;
             justify-content: center;
-            background: rgba(255, 255, 255, 0.03);
+            width: 72px;
+            height: 72px;
+            margin: 0 auto 20px;
             border: 1px solid rgba(255, 255, 255, 0.08);
             border-radius: 24px;
-            box-shadow: 0 15px 30px rgba(0,0,0,0.2);
+            background: rgba(255, 255, 255, 0.03);
+            box-shadow: 0 15px 30px rgba(0, 0, 0, 0.2);
             animation: bounce-slow 4s infinite ease-in-out;
             transform: translateZ(35px);
         }
@@ -157,598 +135,928 @@
             color: var(--accent);
             filter: drop-shadow(0 0 12px rgba(34, 211, 238, 0.6));
         }
-
         @keyframes bounce-slow {
             0%, 100% { transform: translateY(0) translateZ(35px) rotate(0deg); }
             50% { transform: translateY(-8px) translateZ(35px) rotate(5deg); }
         }
 
-        h1 {
-            font-size: 26px; margin: 0 0 10px 0; font-weight: 800; letter-spacing: -0.5px;
-            background: linear-gradient(135deg, #38bdf8, #c084fc, #6366f1);
-            -webkit-background-clip: text; -webkit-text-fill-color: transparent;
+        .timer-badge {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            gap: 8px;
+            margin-bottom: 24px;
+            padding: 8px 20px;
+            border: 1px solid rgba(56, 189, 248, 0.3);
+            border-radius: 20px;
+            background: rgba(56, 189, 248, 0.1);
+            color: #38bdf8;
+            box-shadow: 0 8px 20px rgba(0, 0, 0, 0.2);
+            font-size: 13px;
+            font-weight: 700;
+            white-space: nowrap;
+            font-variant-numeric: tabular-nums;
             transform: translateZ(25px);
+            transition: all .3s;
+        }
+        .timer-badge svg { width: 16px; height: 16px; flex: none; }
+        .timer-badge.active { border-color: rgba(16, 185, 129, .3); color: #34d399; background: rgba(16, 185, 129, .15); }
+        .timer-badge.warning { border-color: rgba(244, 63, 94, .3); color: #fb7185; background: rgba(244, 63, 94, .15); animation: pulse-warning 1s infinite alternate; }
+        @keyframes pulse-warning {
+            from { box-shadow: 0 0 5px rgba(244, 63, 94, .2); }
+            to { box-shadow: 0 0 15px rgba(244, 63, 94, .5); }
         }
 
-        .sub-title { 
-            font-size: 14px; color: var(--text-muted); margin-bottom: 32px; font-weight: 600; 
-            transform: translateZ(20px);
+        .hero { transform: translateZ(25px); }
+        h1 {
+            margin: 0 0 10px;
+            font-size: 26px;
+            line-height: 1.3;
+            font-weight: 800;
+            letter-spacing: -0.5px;
+            background: linear-gradient(135deg, #38bdf8, #c084fc, #6366f1);
+            -webkit-background-clip: text;
+            background-clip: text;
+            -webkit-text-fill-color: transparent;
         }
+        .sub-title { margin: 0 0 32px; color: var(--text-muted); font-size: 14px; font-weight: 600; line-height: 1.6; }
 
         .desc-box {
-            font-size: 13.5px;
-            text-align: left;
-            line-height: 1.6;
-            color: #cbd5e1;
-            background: rgba(15, 23, 42, 0.4);
+            max-width: 720px;
+            margin: 0 auto 18px;
             padding: 16px 20px;
-            border-radius: 18px;
+            border: 1px solid rgba(255, 255, 255, .03);
             border-left: 4px solid #38bdf8;
-            margin-bottom: 28px;
-            border-top: 1px solid rgba(255, 255, 255, 0.03);
+            border-radius: 18px;
+            background: rgba(15, 23, 42, .4);
+            color: #cbd5e1;
+            text-align: left;
+            font-size: 13.5px;
+            line-height: 1.6;
             transform: translateZ(15px);
+        }
+        .demo-banner {
+            margin: 0 0 24px;
+            color: #fcd34d;
+            font-size: 11px;
+            line-height: 1.5;
+            font-weight: 700;
+            transform: translateZ(12px);
+        }
+        .player-box {
+            margin-bottom: 22px;
+            padding: 17px 18px;
+            border: 1px solid var(--glass-border);
+            border-radius: 20px;
+            background: rgba(15, 23, 42, 0.45);
+            text-align: left;
+            transform: translateZ(14px);
+        }
+        .player-label {
+            display: flex;
+            align-items: center;
+            gap: 9px;
+            margin-bottom: 10px;
+            color: #f8fafc;
+            font-size: 14px;
+            font-weight: 700;
+        }
+        .player-label svg { width: 18px; height: 18px; color: var(--secondary); }
+        .player-input {
+            display: block;
+            width: 100%;
+            min-height: 46px;
+            padding: 12px 15px;
+            border: 1px solid rgba(255, 255, 255, 0.12);
+            border-radius: 12px;
+            background: rgba(9, 13, 26, 0.8);
+            color: var(--text-main);
+            font: 600 14px 'Plus Jakarta Sans', system-ui, sans-serif;
+        }
+        .player-input::placeholder { color: #94a3b8; font-weight: 500; }
+        .player-input:focus { border-color: var(--primary); outline: 2px solid var(--accent); outline-offset: 2px; }
+        .player-help { margin: 9px 0 0; color: var(--text-muted); font-size: 11px; line-height: 1.5; }
+
+        .section-heading { display: flex; justify-content: space-between; align-items: center; margin-bottom: 14px; transform: translateZ(10px); }
+        .section-heading h2 { margin: 0; font-size: 14px; font-weight: 800; }
+        .section-heading span { color: var(--text-muted); font-size: 11px; font-weight: 700; }
+        .task-grid {
+            display: grid;
+            grid-template-columns: minmax(0, 1fr);
+            gap: 16px;
         }
 
         .task-placeholder {
-            position: relative;
-            background: rgba(15, 23, 42, 0.45);
+            min-width: 0;
             border: 1px solid rgba(255, 255, 255, 0.05);
             border-radius: 24px;
-            padding: 18px;
-            margin-bottom: 18px;
-            display: flex;
-            align-items: center;
-            justify-content: space-between;
-            transition: transform 0.2s cubic-bezier(0.1, 0.8, 0.2, 1), background-color 0.3s, border-color 0.3s, box-shadow 0.3s;
+            background: rgba(15, 23, 42, 0.45);
+            text-align: left;
             transform-style: preserve-3d;
             perspective: 1000px;
-            transform: translateZ(10px);
-            touch-action: pan-y; 
+            transition: transform .2s cubic-bezier(.1, .8, .2, 1), background-color .3s, border-color .3s, box-shadow .3s;
+            touch-action: pan-y;
         }
         @media (hover: hover) and (pointer: fine) {
             .task-placeholder:hover {
-                background: rgba(30, 41, 59, 0.7);
                 border-color: rgba(99, 102, 241, 0.35);
+                background: rgba(30, 41, 59, 0.7);
                 box-shadow: 0 15px 35px -10px rgba(99, 102, 241, 0.35);
             }
         }
+        .task-placeholder:focus-within { border-color: rgba(99, 102, 241, 0.5); }
         .task-placeholder.success-box {
-            border-color: rgba(16, 185, 129, 0.35) !important;
-            background: rgba(16, 185, 129, 0.06) !important;
+            border-color: rgba(16, 185, 129, 0.35);
+            background: rgba(16, 185, 129, 0.06);
             box-shadow: 0 15px 35px -10px rgba(16, 185, 129, 0.15);
         }
-
-        .task-content {
+        .task-placeholder.error-box { border-color: rgba(244, 63, 94, 0.4); }
+        .task-link {
             display: flex;
             align-items: center;
-            gap: 16px;
-            z-index: 2;
-            pointer-events: none;
-            transform: translateZ(30px); 
+            justify-content: space-between;
+            gap: 10px;
+            min-height: 84px;
+            padding: 18px;
+            border-radius: inherit;
+            color: inherit;
+            text-decoration: none;
         }
+        .task-link:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; }
+        .task-row { display: flex; flex: 1; min-width: 0; align-items: center; gap: 16px; }
         .task-icon {
-            width: 46px; height: 46px; border-radius: 16px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            flex: none;
+            width: 46px;
+            height: 46px;
+            border: 1px solid rgba(255, 255, 255, 0.08);
+            border-radius: 16px;
             background: linear-gradient(135deg, #1e1b4b, #311042);
-            display: flex; align-items: center; justify-content: center;
-            font-weight: 800; font-size: 18px; color: #fff;
-            border: 1px solid rgba(255,255,255,0.08);
-            box-shadow: 0 8px 16px rgba(0,0,0,0.2);
-            transition: transform 0.3s;
+            color: var(--secondary);
+            box-shadow: 0 8px 16px rgba(0, 0, 0, 0.2);
+            transition: transform .3s;
+            transform: translateZ(18px);
         }
+        .task-icon svg { width: 22px; height: 22px; }
         @media (hover: hover) and (pointer: fine) {
-            .task-placeholder:hover .task-icon {
-                transform: scale(1.1) rotate(5deg);
-            }
+            .task-placeholder:hover .task-icon { transform: translateZ(18px) scale(1.1) rotate(5deg); }
         }
-        .task-icon svg { width: 22px; height: 22px; color: var(--secondary); }
-        .task-info { text-align: left; }
-        .task-title { font-size: 15px; font-weight: 700; color: #f8fafc; }
-        .task-desc { font-size: 12.5px; color: #94a3b8; margin-top: 4px; }
-
+        .task-info { min-width: 0; flex: 1; text-align: left; transform: translateZ(12px); }
+        .task-title { display: block; color: #f8fafc; font-size: 14px; font-weight: 700; line-height: 1.4; }
+        .task-desc { display: block; margin-top: 4px; color: #94a3b8; font-size: 11.5px; line-height: 1.4; }
+        .task-bottom { display: flex; flex: none; align-items: center; }
         .status-badge {
-            z-index: 2; padding: 6px 14px; border-radius: 12px; font-size: 11px; font-weight: 800;
-            background: rgba(244, 63, 94, 0.12); color: #fb7185; border: 1px solid rgba(244, 63, 94, 0.2);
-            transform: translateZ(25px); 
-            transition: all 0.3s;
+            display: inline-block;
+            padding: 6px 12px;
+            border: 1px solid rgba(244, 63, 94, 0.2);
+            border-radius: 12px;
+            background: rgba(244, 63, 94, 0.12);
+            color: #fb7185;
+            font-size: 11px;
+            font-weight: 800;
+            white-space: nowrap;
+            font-variant-numeric: tabular-nums;
+            transform: translateZ(25px);
+            transition: all .3s;
         }
-        .status-badge.checking { background: rgba(234, 179, 8, 0.12); color: #facc15; border-color: rgba(234, 179, 8, 0.2); }
-        .status-badge.success { background: rgba(16, 185, 129, 0.12); color: #34d399; border-color: rgba(16, 185, 129, 0.2); }
-        .status-badge.error { background: rgba(244, 63, 94, 0.2); color: #f43f5e; border-color: rgba(244, 63, 94, 0.4); }
+        .status-badge.checking { border-color: rgba(234, 179, 8, .2); background: rgba(234, 179, 8, .12); color: #facc15; }
+        .status-badge.success { border-color: rgba(16, 185, 129, .2); background: rgba(16, 185, 129, .12); color: #34d399; }
+        .status-badge.error { border-color: rgba(244, 63, 94, .4); background: rgba(244, 63, 94, .2); color: #f43f5e; }
 
-        .task-link-overlay {
-            position: absolute; top: 0; left: 0; width: 100%; height: 100%; z-index: 5; text-decoration: none; border-radius: 24px;
+        .download-btn, .reset-manual-btn, .action-buttons button, .close-btn, .copy-key-btn, #copy-btn {
+            font: inherit;
+            cursor: pointer;
         }
-
         .download-btn {
-            width: 100%; padding: 18px; border-radius: 20px; margin-top: 26px;
-            font-weight: 800; font-size: 15px; letter-spacing: 0.5px;
-            background: rgba(15, 23, 42, 0.7); color: #64748b; border: 1px solid rgba(255,255,255,0.05);
-            transition: all 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275); cursor: not-allowed;
-            display: flex; align-items: center; justify-content: center; gap: 8px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 8px;
+            width: min(100%, 460px);
+            min-height: 56px;
+            margin: 26px auto 0;
+            padding: 18px;
+            border: 1px solid rgba(255, 255, 255, 0.05);
+            border-radius: 20px;
+            background: rgba(15, 23, 42, 0.7);
+            color: #94a3b8;
+            font-size: 15px;
+            font-weight: 800;
+            letter-spacing: .4px;
+            transition: all .4s cubic-bezier(.175, .885, .32, 1.275);
             transform: translateZ(10px);
         }
+        .download-btn:disabled { cursor: not-allowed; }
+        .download-btn svg { width: 19px; height: 19px; flex: none; }
+        .download-btn .unlock-icon { display: none; }
         .download-btn.active {
-            background: linear-gradient(135deg, #06b6d4, #3b82f6); color: white; border: none; cursor: pointer;
-            box-shadow: 0 15px 30px rgba(6, 182, 212, 0.3); animation: pulse-neon 2s infinite;
+            border-color: transparent;
+            background: linear-gradient(135deg, #06b6d4, #3b82f6);
+            color: white;
+            box-shadow: 0 15px 30px rgba(6, 182, 212, .3);
+            animation: pulse-neon 2s infinite;
         }
+        .download-btn.active .lock-icon { display: none; }
+        .download-btn.active .unlock-icon { display: block; }
         @media (hover: hover) and (pointer: fine) {
-            .download-btn.active:hover {
-                transform: translateY(-2px) translateZ(15px);
-                box-shadow: 0 20px 40px rgba(6, 182, 212, 0.45);
-            }
+            .download-btn.active:hover { transform: translateY(-2px) translateZ(15px); box-shadow: 0 20px 40px rgba(6, 182, 212, .45); }
         }
-
         @keyframes pulse-neon {
-            0% { box-shadow: 0 0 0 0 rgba(6, 182, 212, 0.5); }
+            0% { box-shadow: 0 0 0 0 rgba(6, 182, 212, .5); }
             70% { box-shadow: 0 0 0 15px rgba(6, 182, 212, 0); }
             100% { box-shadow: 0 0 0 0 rgba(6, 182, 212, 0); }
         }
 
-        /* --- NÚT RESET THỦ CÔNG (Tính năng mới) --- */
         .reset-manual-btn {
-            width: 100%; padding: 14px; border-radius: 16px; margin-top: 15px;
-            font-weight: 700; font-size: 13px;
-            background: rgba(244, 63, 94, 0.08); color: #fb7185; 
-            border: 1px solid rgba(244, 63, 94, 0.2); cursor: pointer;
-            transition: all 0.3s ease; display: flex; align-items: center; justify-content: center; gap: 8px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 8px;
+            width: min(100%, 460px);
+            margin: 15px auto 0;
+            padding: 14px;
+            border: 1px solid rgba(244, 63, 94, .2);
+            border-radius: 16px;
+            background: rgba(244, 63, 94, .08);
+            color: #fb7185;
+            font-size: 13px;
+            font-weight: 700;
+            transition: all .3s ease;
             transform: translateZ(10px);
         }
+        .reset-manual-btn svg { width: 16px; height: 16px; }
         @media (hover: hover) and (pointer: fine) {
             .reset-manual-btn:hover {
-                background: rgba(244, 63, 94, 0.2);
+                background: rgba(244, 63, 94, .2);
                 transform: translateY(-2px) translateZ(15px);
-                box-shadow: 0 10px 20px rgba(244, 63, 94, 0.15);
+                box-shadow: 0 10px 20px rgba(244, 63, 94, .15);
             }
         }
+        .footnote { margin: 17px 0 0; color: #94a3b8; font-size: 10px; line-height: 1.6; }
+        button:focus-visible, summary:focus-visible, .key-value:focus-visible, textarea:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; }
 
         #white-screen {
-            display: none; position: fixed; top: 0; left: 0; width: 100vw; height: 100vh;
-            background: rgba(2, 6, 23, 0.85); z-index: 99999;
-            flex-direction: column; align-items: center; justify-content: center; padding: 20px; box-sizing: border-box;
+            display: none;
+            position: fixed;
+            inset: 0;
+            z-index: 100;
+            padding: 20px;
+            overflow-y: auto;
+            background: rgba(2, 6, 23, 0.85);
+            align-items: center;
+            justify-content: center;
         }
-        #white-screen.show { display: flex; animation: fadeInBlur 0.4s forwards; }
-        
+        #white-screen.show { display: flex; animation: fadeInBlur .4s both; }
         @keyframes fadeInBlur {
-            from { opacity: 0; backdrop-filter: blur(0px); -webkit-backdrop-filter: blur(0px); }
+            from { opacity: 0; backdrop-filter: blur(0); -webkit-backdrop-filter: blur(0); }
             to { opacity: 1; backdrop-filter: blur(16px); -webkit-backdrop-filter: blur(16px); }
         }
-
         .editor-wrapper {
-            max-width: 600px; width: 100%; background: rgba(30, 41, 59, 0.75);
-            border: 1px solid var(--glass-border); padding: 35px 26px; border-radius: 32px;
-            box-shadow: 0 30px 60px rgba(0,0,0,0.6), inset 0 1px 1px rgba(255,255,255,0.1); 
-            transform: translateY(25px); opacity: 0;
-            box-sizing: border-box;
+            width: 100%;
+            max-width: 600px;
+            margin: auto;
+            padding: 35px 26px;
+            border: 1px solid var(--glass-border);
+            border-radius: 32px;
+            background: rgba(30, 41, 59, 0.75);
+            box-shadow: 0 30px 60px rgba(0, 0, 0, .6), inset 0 1px 1px rgba(255, 255, 255, .1);
+            transform: translateY(25px);
+            opacity: 0;
         }
-        #white-screen.show .editor-wrapper { animation: slideUp3D 0.5s cubic-bezier(0.16, 1, 0.3, 1) 0.1s forwards; }
-
+        #white-screen.show .editor-wrapper { animation: slideUp3D .5s cubic-bezier(.16, 1, .3, 1) .1s forwards; }
         @keyframes slideUp3D { to { transform: translateY(0); opacity: 1; } }
-
-        .editor-header {
-            display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;
+        .editor-header { display: flex; justify-content: space-between; align-items: center; gap: 10px; margin-bottom: 20px; }
+        .editor-label { display: flex; align-items: center; gap: 8px; color: #e2e8f0; font-size: 14px; font-weight: 700; letter-spacing: .5px; }
+        .pulse-dot { width: 8px; height: 8px; flex: none; border-radius: 50%; background: #10b981; box-shadow: 0 0 10px #10b981; animation: blink 2s infinite; }
+        @keyframes blink { 50% { opacity: .4; box-shadow: 0 0 0 transparent; } }
+        .close-btn { width: 31px; height: 31px; flex: none; border: 1px solid rgba(255, 255, 255, .1); border-radius: 9px; background: rgba(255, 255, 255, .06); color: white; font-size: 20px; line-height: 1; }
+        .close-btn:hover { background: rgba(255, 255, 255, .14); }
+        .player-details {
+            margin: 0 0 16px;
+            padding: 11px 14px;
+            border: 1px solid rgba(129, 140, 248, 0.25);
+            border-radius: 12px;
+            background: rgba(99, 102, 241, 0.09);
+            color: #e2e8f0;
+            font-size: 12px;
         }
-        .editor-title { font-size: 14px; font-weight: 700; color: #e2e8f0; display: flex; align-items: center; gap: 8px; letter-spacing: 0.5px; }
-        .pulse-dot { width: 8px; height: 8px; background: #10b981; border-radius: 50%; box-shadow: 0 0 10px #10b981; animation: blink 2s infinite; }
-        @keyframes blink { 50% { opacity: 0.4; box-shadow: 0 0 0px transparent; } }
-
-        .page2-textarea {
-            width: 100%; height: 200px; background: rgba(15, 23, 42, 0.65);
-            color: #38bdf8; border: 1px solid rgba(255, 255, 255, 0.1); border-radius: 18px;
-            padding: 20px; font-size: 15px; resize: none; font-family: 'Courier New', Courier, monospace; box-sizing: border-box;
-            line-height: 1.6;
+        .player-details summary { cursor: pointer; font-weight: 700; }
+        .player-summary { margin: 9px 0 0; overflow-wrap: anywhere; }
+        .field-label { display: block; margin-bottom: 8px; color: #c4b5fd; font-size: 11px; font-weight: 800; letter-spacing: .1em; }
+        .key-value, .page2-textarea {
+            width: 100%;
+            border: 1px solid rgba(255, 255, 255, .1);
+            border-radius: 18px;
+            background: rgba(15, 23, 42, .65);
+            color: #38bdf8;
+            font: 15px/1.6 'Courier New', Courier, monospace;
         }
-        .page2-textarea:focus { outline: none; border-color: var(--primary); }
-
+        .key-value { height: 148px; padding: 20px; resize: none; }
+        .key-value:focus, .page2-textarea:focus { border-color: var(--primary); }
+        .demo-alert { margin: 9px 0 0; color: #fcd34d; font-size: 11px; line-height: 1.5; }
         .action-buttons { display: flex; gap: 14px; margin-top: 20px; }
         .action-buttons button {
-            flex: 1; padding: 16px; border-radius: 16px; font-weight: 800; font-size: 14px;
-            cursor: pointer; border: none; transition: all 0.25s cubic-bezier(0.25, 0.8, 0.25, 1); 
-            display: flex; justify-content: center; align-items: center; gap: 8px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 8px;
+            flex: 1;
+            padding: 16px;
+            border: 1px solid transparent;
+            border-radius: 16px;
+            color: white;
+            font-size: 14px;
+            font-weight: 800;
+            transition: all .25s cubic-bezier(.25, .8, .25, 1);
         }
-        #copy-btn { background: linear-gradient(135deg, #6366f1, #a855f7); color: white; box-shadow: 0 6px 20px rgba(99, 102, 241, 0.35); }
-        #back-btn { background: rgba(255, 255, 255, 0.08); color: white; border: 1px solid rgba(255, 255, 255, 0.1); }
+        #copy-key-btn, #copy-btn { background: linear-gradient(135deg, #6366f1, #a855f7); color: white; box-shadow: 0 6px 20px rgba(99, 102, 241, .35); }
+        #back-btn { border-color: rgba(255, 255, 255, .1); background: rgba(255, 255, 255, .08); }
         @media (hover: hover) and (pointer: fine) {
-            #copy-btn:hover { transform: translateY(-2px); box-shadow: 0 10px 25px rgba(99, 102, 241, 0.5); }
-            #back-btn:hover { background: rgba(255, 255, 255, 0.16); }
+            #copy-key-btn:hover, #copy-btn:hover { transform: translateY(-2px); box-shadow: 0 10px 25px rgba(99, 102, 241, .5); }
+            #back-btn:hover { background: rgba(255, 255, 255, .16); }
         }
+        .script-details { margin-top: 18px; border: 1px solid rgba(255, 255, 255, .1); border-radius: 16px; background: rgba(15, 23, 42, .4); }
+        .script-details summary { padding: 14px 16px; cursor: pointer; color: #cbd5e1; font-size: 12px; font-weight: 700; }
+        .script-inner { padding: 0 16px 16px; }
+        .page2-textarea { min-height: 100px; padding: 14px; resize: vertical; font-size: 12px; }
+        .script-warning { margin: 8px 0 12px; color: #94a3b8; font-size: 10px; line-height: 1.5; }
+        #copy-btn { padding: 12px 16px; border: 0; border-radius: 12px; font-size: 12px; font-weight: 800; }
 
-        @media (max-width: 420px) {
+        @media (max-width: 650px) {
             .main-container { padding: 35px 20px; }
-            .task-icon { width: 40px; height: 40px; font-size: 16px; }
+            .section-heading { margin-bottom: 12px; }
+        }
+        @media (max-width: 420px) {
+            .task-link { flex-wrap: wrap; }
+            .task-row { min-width: 185px; gap: 12px; }
+            .task-bottom { margin-left: auto; }
+            .task-icon { width: 40px; height: 40px; }
             .task-title { font-size: 14px; }
             .action-buttons { flex-direction: column; gap: 10px; }
+        }
+        @media (max-width: 380px) {
+            body { padding: 18px 11px; }
+            .main-container { padding: 30px 16px; }
+            .timer-badge { padding: 8px 14px; font-size: 12px; }
+            .editor-wrapper { padding: 23px 18px; }
+        }
+        @media (prefers-reduced-motion: reduce) {
+            *, *::before, *::after { animation-duration: .01ms !important; animation-iteration-count: 1 !important; transition-duration: .01ms !important; }
         }
     </style>
 </head>
 <body>
+    <div class="cyber-grid" aria-hidden="true"></div>
+    <div class="glow-nebula nebula-1" aria-hidden="true"></div>
+    <div class="glow-nebula nebula-2" aria-hidden="true"></div>
+    <div id="notification-box" role="status" aria-live="polite" aria-atomic="true"></div>
 
-    <div class="cyber-grid"></div>
-    <div class="glow-nebula nebula-1"></div>
-    <div class="glow-nebula nebula-2"></div>
-
-    <div id="notification-box"></div>
-
-    <div class="main-container" id="giao-dien-chinh">
-        
-        <!-- THÊM ĐỒNG HỒ ĐẾM NGƯỢC Ở ĐÂY -->
+    <main class="main-container" id="giao-dien-chinh">
         <div class="timer-badge" id="timer-badge">
-            <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
-                <circle cx="12" cy="12" r="10"></circle>
-                <polyline points="12 6 12 12 16 14"></polyline>
-            </svg>
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/></svg>
             <span id="countdown-text">Phiên chưa bắt đầu</span>
         </div>
 
-        <div class="logo-wrapper">
-            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                <path d="m12 3-1.912 5.813a2 2 0 0 1-1.275 1.275L3 12l5.813 1.912a2 2 0 0 1 1.275 1.275L12 21l1.912-5.813a2 2 0 0 1 1.275-1.275L21 12l-5.813-1.912a2 2 0 0 1-1.275-1.275L12 3Z"/>
-                <path d="m5 3 1 2.5L8.5 6 6 7 5 9.5 4 7 1.5 6 4 5.5z" opacity="0.6"/>
-                <path d="m19 17 1 2.5 2.5.5-2.5 1-1 2.5-1-2.5-2.5-1 2.5-1z" opacity="0.6"/>
-            </svg>
-        </div>
-
-        <h1>Tài Liệu Học Tốt Lớp 9</h1>
-        <div class="sub-title">Bài Tập Tập 1 - Trang 2 & Cách Giải Chi Tiết</div>
+        <header class="hero">
+            <div class="logo-wrapper" aria-hidden="true">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <path d="m12 3-1.912 5.813a2 2 0 0 1-1.275 1.275L3 12l5.813 1.912a2 2 0 0 1 1.275 1.275L12 21l1.912-5.813a2 2 0 0 1 1.275-1.275L21 12l-5.813-1.912a2 2 0 0 1-1.275-1.275L12 3Z"/>
+                    <path d="m5 3 1 2.5L8.5 6 6 7 5 9.5 4 7 1.5 6 4 5.5z" opacity=".6"/>
+                </svg>
+            </div>
+            <h1>Tạo Mã Demo Free_</h1>
+            <p class="sub-title">Taodepzai · Nhập tên và hoàn thành đủ 4 nhiệm vụ</p>
+        </header>
 
         <div class="desc-box">
-            📌 <strong>Hướng dẫn:</strong> Bấm vào từng nhiệm vụ bên dưới, chờ trang web load đủ tối thiểu 5 giây rồi quay lại đây để hệ thống cấp Script tự động. Thời gian mở khóa tồn tại trong 3 phút.
+            <strong>Hướng dẫn:</strong> Nhập tên người chơi và hoàn thành <strong>cả 4 nhiệm vụ</strong> (không cần theo thứ tự). Với từng nhiệm vụ, mở liên kết, ở tab mới ít nhất 5 giây rồi quay lại. Mã demo dùng thời điểm hoàn thành nhiệm vụ cuối cùng; phiên tự làm mới sau 3 phút.
+        </div>
+        <p class="demo-banner" id="demo-banner">✦ Mã Free_ chỉ là mã demo, không kích hoạt script. Tên trong mã chỉ được che, ai biết cách tạo mã đều đọc lại được. Bốn liên kết hiện là mẫu.</p>
+
+        <div class="player-box">
+            <label class="player-label" for="player-name">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="8" r="4"/><path d="M4 21a8 8 0 0 1 16 0"/></svg>
+                Tên người chơi
+            </label>
+            <input class="player-input" id="player-name" name="playerName" type="text" maxlength="32" autocomplete="nickname" spellcheck="false" required placeholder="Nhập tên người chơi của bạn" aria-describedby="player-help">
+            <p class="player-help" id="player-help">Bắt buộc để tạo mã demo Free_. Tên được lưu trên trình duyệt và đưa vào mã ở dạng có thể đọc lại; không nhập thông tin nhạy cảm.</p>
         </div>
 
-        <!-- Khung nhiệm vụ 1 -->
-        <div class="task-placeholder" id="khung-nv1">
-            <div class="task-content">
-                <div class="task-icon">
-                    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                        <path d="M12 22c5.523 0 10-4.477 10-10S17.523 2 12 2 2 6.477 2 12s4.477 10 10 10z"/>
-                        <path d="m9 12 2 2 4-4"/>
-                    </svg>
-                </div>
-                <div class="task-info">
-                    <div class="task-title">Xác minh hệ thống 1</div>
-                    <div class="task-desc">Bấm để xác thực liên kết 1</div>
-                </div>
+        <section aria-labelledby="task-heading">
+            <div class="section-heading">
+                <h2 id="task-heading">Hoàn thành 4 nhiệm vụ</h2>
+                <span id="unlocked-count">0 / 4 hoàn thành</span>
             </div>
-            <span class="status-badge" id="nhan-nv1">Chưa làm</span>
-            <a class="task-link-overlay" href="https://google.com" target="_blank" id="link-nv1"></a>
-        </div>
-
-        <!-- Khung nhiệm vụ 2 -->
-        <div class="task-placeholder" id="khung-nv2">
-            <div class="task-content">
-                <div class="task-icon">
-                    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                        <path d="m12 3-1.912 5.813a2 2 0 0 1-1.275 1.275L3 12l5.813 1.912a2 2 0 0 1 1.275 1.275L12 21l1.912-5.813a2 2 0 0 1 1.275-1.275L21 12l-5.813-1.912a2 2 0 0 1-1.275-1.275L12 3Z"/>
-                    </svg>
-                </div>
-                <div class="task-info">
-                    <div class="task-title">Xác minh hệ thống 2</div>
-                    <div class="task-desc">Bấm để xác thực liên kết 2</div>
-                </div>
+            <div class="task-grid">
+                <article class="task-placeholder" id="khung-nv1">
+                    <a class="task-link" href="#" target="_blank" rel="noopener noreferrer" id="link-nv1">
+                        <span class="task-row">
+                            <span class="task-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="m8 12 2.5 2.5L16 9"/></svg></span>
+                            <span class="task-info"><strong class="task-title">Cổng mở khóa 01</strong><span class="task-desc">Liên kết mẫu · Google</span></span>
+                        </span>
+                        <span class="task-bottom"><span class="status-badge" id="nhan-nv1">Chưa làm</span></span>
+                    </a>
+                </article>
+                <article class="task-placeholder" id="khung-nv2">
+                    <a class="task-link" href="#" target="_blank" rel="noopener noreferrer" id="link-nv2">
+                        <span class="task-row">
+                            <span class="task-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3 3 14h8l-1 7 11-12h-8l1-6Z"/></svg></span>
+                            <span class="task-info"><strong class="task-title">Cổng mở khóa 02</strong><span class="task-desc">Liên kết mẫu · GitHub</span></span>
+                        </span>
+                        <span class="task-bottom"><span class="status-badge" id="nhan-nv2">Chưa làm</span></span>
+                    </a>
+                </article>
+                <article class="task-placeholder" id="khung-nv3">
+                    <a class="task-link" href="#" target="_blank" rel="noopener noreferrer" id="link-nv3">
+                        <span class="task-row">
+                            <span class="task-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="5"/><path d="M8 12h8m-4-4v8"/></svg></span>
+                            <span class="task-info"><strong class="task-title">Cổng mở khóa 03</strong><span class="task-desc">Liên kết mẫu · Wikipedia</span></span>
+                        </span>
+                        <span class="task-bottom"><span class="status-badge" id="nhan-nv3">Chưa làm</span></span>
+                    </a>
+                </article>
+                <article class="task-placeholder" id="khung-nv4">
+                    <a class="task-link" href="#" target="_blank" rel="noopener noreferrer" id="link-nv4">
+                        <span class="task-row">
+                            <span class="task-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m12 3 2.3 6.7L21 12l-6.7 2.3L12 21l-2.3-6.7L3 12l6.7-2.3Z"/></svg></span>
+                            <span class="task-info"><strong class="task-title">Cổng mở khóa 04</strong><span class="task-desc">Liên kết mẫu · MDN Web Docs</span></span>
+                        </span>
+                        <span class="task-bottom"><span class="status-badge" id="nhan-nv4">Chưa làm</span></span>
+                    </a>
+                </article>
             </div>
-            <span class="status-badge" id="nhan-nv2">Chưa làm</span>
-            <a class="task-link-overlay" href="https://github.com/" target="_blank" id="link-nv2"></a>
-        </div>
+        </section>
 
-        <button class="download-btn" id="nut-giai-bai">
-            <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="margin-right: 4px;">
-                <rect x="3" y="11" width="18" height="11" rx="2" ry="2"/>
-                <path d="M7 11V7a5 5 0 0 1 10 0v4"/>
-            </svg>
-            <span>Hoàn thành nhiệm vụ để tiếp tục</span>
+        <button class="download-btn" id="nut-giai-bai" type="button" disabled>
+            <svg class="lock-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
+            <svg class="unlock-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0"/></svg>
+            <span>Nhập tên và hoàn thành 4 nhiệm vụ</span>
         </button>
-
-        <!-- THÊM NÚT RESET THỦ CÔNG Ở ĐÂY -->
-        <button class="reset-manual-btn" id="nut-reset-thu-cong">
-            <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
-                <path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"></path>
-                <path d="M3 3v5h5"></path>
-            </svg>
-            <span>Làm Mới Trang & Nhiệm Vụ</span>
+        <button class="reset-manual-btn" id="nut-reset-thu-cong" type="button">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 12a9 9 0 1 0 2.6-6.4L3 8"/><path d="M3 3v5h5"/></svg>
+            Làm mới phiên &amp; tất cả nhiệm vụ
         </button>
-    </div>
+        <p class="footnote">Kiểm tra thời gian bằng trình duyệt, không xác minh nội dung của trang liên kết.</p>
+    </main>
 
-    <!-- Màn hình hiển thị nội dung Copy -->
-    <div id="white-screen">
-        <div class="editor-wrapper">
+    <div id="white-screen" aria-hidden="true">
+        <div class="editor-wrapper" role="dialog" aria-modal="true" aria-labelledby="dialog-title" tabindex="-1">
             <div class="editor-header">
-                <div class="editor-title">
-                    <span class="pulse-dot"></span> SCRIPT CỦA BẠN ĐÃ MỞ KHÓA
-                </div>
+                <div class="editor-label" id="dialog-title"><span class="pulse-dot" aria-hidden="true"></span> MÃ DEMO FREE_ CỦA BẠN</div>
+                <button class="close-btn" id="close-btn" type="button" aria-label="Đóng cửa sổ key">×</button>
             </div>
-            <textarea class="page2-textarea" id="noi-dung-page2" readonly></textarea>
-            
+            <details class="player-details" id="player-details">
+                <summary>Thông tin người chơi (nhấn để xem)</summary>
+                <p class="player-summary" id="player-summary" hidden></p>
+            </details>
+            <label class="field-label" for="key-value">MÃ DEMO (KHÔNG PHẢI KEY KÍCH HOẠT)</label>
+            <textarea class="key-value" id="key-value" readonly spellcheck="false"></textarea>
+            <p class="demo-alert" id="demo-alert">⚠ Mã Free_ không kích hoạt script. Tên không hiện trong mã nhưng người biết thuật toán có thể đọc lại; đừng dùng tên thật nếu muốn giữ bí mật.</p>
             <div class="action-buttons">
-                <button id="back-btn">
-                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="19" y1="12" x2="5" y2="12"></line><polyline points="12 19 5 12 12 5"></polyline></svg>
+                <button id="back-btn" type="button">
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M19 12H5m7 7-7-7 7-7"/></svg>
                     Quay lại
                 </button>
-                <button id="copy-btn">
-                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>
-                    Sao chép Script
+                <button id="copy-key-btn" type="button">
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
+                    Sao chép mã demo
                 </button>
             </div>
+            <details class="script-details">
+                <summary>Script từ phiên bản cũ (tùy chọn)</summary>
+                <div class="script-inner">
+                    <label class="field-label" for="noi-dung-page2">SCRIPT ĐÃ CÓ SẴN</label>
+                    <textarea class="page2-textarea" id="noi-dung-page2" readonly spellcheck="false"></textarea>
+                    <p class="script-warning">Hãy kiểm tra nguồn mã và đường dẫn trước khi chạy script bên ngoài.</p>
+                    <button id="copy-btn" type="button">Sao chép script</button>
+                </div>
+            </details>
         </div>
     </div>
 
     <script>
+        // Chỉ thay các URL/tên bên dưới khi có liên kết thật. Mã Free_ vẫn luôn là mã demo.
+        // Mã tạo trên trình duyệt không phải cơ chế phát hành hay bảo vệ key thật.
+        const DANG_LA_BAN_MAU = true; // Đổi false khi đã thay cả 4 liên kết mẫu.
         const SCRIPT_CUA_BAN = `loadstring(game:HttpGet("https://raw.githubusercontent.com/HieudepzaiHub/main/abc"))()`;
-        document.getElementById('noi-dung-page2').value = SCRIPT_CUA_BAN;
+        const NHIEM_VU = [
+            { id: 'nv1', so: '01', ten: 'Google', url: 'https://www.google.com/' },
+            { id: 'nv2', so: '02', ten: 'GitHub', url: 'https://github.com/' },
+            { id: 'nv3', so: '03', ten: 'Wikipedia', url: 'https://www.wikipedia.org/' },
+            { id: 'nv4', so: '04', ten: 'MDN Web Docs', url: 'https://developer.mozilla.org/' }
+        ];
 
-        // HIỆU ỨNG TILT 3D 
-        const items = document.querySelectorAll('.task-placeholder, .main-container');
-        function applyTilt(element, x, y, width, height) {
-            const rotateX = ((y - height / 2) / height) * -24; 
-            const rotateY = ((x - width / 2) / width) * 24; 
-            element.style.transform = `perspective(1000px) rotateX(${rotateX}deg) rotateY(${rotateY}deg) scale3d(1.04, 1.04, 1.04)`;
-        }
-        function resetTilt(element) {
-            element.style.transform = `perspective(1000px) rotateX(0deg) rotateY(0deg) scale3d(1, 1, 1)`;
-        }
-        items.forEach(card => {
-            card.addEventListener('mousemove', e => {
-                const rect = card.getBoundingClientRect();
-                applyTilt(card, e.clientX - rect.left, e.clientY - rect.top, rect.width, rect.height);
-            });
-            card.addEventListener('mouseleave', () => resetTilt(card));
-            card.addEventListener('touchstart', e => {
-                const rect = card.getBoundingClientRect();
-                applyTilt(card, e.touches[0].clientX - rect.left, e.touches[0].clientY - rect.top, rect.width, rect.height);
-            }, { passive: true });
-            card.addEventListener('touchmove', e => {
-                const rect = card.getBoundingClientRect();
-                const x = e.touches[0].clientX - rect.left;
-                const y = e.touches[0].clientY - rect.top;
-                if (x >= 0 && x <= rect.width && y >= 0 && y <= rect.height) applyTilt(card, x, y, rect.width, rect.height);
-                else resetTilt(card);
-            }, { passive: true });
-            card.addEventListener('touchend', () => resetTilt(card));
-        });
-
-        const notify = (msg, type = 'info') => {
-            const box = document.getElementById('notification-box');
-            box.innerHTML = msg; 
-            box.className = `toast-show ${type}`;
-            setTimeout(() => { box.className = ''; }, 3000);
+        const THOI_GIAN_RESET = 3 * 60 * 1000;
+        const THOI_GIAN_CHO_NV = 5 * 1000;
+        const PLAYER_NAME_KEY = 'taodepzai_player_name';
+        const MA_DEMO_PREFIX = 'Free_v2_'; // Mã v1 dạng hash không thể đọc ngược tên.
+        const boNhoTam = new Map();
+        const luu = {
+            get(key) {
+                try { return localStorage.getItem(key); }
+                catch { return boNhoTam.get(key) ?? null; }
+            },
+            set(key, value) {
+                boNhoTam.set(key, String(value));
+                try { localStorage.setItem(key, String(value)); } catch { /* Trang vẫn dùng được khi bộ nhớ bị chặn. */ }
+            },
+            remove(key) {
+                boNhoTam.delete(key);
+                try { localStorage.removeItem(key); } catch { /* Không có quyền truy cập bộ nhớ. */ }
+            }
         };
 
-        document.getElementById('copy-btn').addEventListener('click', () => {
-            const textarea = document.getElementById('noi-dung-page2');
-            textarea.select();
-            textarea.setSelectionRange(0, 99999);
-            try {
-                document.execCommand('copy');
-                notify("✅ Đã sao chép Script thành công!", "success");
-            } catch (err) {
-                notify("❌ Thiết bị không hỗ trợ, vui lòng copy thủ công.", "error");
-            }
+        const timerBadge = document.getElementById('timer-badge');
+        const countdownText = document.getElementById('countdown-text');
+        const nutGiaiBai = document.getElementById('nut-giai-bai');
+        const manHinhTrang = document.getElementById('white-screen');
+        const hopThoai = manHinhTrang.querySelector('.editor-wrapper');
+        const keyField = document.getElementById('key-value');
+        const playerNameInput = document.getElementById('player-name');
+        const playerDetails = document.getElementById('player-details');
+        const playerSummary = document.getElementById('player-summary');
+        const scriptField = document.getElementById('noi-dung-page2');
+        const thongBao = document.getElementById('notification-box');
+        const nutReset = document.getElementById('nut-reset-thu-cong');
+        const giaoDienChinh = document.getElementById('giao-dien-chinh');
+        const loiHenGio = new Map();
+        let toastTimer;
+        let congVuaMo = null;
+        let phanTuTruocHopThoai = null;
+
+        scriptField.value = SCRIPT_CUA_BAN;
+        playerNameInput.value = luu.get(PLAYER_NAME_KEY) || '';
+        playerNameInput.addEventListener('input', () => {
+            const ten = playerNameInput.value.trim();
+            if (ten) luu.set(PLAYER_NAME_KEY, ten);
+            else luu.remove(PLAYER_NAME_KEY);
+            kiemTraMoKhoa();
+        });
+        if (!DANG_LA_BAN_MAU) {
+            document.getElementById('demo-banner').textContent = '✦ Mã Free_ chỉ là mã demo, không kích hoạt script. Tên chỉ được che; người biết mã nguồn có thể đọc lại.';
+        }
+        NHIEM_VU.forEach(nv => {
+            const lienKet = document.getElementById(`link-${nv.id}`);
+            lienKet.href = nv.url;
+            lienKet.querySelector('.task-title').textContent = `Cổng mở khóa ${nv.so}`;
+            lienKet.addEventListener('click', () => batDauNhiemVu(nv));
         });
 
-        // ----------------------------------------------------
-        // LOGIC XỬ LÝ NHIỆM VỤ, RESET VÀ ĐỒNG HỒ
-        // ----------------------------------------------------
-        const THOI_GIAN_RESET = 3 * 60 * 1000; // 3 phút
-        const THOI_GIAN_CHO_NV = 5 * 1000; // 5 giây
-        let nv1HoanThanh = false, nv2HoanThanh = false;
-        const timerBadge = document.getElementById("timer-badge");
-        const countdownText = document.getElementById("countdown-text");
+        function notify(message, type = 'info') {
+            clearTimeout(toastTimer);
+            thongBao.textContent = message;
+            thongBao.className = `toast-show ${type}`;
+            toastTimer = setTimeout(() => {
+                thongBao.className = '';
+                thongBao.textContent = '';
+            }, 3400);
+        }
 
-        // Cập nhật giao diện đồng hồ
-        function updateTimerDisplay() {
-            const expireTime = localStorage.getItem("session_expire");
-            if (!expireTime) {
-                countdownText.innerText = "Phiên chưa bắt đầu";
-                timerBadge.className = "timer-badge";
+        function trangThai(nv) { return luu.get(`status${nv.id}`) || 'idle'; }
+        function daRoiTrang(nv) { return luu.get(`leftAt${nv.id}`) !== null; }
+        function thoiGianHetHan() {
+            const raw = luu.get('session_expire');
+            return raw === null ? null : Number(raw);
+        }
+
+        // Lấy mốc hoàn thành của nhiệm vụ cuối cùng trong bốn nhiệm vụ.
+        function lanHoanThanhCuoi() {
+            let cuoi = null;
+            NHIEM_VU.forEach(nv => {
+                if (trangThai(nv) !== 'success') return;
+                const raw = luu.get(`completedAt${nv.id}`);
+                const time = raw === null ? NaN : Number(raw);
+                if (Number.isFinite(time) && time > 0 && (!cuoi || time > cuoi.time)) {
+                    cuoi = { id: nv.id, time };
+                }
+            });
+            return cuoi;
+        }
+
+        // Che văn bản để người nhìn mã không đọc ngay tên. Thuật toán hoàn toàn công khai:
+        // bất cứ ai có mã nguồn đều giải được/giả mạo được mã, KHÔNG phải mã hóa bảo mật.
+        function taoMaDemo(ten, lanCuoi) {
+            const duLieu = JSON.stringify([ten.trim(), lanCuoi.id, lanCuoi.time]);
+            const bytes = new TextEncoder().encode(duLieu);
+            const daChe = Array.from(bytes, (byte, viTri) =>
+                String.fromCharCode(byte ^ ((viTri * 73 + 0xA5) & 255))).join('');
+            return MA_DEMO_PREFIX + btoa(daChe)
+                .replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+        }
+
+        function hienThiDongHo() {
+            const hetHan = thoiGianHetHan();
+            if (hetHan === null) {
+                countdownText.textContent = 'Phiên chưa bắt đầu';
+                timerBadge.className = 'timer-badge';
                 return;
             }
+            const conLai = Math.max(0, hetHan - Date.now());
+            const phut = Math.floor(conLai / 60000);
+            const giay = Math.floor((conLai % 60000) / 1000);
+            countdownText.textContent = `Còn ${String(phut).padStart(2, '0')}:${String(giay).padStart(2, '0')}`;
+            timerBadge.className = conLai < 30000 ? 'timer-badge warning' : 'timer-badge active';
+        }
 
-            const timeLeft = parseInt(expireTime) - Date.now();
-            
-            if (timeLeft <= 0) {
-                countdownText.innerText = "Đã hết hạn";
-                timerBadge.className = "timer-badge warning";
+        function hienThiNhiemVu(nv) {
+            const hop = document.getElementById(`khung-${nv.id}`);
+            const lienKet = document.getElementById(`link-${nv.id}`);
+            const nhan = document.getElementById(`nhan-${nv.id}`);
+            const moTa = lienKet.querySelector('.task-desc');
+            const trangThaiHienTai = trangThai(nv);
+            hop.classList.toggle('success-box', trangThaiHienTai === 'success');
+            hop.classList.toggle('error-box', trangThaiHienTai === 'error');
+
+            if (trangThaiHienTai === 'checking') {
+                const daQua = Date.now() - Number(luu.get(`startTime${nv.id}`));
+                const conLai = Math.max(0, Math.ceil((THOI_GIAN_CHO_NV - daQua) / 1000));
+                nhan.textContent = conLai > 0 ? `⏳ Còn ${conLai}s` : '⏳ Quay lại tab';
+                nhan.className = 'status-badge checking';
+                moTa.textContent = `Đang chờ bạn quay lại từ ${nv.ten}`;
+            } else if (trangThaiHienTai === 'success') {
+                nhan.textContent = '✓ Đã xong';
+                nhan.className = 'status-badge success';
+                moTa.textContent = `Hoàn thành qua ${nv.ten}`;
+            } else if (trangThaiHienTai === 'error') {
+                nhan.textContent = '✕ Thử lại';
+                nhan.className = 'status-badge error';
+                moTa.textContent = 'Bạn đã quay lại trước 5 giây';
             } else {
-                const m = Math.floor(timeLeft / 60000);
-                const s = Math.floor((timeLeft % 60000) / 1000);
-                countdownText.innerText = `Làm mới sau: ${m.toString().padStart(2, '0')}:${s.toString().padStart(2, '0')}`;
-                
-                // Đổi màu đỏ khi dưới 30 giây
-                if (timeLeft < 30000) {
-                    timerBadge.className = "timer-badge warning";
-                } else {
-                    timerBadge.className = "timer-badge active";
-                }
+                nhan.textContent = 'Chưa làm';
+                nhan.className = 'status-badge';
+                moTa.textContent = `${DANG_LA_BAN_MAU ? 'Liên kết mẫu' : 'Mở liên kết'} · ${nv.ten}`;
             }
+            lienKet.setAttribute('aria-label', `Cổng mở khóa ${nv.so}, ${nv.ten}, ${nhan.textContent}. Mở trong tab mới`);
         }
-
-        function thucHienResetThucSu(isManual = false) {
-            nv1HoanThanh = false; nv2HoanThanh = false;
-            
-            // Xóa sạch lịch sử bộ nhớ
-            localStorage.removeItem("session_expire");
-            localStorage.removeItem("startTimeNv1"); localStorage.removeItem("startTimeNv2");
-            localStorage.removeItem("statusNv1"); localStorage.removeItem("statusNv2");
-            
-            // Trả giao diện nhiệm vụ 1 về gốc
-            const nhan1 = document.getElementById("nhan-nv1");
-            nhan1.innerHTML = "Chưa làm"; 
-            nhan1.className = "status-badge";
-            document.getElementById("khung-nv1").classList.remove("success-box");
-            
-            // Trả giao diện nhiệm vụ 2 về gốc
-            const nhan2 = document.getElementById("nhan-nv2");
-            nhan2.innerHTML = "Chưa làm"; 
-            nhan2.className = "status-badge";
-            document.getElementById("khung-nv2").classList.remove("success-box");
-
-            kiemTraMoKhoa();
-            document.getElementById("white-screen").classList.remove("show");
-            updateTimerDisplay(); // Reset đồng hồ
-
-            if (isManual) {
-                notify("🔄 Đã làm mới trang và các nhiệm vụ!", "success");
-            } else {
-                notify("🔄 Phiên làm việc đã hết hạn sau 3 phút. Đã tự động reset lại web.", "info");
-            }
-        }
-
-        // Bắt sự kiện nút Reset thủ công
-        document.getElementById("nut-reset-thu-cong").addEventListener("click", () => {
-            thucHienResetThucSu(true);
-        });
-
-        // Kiểm tra xem đã vượt quá 3 phút kể từ lúc bắt đầu làm chưa
-        function kiemTraHanSuDung() {
-            const expireTime = localStorage.getItem("session_expire");
-            if (expireTime && Date.now() > parseInt(expireTime)) {
-                thucHienResetThucSu(false);
-                return true; 
-            }
-            return false; 
-        }
-
-        function batDauPhienLamViec() {
-            if (!localStorage.getItem("session_expire")) {
-                localStorage.setItem("session_expire", Date.now() + THOI_GIAN_RESET);
-                updateTimerDisplay(); // Cập nhật đồng hồ ngay lập tức
-            }
-        }
-
-        document.getElementById("link-nv1").addEventListener("click", () => {
-            if (nv1HoanThanh || kiemTraHanSuDung()) return;
-            batDauPhienLamViec();
-            localStorage.setItem("startTimeNv1", Date.now());
-            localStorage.setItem("statusNv1", "checking");
-            document.getElementById("nhan-nv1").className = "status-badge checking"; 
-            document.getElementById("nhan-nv1").innerHTML = "⏳ Đang kiểm tra...";
-        });
-
-        document.getElementById("link-nv2").addEventListener("click", () => {
-            if (nv2HoanThanh || kiemTraHanSuDung()) return;
-            batDauPhienLamViec();
-            localStorage.setItem("startTimeNv2", Date.now());
-            localStorage.setItem("statusNv2", "checking");
-            document.getElementById("nhan-nv2").className = "status-badge checking"; 
-            document.getElementById("nhan-nv2").innerHTML = "⏳ Đang kiểm tra...";
-        });
-
-        function kiemTraTienTrinhNhiemVu() {
-            if (kiemTraHanSuDung()) return; 
-
-            const now = Date.now();
-            const kiemTraNhiemVu = (nvId, isComplete, setComplete) => {
-                const status = localStorage.getItem(`status${nvId}`);
-                if (status === "checking" && !isComplete) {
-                    const elapsed = now - parseInt(localStorage.getItem(`startTime${nvId}`) || "0");
-                    if (elapsed >= THOI_GIAN_CHO_NV) {
-                        setComplete(true);
-                        localStorage.setItem(`status${nvId}`, "success");
-                        const badge = document.getElementById(`nhan-${nvId.toLowerCase()}`);
-                        badge.innerHTML = "✓ Đã Xong";
-                        badge.className = "status-badge success"; 
-                        document.getElementById(`khung-${nvId.toLowerCase()}`).classList.add("success-box"); 
-                        kiemTraMoKhoa();
-                    } else {
-                        localStorage.setItem(`status${nvId}`, "error");
-                        const badge = document.getElementById(`nhan-${nvId.toLowerCase()}`);
-                        badge.innerHTML = "❌ Thử lại";
-                        badge.className = "status-badge error"; 
-                        notify(`⚠️ Bạn quay lại quá sớm. Hãy ở lại web ít nhất 5 giây!`, "error");
-                        setTimeout(() => { 
-                            if (localStorage.getItem(`status${nvId}`) === "error") { 
-                                localStorage.removeItem(`status${nvId}`);
-                                badge.innerHTML = "Chưa làm";
-                                badge.className = "status-badge"; 
-                            } 
-                        }, 2500);
-                    }
-                }
-            };
-
-            kiemTraNhiemVu("Nv1", nv1HoanThanh, (val) => nv1HoanThanh = val);
-            kiemTraNhiemVu("Nv2", nv2HoanThanh, (val) => nv2HoanThanh = val);
-        }
-
-        // Vòng lặp tối ưu: Xử lý đồng thời Đồng Hồ Đếm Ngược + Logic Check Nhiệm Vụ 
-        setInterval(() => {
-            updateTimerDisplay(); // Cập nhật đồng hồ mỗi 500ms
-            
-            if (kiemTraHanSuDung()) return;
-            
-            const now = Date.now();
-            ['Nv1', 'Nv2'].forEach(nv => {
-                if (localStorage.getItem(`status${nv}`) === "checking") {
-                    const elapsed = now - parseInt(localStorage.getItem(`startTime${nv}`) || "0");
-                    if (elapsed < THOI_GIAN_CHO_NV) {
-                        const secondsLeft = Math.ceil((THOI_GIAN_CHO_NV - elapsed) / 1000);
-                        document.getElementById(`nhan-${nv.toLowerCase()}`).innerHTML = `⏳ Còn ${secondsLeft}s`;
-                    } else {
-                        kiemTraTienTrinhNhiemVu();
-                    }
-                }
-            });
-        }, 500);
-
-        // Lắng nghe khi người dùng chuyển lại Tab / Ứng dụng
-        window.addEventListener("focus", kiemTraTienTrinhNhiemVu);
-        document.addEventListener("visibilitychange", () => {
-            if (document.visibilityState === 'visible') kiemTraTienTrinhNhiemVu();
-        });
-
-        // Tải lại trạng thái mượt mà khi F5
-        window.addEventListener("load", () => {
-            updateTimerDisplay(); // Khởi tạo đồng hồ lúc load
-            if (kiemTraHanSuDung()) return; 
-
-            ['Nv1', 'Nv2'].forEach(nv => {
-                const st = localStorage.getItem(`status${nv}`);
-                if (st !== "checking" && st !== "success") {
-                    localStorage.removeItem(`status${nv}`);
-                    localStorage.removeItem(`startTime${nv}`);
-                } else if (st === "success") {
-                    if (nv === 'Nv1') nv1HoanThanh = true;
-                    if (nv === 'Nv2') nv2HoanThanh = true;
-                    const badge = document.getElementById(`nhan-${nv.toLowerCase()}`);
-                    badge.innerHTML = "✓ Đã Xong";
-                    badge.className = "status-badge success"; 
-                    document.getElementById(`khung-${nv.toLowerCase()}`).classList.add("success-box"); 
-                }
-            });
-            kiemTraMoKhoa();
-            
-            setTimeout(kiemTraTienTrinhNhiemVu, 500);
-        });
-
-        const nutGiaiBai = document.getElementById("nut-giai-bai");
-        const manHinhTrang = document.getElementById("white-screen");
 
         function kiemTraMoKhoa() {
-            const btnText = nutGiaiBai.querySelector('span');
-            const btnSvg = nutGiaiBai.querySelector('svg');
-            
-            if (nv1HoanThanh && nv2HoanThanh) {
-                nutGiaiBai.classList.add("active");
-                btnText.innerHTML = "🚀 BẤM VÀO ĐÂY ĐỂ NHẬN SCRIPT";
-                btnSvg.innerHTML = `<path d="M21 2l-2 2m-7.61 7.61a5.5 5.5 0 1 1-7.778 7.778 5.5 5.5 0 0 1 7.777-7.777zm0 0L22 2"/>`;
-            } else {
-                nutGiaiBai.classList.remove("active");
-                btnSvg.innerHTML = `<rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/>`;
-                if (nv1HoanThanh) btnText.innerHTML = "Còn thiếu bước: Làm Nhiệm Vụ 2";
-                else if (nv2HoanThanh) btnText.innerHTML = "Còn thiếu bước: Làm Nhiệm Vụ 1";
-                else btnText.innerHTML = "Hoàn thành nhiệm vụ để mở khóa";
+            const soCongHoanThanh = NHIEM_VU.filter(nv => trangThai(nv) === 'success').length;
+            const hetHan = thoiGianHetHan();
+            const coTen = !!playerNameInput.value.trim();
+            const coMocThoiGian = !!lanHoanThanhCuoi();
+            const moKhoa = soCongHoanThanh === NHIEM_VU.length && coTen && coMocThoiGian &&
+                hetHan !== null && Number.isFinite(hetHan) && Date.now() < hetHan;
+            document.getElementById('unlocked-count').textContent = `${soCongHoanThanh} / ${NHIEM_VU.length} hoàn thành`;
+            nutGiaiBai.disabled = !moKhoa;
+            nutGiaiBai.classList.toggle('active', moKhoa);
+            let huongDan;
+            if (moKhoa) huongDan = '✦ XEM MÃ DEMO FREE_';
+            else if (soCongHoanThanh === NHIEM_VU.length && !coMocThoiGian) huongDan = 'Làm mới phiên để tạo mã demo';
+            else if (soCongHoanThanh === NHIEM_VU.length && !coTen) huongDan = 'Nhập tên người chơi để tạo mã demo';
+            else if (soCongHoanThanh === 0) huongDan = 'Nhập tên và hoàn thành 4 nhiệm vụ';
+            else huongDan = `Còn ${NHIEM_VU.length - soCongHoanThanh} nhiệm vụ để tạo mã demo`;
+            nutGiaiBai.querySelector('span').textContent = huongDan;
+            if (!moKhoa && manHinhTrang.classList.contains('show')) dongHopThoai();
+        }
+
+        function veLai() {
+            NHIEM_VU.forEach(hienThiNhiemVu);
+            kiemTraMoKhoa();
+            hienThiDongHo();
+        }
+
+        function dongHopThoai(focusTarget) {
+            if (!manHinhTrang.classList.contains('show')) return;
+            manHinhTrang.classList.remove('show');
+            manHinhTrang.setAttribute('aria-hidden', 'true');
+            giaoDienChinh.removeAttribute('aria-hidden');
+            document.body.style.overflow = '';
+            keyField.value = '';
+            playerDetails.open = false;
+            const dich = focusTarget || phanTuTruocHopThoai;
+            if (dich && !dich.disabled) dich.focus();
+        }
+
+        function resetPhien(lyDo = '') {
+            if (manHinhTrang.classList.contains('show')) dongHopThoai(nutReset);
+            NHIEM_VU.forEach(nv => {
+                luu.remove(`status${nv.id}`);
+                luu.remove(`startTime${nv.id}`);
+                luu.remove(`leftAt${nv.id}`);
+                luu.remove(`completedAt${nv.id}`);
+                clearTimeout(loiHenGio.get(nv.id));
+                loiHenGio.delete(nv.id);
+            });
+            luu.remove('session_expire');
+            congVuaMo = null;
+            veLai();
+            if (lyDo === 'manual') notify('🔄 Đã làm mới phiên và cả 4 cổng!', 'success');
+            if (lyDo === 'expired') notify('⌛ Phiên 3 phút đã hết hạn. Các cổng đã được làm mới.', 'info');
+        }
+
+        function kiemTraHanSuDung() {
+            const hetHan = thoiGianHetHan();
+            if (hetHan !== null && (!Number.isFinite(hetHan) || Date.now() >= hetHan)) {
+                resetPhien('expired');
+                return true;
+            }
+            return false;
+        }
+
+        function batDauNhiemVu(nv) {
+            kiemTraHanSuDung(); // Nếu hết hạn, cú bấm hiện tại vẫn bắt đầu được phiên mới.
+            if (trangThai(nv) === 'success') return;
+            if (thoiGianHetHan() === null) luu.set('session_expire', Date.now() + THOI_GIAN_RESET);
+            clearTimeout(loiHenGio.get(nv.id));
+            luu.set(`startTime${nv.id}`, Date.now());
+            luu.remove(`leftAt${nv.id}`);
+            luu.remove(`completedAt${nv.id}`);
+            luu.set(`status${nv.id}`, 'checking');
+            congVuaMo = nv.id;
+            veLai();
+        }
+
+        // Chỉ cổng vừa mở liên kết được ghi nhận khi rời trang; cổng khác không bị ảnh hưởng.
+        function ghiNhanRoiTrang() {
+            if (!congVuaMo) return;
+            const nv = NHIEM_VU.find(item => item.id === congVuaMo);
+            if (nv && trangThai(nv) === 'checking' && !daRoiTrang(nv)) {
+                luu.set(`leftAt${nv.id}`, Date.now());
             }
         }
 
-        nutGiaiBai.addEventListener("click", () => {
-            if (nutGiaiBai.classList.contains("active")) {
-                if (!kiemTraHanSuDung()) { 
-                    manHinhTrang.classList.add("show");
+        function henXoaLoi(nv) {
+            clearTimeout(loiHenGio.get(nv.id));
+            loiHenGio.set(nv.id, setTimeout(() => {
+                if (trangThai(nv) === 'error') {
+                    luu.remove(`status${nv.id}`);
+                    luu.remove(`startTime${nv.id}`);
+                    hienThiNhiemVu(nv);
                 }
+                loiHenGio.delete(nv.id);
+            }, 2500));
+        }
+
+        function kiemTraTienTrinhNhiemVu() {
+            if (kiemTraHanSuDung()) return;
+            let thayDoi = false;
+            NHIEM_VU.forEach(nv => {
+                if (trangThai(nv) !== 'checking' || !daRoiTrang(nv)) return;
+                const roiLuc = Number(luu.get(`leftAt${nv.id}`));
+                const daQua = Date.now() - roiLuc;
+                luu.remove(`leftAt${nv.id}`);
+                if (Number.isFinite(roiLuc) && roiLuc > 0 && daQua >= THOI_GIAN_CHO_NV) {
+                    luu.set(`status${nv.id}`, 'success');
+                    luu.set(`completedAt${nv.id}`, Date.now());
+                    const conThieu = NHIEM_VU.filter(item => trangThai(item) !== 'success').length;
+                    notify(conThieu === 0
+                        ? (playerNameInput.value.trim()
+                            ? '✓ Đã hoàn thành 4 nhiệm vụ. Mã demo Free_ đã sẵn sàng!'
+                            : '✓ Đã hoàn thành 4 nhiệm vụ. Hãy nhập tên để tạo mã demo.')
+                        : `✓ Nhiệm vụ ${nv.so} đã xong. Còn ${conThieu} nhiệm vụ nữa.`, 'success');
+                } else {
+                    luu.set(`status${nv.id}`, 'error');
+                    henXoaLoi(nv);
+                    notify(`⚠ Cổng ${nv.so}: hãy ở tab liên kết ít nhất 5 giây rồi thử lại.`, 'error');
+                }
+                thayDoi = true;
+            });
+            congVuaMo = null;
+            if (thayDoi) veLai();
+        }
+
+        function hienThiTenNguoiChoi() {
+            const ten = playerNameInput.value.trim();
+            playerSummary.textContent = ten ? `Người chơi: ${ten}` : '';
+            playerSummary.hidden = !ten;
+        }
+
+        function moHopThoai() {
+            if (kiemTraHanSuDung() || nutGiaiBai.disabled) return;
+            const lanCuoi = lanHoanThanhCuoi();
+            if (!lanCuoi) return;
+            phanTuTruocHopThoai = document.activeElement;
+            keyField.value = taoMaDemo(playerNameInput.value, lanCuoi);
+            hienThiTenNguoiChoi();
+            playerDetails.open = false;
+            manHinhTrang.classList.add('show');
+            manHinhTrang.setAttribute('aria-hidden', 'false');
+            giaoDienChinh.setAttribute('aria-hidden', 'true');
+            document.body.style.overflow = 'hidden';
+            hopThoai.focus();
+        }
+
+        async function saoChep(field, ten) {
+            let daChep = false;
+            if (navigator.clipboard && navigator.clipboard.writeText) {
+                try {
+                    await navigator.clipboard.writeText(field.value);
+                    daChep = true;
+                } catch { /* Thử cách sao chép cũ nếu Clipboard API bị chặn. */ }
+            }
+            if (!daChep) {
+                field.select();
+                try { daChep = document.execCommand('copy'); }
+                catch { daChep = false; }
+            }
+            if (daChep) notify(`✓ Đã sao chép ${ten}!`, 'success');
+            else {
+                notify(`Không tự sao chép được ${ten}. Hãy chọn và sao chép thủ công.`, 'error');
+                field.focus();
+                field.select();
+            }
+        }
+
+        nutGiaiBai.addEventListener('click', moHopThoai);
+        nutReset.addEventListener('click', () => resetPhien('manual'));
+        document.getElementById('copy-key-btn').addEventListener('click', () => saoChep(keyField, 'mã demo'));
+        document.getElementById('copy-btn').addEventListener('click', () => saoChep(scriptField, 'script'));
+        document.getElementById('back-btn').addEventListener('click', () => dongHopThoai());
+        document.getElementById('close-btn').addEventListener('click', () => dongHopThoai());
+        manHinhTrang.addEventListener('click', event => { if (event.target === manHinhTrang) dongHopThoai(); });
+        hopThoai.addEventListener('keydown', event => {
+            if (event.key === 'Escape') { event.preventDefault(); dongHopThoai(); }
+            if (event.key !== 'Tab') return;
+            const coTheFocus = [...hopThoai.querySelectorAll('button, input, textarea, summary')]
+                .filter(el => !el.disabled && el.getClientRects().length > 0);
+            if (!coTheFocus.length) return;
+            if (event.shiftKey && (document.activeElement === coTheFocus[0] || document.activeElement === hopThoai)) {
+                event.preventDefault(); coTheFocus[coTheFocus.length - 1].focus();
+            } else if (!event.shiftKey && document.activeElement === coTheFocus[coTheFocus.length - 1]) {
+                event.preventDefault(); coTheFocus[0].focus();
             }
         });
 
-        document.getElementById("back-btn").addEventListener("click", () => {
-            manHinhTrang.classList.remove("show"); 
+        window.addEventListener('blur', ghiNhanRoiTrang);
+        window.addEventListener('focus', kiemTraTienTrinhNhiemVu);
+        document.addEventListener('visibilitychange', () => {
+            if (document.visibilityState === 'hidden') ghiNhanRoiTrang();
+            else kiemTraTienTrinhNhiemVu();
         });
+        window.addEventListener('storage', event => {
+            if (event.key === PLAYER_NAME_KEY) {
+                playerNameInput.value = luu.get(PLAYER_NAME_KEY) || '';
+                if (manHinhTrang.classList.contains('show')) {
+                    hienThiTenNguoiChoi();
+                    const lanCuoi = lanHoanThanhCuoi();
+                    if (lanCuoi && playerNameInput.value.trim()) {
+                        keyField.value = taoMaDemo(playerNameInput.value, lanCuoi);
+                    }
+                }
+            }
+            if (!kiemTraHanSuDung()) veLai(); // Đồng bộ nếu trang được mở ở nhiều tab.
+        });
+        setInterval(() => {
+            if (kiemTraHanSuDung()) return;
+            hienThiDongHo();
+            NHIEM_VU.filter(nv => trangThai(nv) === 'checking').forEach(hienThiNhiemVu);
+        }, 500);
+
+        // Khôi phục bốn trạng thái sau F5; không cộng trạng thái giữa các cổng.
+        if (thoiGianHetHan() === null) {
+            resetPhien(); // Xóa trạng thái cũ không còn phiên hợp lệ.
+        } else if (!kiemTraHanSuDung()) {
+            NHIEM_VU.forEach(nv => {
+                const batDau = luu.get(`startTime${nv.id}`);
+                if (trangThai(nv) === 'error' ||
+                    (trangThai(nv) === 'checking' &&
+                        (batDau === null || !Number.isFinite(Number(batDau)) || Number(batDau) <= 0))) {
+                    luu.remove(`status${nv.id}`);
+                    luu.remove(`startTime${nv.id}`);
+                    luu.remove(`leftAt${nv.id}`);
+                    luu.remove(`completedAt${nv.id}`);
+                }
+            });
+            veLai();
+            // Nếu F5 sau khi quay lại, vẫn khôi phục lượt đang chờ thay vì bỏ mất.
+            if (document.visibilityState === 'visible') kiemTraTienTrinhNhiemVu();
+        }
+
+        // Giữ hiệu ứng nghiêng 3D của trang cũ; tắt khi người dùng chọn giảm chuyển động.
+        if (!window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
+            const theNghieng = document.querySelectorAll('.task-placeholder, .main-container');
+            function nghiêngThe(card, x, y, width, height) {
+                const rotateX = ((y - height / 2) / height) * -12;
+                const rotateY = ((x - width / 2) / width) * 12;
+                card.style.transform = `perspective(1000px) rotateX(${rotateX}deg) rotateY(${rotateY}deg) scale3d(1.02,1.02,1.02)`;
+            }
+            function traVe(card) { card.style.transform = ''; }
+            theNghieng.forEach(card => {
+                card.addEventListener('mousemove', event => {
+                    const rect = card.getBoundingClientRect();
+                    nghiêngThe(card, event.clientX - rect.left, event.clientY - rect.top, rect.width, rect.height);
+                });
+                card.addEventListener('mouseleave', () => traVe(card));
+                card.addEventListener('touchstart', event => {
+                    // Không nghiêng cả khung chính khi người dùng chạm vào danh sách nhiệm vụ.
+                    if (card === giaoDienChinh && event.target.closest('.task-grid')) return;
+                    const rect = card.getBoundingClientRect();
+                    nghiêngThe(card, event.touches[0].clientX - rect.left, event.touches[0].clientY - rect.top, rect.width, rect.height);
+                }, { passive: true });
+                card.addEventListener('touchmove', event => {
+                    // Thả hiệu ứng nghiêng để thao tác cuộn dọc không bị giật.
+                    if (event.target.closest('.task-grid')) { traVe(card); return; }
+                    const rect = card.getBoundingClientRect();
+                    const x = event.touches[0].clientX - rect.left;
+                    const y = event.touches[0].clientY - rect.top;
+                    if (x >= 0 && x <= rect.width && y >= 0 && y <= rect.height) nghiêngThe(card, x, y, rect.width, rect.height);
+                    else traVe(card);
+                }, { passive: true });
+                card.addEventListener('touchend', () => traVe(card));
+            });
+        }
     </script>
 </body>
 </html>
