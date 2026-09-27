@@ -3,6 +3,9 @@ const test = require('node:test');
 const fs = require('node:fs');
 const path = require('node:path');
 const vm = require('node:vm');
+const { TextEncoder } = require('node:util');
+const { execFileSync } = require('node:child_process');
+const { giaiMaDemo } = require('../tools/decode-demo.cjs');
 
 const html = fs.readFileSync(path.join(__dirname, '..', 'index.html'), 'utf8');
 const script = html.split('<script>')[1]?.split('</script>')[0];
@@ -15,6 +18,7 @@ class Element {
         this.textContent = '';
         this.value = '';
         this.disabled = false;
+        this.open = false;
         this.style = {};
         this.attributes = {};
         this.children = new Map();
@@ -108,7 +112,8 @@ function createPortal(sharedStore = new Map(), now = 1_000_000) {
     };
     class ClockDate extends Date { static now() { return clock.now; } }
     vm.runInNewContext(script, {
-        document, window, localStorage, Date: ClockDate,
+        document, window, localStorage, Date: ClockDate, TextEncoder,
+        btoa: binary => Buffer.from(binary, 'latin1').toString('base64'),
         navigator: { clipboard: { writeText: text => { copies.push(text); return Promise.resolve(); } } },
         setTimeout: (fn, ms) => schedule(fn, ms),
         clearTimeout: id => timers.delete(id),
@@ -177,7 +182,12 @@ test('chỉ tạo mã demo khi đã nhập tên và hoàn thành đủ bốn nhi
     await site.click('nut-giai-bai');
     assert.equal(site.modalOpen(), true);
     const code = site.elements.get('key-value').value;
-    assert.match(code, /^Free_[0-9A-Z]{14}$/);
+    assert.match(code, /^Free_v2_[A-Za-z0-9_-]+$/);
+    assert.equal(code.includes('HoiAnPlayer_09'), false);
+    assert.deepEqual(giaiMaDemo(code), {
+        ten: 'HoiAnPlayer_09', nhiemVu: 'nv4', thoiDiem: Number(site.store.get('completedAtnv4'))
+    });
+    assert.equal(site.elements.get('player-details').open, false);
     await site.click('copy-key-btn');
     assert.deepEqual(site.copies, [code]);
     await site.click('back-btn');
@@ -266,8 +276,11 @@ test('tên người chơi nằm trên nhiệm vụ, lưu sau F5 và hiển thị
     const summary = afterReload.elements.get('player-summary');
     assert.equal(summary.textContent, 'Người chơi: HoiAnPlayer_09');
     assert.equal(summary.hidden, false);
+    assert.equal(afterReload.elements.get('player-details').open, false);
     const originalCode = afterReload.elements.get('key-value').value;
+    afterReload.elements.get('player-details').open = true;
     await afterReload.click('back-btn');
+    assert.equal(afterReload.elements.get('player-details').open, false);
     afterReload.elements.get('player-name').value = '   ';
     await afterReload.elements.get('player-name').fire('input');
     assert.equal(storage.has('taodepzai_player_name'), false);
@@ -278,6 +291,8 @@ test('tên người chơi nằm trên nhiệm vụ, lưu sau F5 và hiển thị
     await afterReload.click('nut-giai-bai');
     assert.equal(summary.textContent, 'Người chơi: AnotherPlayer');
     assert.notEqual(afterReload.elements.get('key-value').value, originalCode);
+    assert.equal(giaiMaDemo(originalCode).ten, 'HoiAnPlayer_09');
+    assert.equal(giaiMaDemo(afterReload.elements.get('key-value').value).ten, 'AnotherPlayer');
     await afterReload.click('back-btn');
 });
 
@@ -292,7 +307,9 @@ test('mã Free_ dùng thời điểm nhiệm vụ hoàn thành cuối, ổn đ�
     }
     await first.click('nut-giai-bai');
     const originalCode = first.elements.get('key-value').value;
-    assert.match(originalCode, /^Free_[0-9A-Z]{14}$/);
+    assert.match(originalCode, /^Free_v2_[A-Za-z0-9_-]+$/);
+    assert.equal(giaiMaDemo(originalCode).nhiemVu, 'nv2');
+    assert.equal(giaiMaDemo(originalCode).thoiDiem, lastTime);
 
     const afterReload = createPortal(storage, 1_020_000);
     await afterReload.click('nut-giai-bai');
@@ -303,6 +320,32 @@ test('mã Free_ dùng thời điểm nhiệm vụ hoàn thành cuối, ổn đ�
     for (const number of [4, 1, 3, 2]) await completeTask(afterReload, number);
     await afterReload.click('nut-giai-bai');
     assert.notEqual(afterReload.elements.get('key-value').value, originalCode);
+    assert.equal(giaiMaDemo(originalCode).thoiDiem, lastTime); // Reset không thu hồi mã đã sao chép.
+});
+
+test('giải lại đúng tên có dấu, chữ hoa và ký tự đặc biệt từ mã mà không lộ tên khi nhìn mã', async () => {
+    const site = createPortal();
+    const name = 'Nguyễn Thị Ánh 🍃 | Δ';
+    await enterName(site, name);
+    for (const number of [3, 2, 4, 1]) await completeTask(site, number);
+    await site.click('nut-giai-bai');
+    const code = site.elements.get('key-value').value;
+    assert.equal(code.includes('Nguyễn'), false);
+    assert.deepEqual(giaiMaDemo(code), {
+        ten: name, nhiemVu: 'nv1', thoiDiem: Number(site.store.get('completedAtnv1'))
+    });
+    const output = execFileSync(process.execPath, ['tools/decode-demo.cjs', code], {
+        cwd: path.join(__dirname, '..'), encoding: 'utf8'
+    });
+    assert.match(output, /Nguyễn Thị Ánh 🍃 \| Δ/);
+    assert.match(output, /nv1/);
+    assert.match(output, /có thể bị giả mạo/);
+});
+
+test('không giả vờ giải được mã hash cũ hoặc mã v2 hỏng', () => {
+    for (const code of ['Free_ABCDEFGH123456', 'Free_v2_ab c', 'Free_v2_abcd', 'Free_v2_##########']) {
+        assert.throws(() => giaiMaDemo(code), /không hợp lệ|không thuộc bản/);
+    }
 });
 
 test('phiên cũ không có mốc hoàn thành phải làm mới thay vì tạo mã sai', async () => {

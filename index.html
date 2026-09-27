@@ -433,7 +433,7 @@
         @keyframes blink { 50% { opacity: .4; box-shadow: 0 0 0 transparent; } }
         .close-btn { width: 31px; height: 31px; flex: none; border: 1px solid rgba(255, 255, 255, .1); border-radius: 9px; background: rgba(255, 255, 255, .06); color: white; font-size: 20px; line-height: 1; }
         .close-btn:hover { background: rgba(255, 255, 255, .14); }
-        .player-summary {
+        .player-details {
             margin: 0 0 16px;
             padding: 11px 14px;
             border: 1px solid rgba(129, 140, 248, 0.25);
@@ -441,9 +441,9 @@
             background: rgba(99, 102, 241, 0.09);
             color: #e2e8f0;
             font-size: 12px;
-            font-weight: 700;
-            overflow-wrap: anywhere;
         }
+        .player-details summary { cursor: pointer; font-weight: 700; }
+        .player-summary { margin: 9px 0 0; overflow-wrap: anywhere; }
         .field-label { display: block; margin-bottom: 8px; color: #c4b5fd; font-size: 11px; font-weight: 800; letter-spacing: .1em; }
         .key-value, .page2-textarea {
             width: 100%;
@@ -533,7 +533,7 @@
         <div class="desc-box">
             <strong>Hướng dẫn:</strong> Nhập tên người chơi và hoàn thành <strong>cả 4 nhiệm vụ</strong> (không cần theo thứ tự). Với từng nhiệm vụ, mở liên kết, ở tab mới ít nhất 5 giây rồi quay lại. Mã demo dùng thời điểm hoàn thành nhiệm vụ cuối cùng; phiên tự làm mới sau 3 phút.
         </div>
-        <p class="demo-banner" id="demo-banner">✦ Mã Free_ chỉ là mã demo, không kích hoạt script. Bốn liên kết hiện là mẫu.</p>
+        <p class="demo-banner" id="demo-banner">✦ Mã Free_ chỉ là mã demo, không kích hoạt script. Tên trong mã chỉ được che, ai biết cách tạo mã đều đọc lại được. Bốn liên kết hiện là mẫu.</p>
 
         <div class="player-box">
             <label class="player-label" for="player-name">
@@ -541,7 +541,7 @@
                 Tên người chơi
             </label>
             <input class="player-input" id="player-name" name="playerName" type="text" maxlength="32" autocomplete="nickname" spellcheck="false" required placeholder="Nhập tên người chơi của bạn" aria-describedby="player-help">
-            <p class="player-help" id="player-help">Bắt buộc để tạo mã demo Free_. Tên chỉ được lưu trên trình duyệt này, không xác minh tài khoản.</p>
+            <p class="player-help" id="player-help">Bắt buộc để tạo mã demo Free_. Tên được lưu trên trình duyệt và đưa vào mã ở dạng có thể đọc lại; không nhập thông tin nhạy cảm.</p>
         </div>
 
         <section aria-labelledby="task-heading">
@@ -607,10 +607,13 @@
                 <div class="editor-label" id="dialog-title"><span class="pulse-dot" aria-hidden="true"></span> MÃ DEMO FREE_ CỦA BẠN</div>
                 <button class="close-btn" id="close-btn" type="button" aria-label="Đóng cửa sổ key">×</button>
             </div>
-            <p class="player-summary" id="player-summary" hidden></p>
+            <details class="player-details" id="player-details">
+                <summary>Thông tin người chơi (nhấn để xem)</summary>
+                <p class="player-summary" id="player-summary" hidden></p>
+            </details>
             <label class="field-label" for="key-value">MÃ DEMO (KHÔNG PHẢI KEY KÍCH HOẠT)</label>
             <textarea class="key-value" id="key-value" readonly spellcheck="false"></textarea>
-            <p class="demo-alert" id="demo-alert">⚠ Mã Free_ được tạo ở trình duyệt để minh họa; không kích hoạt script Taodepzai.</p>
+            <p class="demo-alert" id="demo-alert">⚠ Mã Free_ không kích hoạt script. Tên không hiện trong mã nhưng người biết thuật toán có thể đọc lại; đừng dùng tên thật nếu muốn giữ bí mật.</p>
             <div class="action-buttons">
                 <button id="back-btn" type="button">
                     <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M19 12H5m7 7-7-7 7-7"/></svg>
@@ -648,6 +651,7 @@
         const THOI_GIAN_RESET = 3 * 60 * 1000;
         const THOI_GIAN_CHO_NV = 5 * 1000;
         const PLAYER_NAME_KEY = 'taodepzai_player_name';
+        const MA_DEMO_PREFIX = 'Free_v2_'; // Mã v1 dạng hash không thể đọc ngược tên.
         const boNhoTam = new Map();
         const luu = {
             get(key) {
@@ -671,6 +675,7 @@
         const hopThoai = manHinhTrang.querySelector('.editor-wrapper');
         const keyField = document.getElementById('key-value');
         const playerNameInput = document.getElementById('player-name');
+        const playerDetails = document.getElementById('player-details');
         const playerSummary = document.getElementById('player-summary');
         const scriptField = document.getElementById('noi-dung-page2');
         const thongBao = document.getElementById('notification-box');
@@ -690,7 +695,7 @@
             kiemTraMoKhoa();
         });
         if (!DANG_LA_BAN_MAU) {
-            document.getElementById('demo-banner').textContent = '✦ Mã Free_ chỉ là mã demo, không kích hoạt script.';
+            document.getElementById('demo-banner').textContent = '✦ Mã Free_ chỉ là mã demo, không kích hoạt script. Tên chỉ được che; người biết mã nguồn có thể đọc lại.';
         }
         NHIEM_VU.forEach(nv => {
             const lienKet = document.getElementById(`link-${nv.id}`);
@@ -730,20 +735,15 @@
             return cuoi;
         }
 
-        // Chỉ trộn dữ liệu để tạo mã minh họa, KHÔNG phải thuật toán xác thực key.
+        // Che văn bản để người nhìn mã không đọc ngay tên. Thuật toán hoàn toàn công khai:
+        // bất cứ ai có mã nguồn đều giải được/giả mạo được mã, KHÔNG phải mã hóa bảo mật.
         function taoMaDemo(ten, lanCuoi) {
-            const duLieu = `${ten.trim().normalize('NFKC').toLowerCase()}|${lanCuoi.id}|${lanCuoi.time}`;
-            let phanA = 0x811c9dc5;
-            let phanB = 0x9e3779b9;
-            for (const kyTu of duLieu) {
-                const ma = kyTu.codePointAt(0);
-                phanA = Math.imul(phanA ^ ma, 16777619);
-                phanB = Math.imul(phanB ^ ma, 2246822519);
-            }
-            const noiDuoi = [phanA, phanB]
-                .map(phan => (phan >>> 0).toString(36).toUpperCase().padStart(7, '0'))
-                .join('');
-            return `Free_${noiDuoi}`;
+            const duLieu = JSON.stringify([ten.trim(), lanCuoi.id, lanCuoi.time]);
+            const bytes = new TextEncoder().encode(duLieu);
+            const daChe = Array.from(bytes, (byte, viTri) =>
+                String.fromCharCode(byte ^ ((viTri * 73 + 0xA5) & 255))).join('');
+            return MA_DEMO_PREFIX + btoa(daChe)
+                .replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
         }
 
         function hienThiDongHo() {
@@ -824,6 +824,7 @@
             giaoDienChinh.removeAttribute('aria-hidden');
             document.body.style.overflow = '';
             keyField.value = '';
+            playerDetails.open = false;
             const dich = focusTarget || phanTuTruocHopThoai;
             if (dich && !dich.disabled) dich.focus();
         }
@@ -929,6 +930,7 @@
             phanTuTruocHopThoai = document.activeElement;
             keyField.value = taoMaDemo(playerNameInput.value, lanCuoi);
             hienThiTenNguoiChoi();
+            playerDetails.open = false;
             manHinhTrang.classList.add('show');
             manHinhTrang.setAttribute('aria-hidden', 'false');
             giaoDienChinh.setAttribute('aria-hidden', 'true');
