@@ -455,3 +455,20 @@ test('mã v3 bị sửa một ký tự hoặc tự bịa đều bị từ chối
         assert.throws(() => giaiMaDemo(fake), /không hợp lệ/);
     }
 });
+
+test('dòng "Kết hợp" hiện đúng số quay, ngày/tháng, giây, mili-giây của nhiệm vụ cuối, không lộ tên', async () => {
+    const site = createPortal(new Map(), 1_790_000_012_345);
+    await openKeyDialog(site, 'TenBiMat_01');
+    const t = Number(site.store.get('completedAtnv4'));
+    const d = new Date(t);
+    const hai = n => String(n).padStart(2, '0');
+    const so = String(site.store.get('taodepzai_so_quay')).padStart(3, '0');
+    const mix = site.elements.get('spin-mix').innerHTML;
+    assert.match(mix, new RegExp(`số <b>${so}</b>`));
+    assert.match(mix, new RegExp(`ngày <b>${hai(d.getUTCDate())}/${hai(d.getUTCMonth() + 1)}</b>`));
+    assert.match(mix, new RegExp(`giây <b>${hai(Math.floor(t / 1000) % 60)}</b>`));
+    assert.match(mix, new RegExp(`mili-giây <b>${String(t % 1000).padStart(3, '0')}</b>`));
+    assert.equal(mix.includes('TenBiMat_01'), false);
+    const code = site.elements.get('key-value').value;
+    assert.equal(giaiMaDemo(code).thoiDiem, t);
+});

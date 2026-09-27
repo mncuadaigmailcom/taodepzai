@@ -1,8 +1,9 @@
 --[[
     taodepzai · KEY SYSTEM (v2)
     Key Free_v3_... do trang https://mncuadaigmailcom.github.io/taodepzai/ tạo ra gồm
-    vòng quay 3 số + ngày/tháng + [tên người chơi, nhiệm vụ cuối, thời điểm hoàn thành]
-    + mã kiểm tra 32 bit, được xáo bằng dòng khoá sinh từ (số quay, ngày, tháng).
+    vòng quay 3 số + ngày/tháng + giây/mili-giây + [tên người chơi, nhiệm vụ cuối, thời điểm]
+    + mã kiểm tra 32 bit, được xáo bằng dòng khoá sinh từ (số quay, ngày, tháng, giây,
+    mili-giây) và trộn thêm từng byte của tên.
     Script này giải mã key (cùng thuật toán với taoMaDemo trong index.html) rồi kiểm tra:
       0. Mã kiểm tra khớp -> key không bị sửa / tự bịa.
       1. Tên trong key phải trùng tên tài khoản Roblox (hoặc tên hiển thị) của bạn
@@ -21,7 +22,7 @@
 ]]
 
 local CAU_HINH = {
-    KEY_PREFIX         = "Free_v3_",      -- key mới: vòng quay 3 số + ngày/tháng + tên
+    KEY_PREFIX         = "Free_v3_",      -- vòng quay 3 số + ngày/tháng + giây/mili-giây + tên
     CHAP_NHAN_KEY_V2   = false,           -- true = vẫn nhận key Free_v2_ cũ (yếu hơn)
     HAN_KEY_GIAY       = 24 * 60 * 60,    -- key có hạn 1 ngày
     LECH_GIO_CHO_PHEP  = 5 * 60,          -- cho phép giờ máy lệch tối đa 5 phút
@@ -254,26 +255,39 @@ end
 
 local function GiaiMaV3(noiDung)
     local raw = GiaiBase64Url(noiDung)
-    if not raw or #raw < 3 + 4 + 8 then return nil end
+    if not raw or #raw < 5 + 4 + 8 then return nil end
     local biMat = ByteCua(BI_MAT_V3)
-    local matNa = BamV3(biMat, 7, 131, P31)
-    local dau = {}
-    for i = 0, 2 do
-        dau[i + 1] = (raw[i + 1] - math.floor(matNa / 256 ^ i)) % 256
-    end
-    local giaTriDau = dau[1] * 65536 + dau[2] * 256 + dau[3]
-    local thang = giaTriDau % 16
-    local ngay = math.floor(giaTriDau / 16) % 32
-    local soQuay = math.floor(giaTriDau / 512)
-    if soQuay > 999 or ngay < 1 or ngay > 31 or thang < 1 or thang > 12 then return nil end
 
-    local x = BamV3(ByteCua(BI_MAT_V3 .. "|" .. soQuay .. "|" .. ngay .. "|" .. thang), 11, 257, P31)
+    -- Đầu mã 5 byte: số quay, ngày, tháng, giây, mili-giây (xích từng byte)
+    local y = BamV3(biMat, 7, 131, P31)
+    if y == 0 then y = 1 end
+    local dau, giaTriDau = {}, 0
+    for i = 1, 5 do
+        y = (y * 48271) % P31
+        local b = (raw[i] - math.floor(y / 8388608) - (i > 1 and raw[i - 1] or 0)) % 256
+        dau[i] = b
+        giaTriDau = giaTriDau * 256 + b
+    end
+    local mili = giaTriDau % 1024
+    local giay = math.floor(giaTriDau / 1024) % 64
+    local thang = math.floor(giaTriDau / 65536) % 16
+    local ngay = math.floor(giaTriDau / 1048576) % 32
+    local soQuay = math.floor(giaTriDau / 33554432)
+    if soQuay > 999 or ngay < 1 or ngay > 31 or thang < 1 or thang > 12 or giay > 59 or mili > 999 then
+        return nil
+    end
+
+    -- Dòng khoá từ (bí mật, số quay, ngày, tháng, giây, mili-giây); byte của tên trộn tiếp vào khoá
+    local x = BamV3(ByteCua(BI_MAT_V3 .. "|" .. soQuay .. "|" .. ngay .. "|" .. thang
+        .. "|" .. giay .. "|" .. mili), 11, 257, P31)
     if x == 0 then x = 1 end
-    local truoc = soQuay % 256
+    local truoc, byteTruoc = soQuay % 256, 0
     local than = {}
-    for i = 4, #raw do
-        x = (x * 48271) % P31
-        than[#than + 1] = (raw[i] - math.floor(x / 8388608) - truoc) % 256
+    for i = 6, #raw do
+        x = (x * 48271 + byteTruoc) % P31
+        if x == 0 then x = 1 end
+        byteTruoc = (raw[i] - math.floor(x / 8388608) - truoc) % 256
+        than[#than + 1] = byteTruoc
         truoc = raw[i]
     end
 
@@ -281,7 +295,7 @@ local function GiaiMaV3(noiDung)
     local soNoiDung = #than - 4
     local tatCa = {}
     for i = 1, #biMat do tatCa[#tatCa + 1] = biMat[i] end
-    for i = 1, 3 do tatCa[#tatCa + 1] = dau[i] end
+    for i = 1, 5 do tatCa[#tatCa + 1] = dau[i] end
     for i = 1, soNoiDung do tatCa[#tatCa + 1] = than[i] end
     local h1 = BamV3(tatCa, 5, 131, P31)
     local h2 = BamV3(tatCa, 3, 257, 2147483629)
@@ -292,8 +306,12 @@ local function GiaiMaV3(noiDung)
 
     local ten, nhiemVu, thoiDiemMs = KiemTraNoiDung(ByteSangChuoi(than, 1, soNoiDung))
     if not ten then return nil end
+    -- Ngày, tháng, giây, mili-giây ở đầu mã phải khớp đúng thời điểm bên trong
     local ngayThat, thangThat = NgayThangUTC(thoiDiemMs)
-    if ngayThat ~= ngay or thangThat ~= thang then return nil end
+    if ngayThat ~= ngay or thangThat ~= thang or math.floor(thoiDiemMs / 1000) % 60 ~= giay
+        or thoiDiemMs % 1000 ~= mili then
+        return nil
+    end
     return { ten = ten, nhiemVu = nhiemVu, thoiDiem = math.floor(thoiDiemMs / 1000), soQuay = soQuay, phienBan = 3 }
 end
 

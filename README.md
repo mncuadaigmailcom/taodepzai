@@ -4,14 +4,14 @@ Trang HTML tĩnh tại `index.html`. Mở tệp trong trình duyệt hoặc ch�
 
 ## Mã Free_v3_ (vòng quay 3 số)
 
-Trong cửa sổ nhận mã có **vòng quay 3 số** (000–999). Mỗi lần bấm **🎰 Quay số mới**, ba ô số quay rồi dừng lần lượt, và trang tạo một key mới cho cùng tên, cùng thời điểm (1000 key khác nhau có thể có). Trong lúc quay, nút sao chép bị khoá để không chép nhầm key cũ. Đóng cửa sổ giữa chừng thì huỷ lượt quay và giữ số cũ.
+Trong cửa sổ nhận mã có **vòng quay 3 số** (000–999). Mỗi lần bấm **🎰 Quay số mới**, ba ô số quay rồi dừng lần lượt, và trang tạo một key mới cho cùng tên, cùng thời điểm (1000 key khác nhau có thể có). Dòng **“Kết hợp”** bên dưới cho thấy các thành phần được trộn vào key: số quay · ngày/tháng (UTC) · giây · mili-giây · tên người chơi (tên không hiện ra). Trong lúc quay, nút sao chép bị khoá để không chép nhầm key cũ. Đóng cửa sổ giữa chừng thì huỷ lượt quay và giữ số cũ.
 
 Cách tạo mã v3 (`taoMaDemo` trong `index.html`, giống hệt `tools/decode-demo.cjs` và `key-system.lua`):
 
-1. **Đầu mã 3 byte** = số quay + **ngày + tháng** (UTC) của lúc hoàn thành nhiệm vụ cuối, được che bằng mặt nạ.
+1. **Đầu mã 5 byte** = số quay + **ngày + tháng** (UTC) + **giây + mili-giây** của lúc hoàn thành nhiệm vụ cuối. Các byte được che bằng dòng mặt nạ và xích với nhau.
 2. **Nội dung** = `[tên, nhiệm vụ, thời điểm]` dạng JSON UTF-8, kèm **mã kiểm tra 32 bit** (2 hàm băm độc lập trên chuỗi bí mật + đầu mã + nội dung).
-3. **Dòng khoá** sinh từ (chuỗi bí mật, số quay, ngày, tháng) bằng bộ sinh Park–Miller. Mỗi byte được cộng khoá và **xích với byte trước**, nên sửa một ký tự thì phần sau hỏng hết và mã kiểm tra không khớp.
-4. Khi giải mã, ngày/tháng ở đầu mã phải khớp thời điểm bên trong; số quay phải trong khoảng 000–999.
+3. **Dòng khoá** sinh từ (chuỗi bí mật, số quay, ngày, tháng, giây, mili-giây) bằng bộ sinh Park–Miller. **Từng byte của tên được trộn tiếp vào dòng khoá**, và mỗi byte mã được **xích với byte trước**. Vì vậy chỉ khác 1 chữ trong tên là phần lớn key khác hẳn, còn sửa một ký tự của key thì phần sau hỏng hết và mã kiểm tra không khớp.
+4. Khi giải mã, ngày/tháng/giây/mili-giây ở đầu mã phải khớp đúng thời điểm bên trong; số quay phải trong khoảng 000–999.
 
 Mọi phép tính dùng số nguyên dưới 2^53, nên JS và Lua cho kết quả giống hệt nhau (test đối chiếu tự động).
 

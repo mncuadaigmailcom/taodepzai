@@ -57,29 +57,41 @@ def _json(ten, nhiem_vu, thoi_diem_ms):
                       separators=(",", ":")).encode("utf-8")
 
 
-def ma_v3_tu_byte(noi_dung, so_quay, ngay, thang):
+def thanh_phan_thoi_gian(ms):
+    """(ngày, tháng UTC, giây, mili-giây) của thời điểm ms."""
+    ngay, thang = ngay_thang_utc(ms)
+    return ngay, thang, ms // 1000 % 60, ms % 1000
+
+
+def ma_v3_tu_byte(noi_dung, so_quay, ngay, thang, giay, mili):
     """Bản Python của taoMaDemo (v3) trong index.html, nhận thẳng byte nội dung."""
-    v = (so_quay * 32 + ngay) * 16 + thang
-    dau = [v >> 16 & 255, v >> 8 & 255, v & 255]
+    v = (((so_quay * 32 + ngay) * 16 + thang) * 64 + giay) * 1024 + mili
+    dau = [v >> (8 * k) & 255 for k in (4, 3, 2, 1, 0)]
     bi = list(BI_MAT_V3)
     h1 = _bam(bi + dau + list(noi_dung), 5, 131, P31)
     h2 = _bam(bi + dau + list(noi_dung), 3, 257, 2147483629)
     than = list(noi_dung) + [h1 >> 8 & 255, h1 & 255, h2 >> 8 & 255, h2 & 255]
-    mat_na = _bam(bi, 7, 131, P31)
-    ra = [(dau[i] + mat_na // 256 ** i) % 256 for i in range(3)]
-    x = _bam(f"taodepzai|v3|HoiAn|{so_quay}|{ngay}|{thang}".encode(), 11, 257, P31) or 1
-    truoc = so_quay % 256
+    ra = []
+    y = _bam(bi, 7, 131, P31) or 1
+    truoc = 0
+    for b in dau:
+        y = y * 48271 % P31
+        truoc = (b + y // 8388608 + truoc) % 256
+        ra.append(truoc)
+    x = _bam(f"taodepzai|v3|HoiAn|{so_quay}|{ngay}|{thang}|{giay}|{mili}".encode(), 11, 257, P31) or 1
+    truoc, byte_truoc = so_quay % 256, 0
     for b in than:
-        x = x * 48271 % P31
+        x = (x * 48271 + byte_truoc) % P31 or 1
         truoc = (b + x // 8388608 + truoc) % 256
         ra.append(truoc)
+        byte_truoc = b
     return "Free_v3_" + _b64(ra)
 
 
 def tao_ma(ten, nhiem_vu="nv4", thoi_diem_ms=None, so_quay=472):
     if thoi_diem_ms is None:
         thoi_diem_ms = (BAY_GIO - 60) * 1000
-    return ma_v3_tu_byte(_json(ten, nhiem_vu, thoi_diem_ms), so_quay, *ngay_thang_utc(thoi_diem_ms))
+    return ma_v3_tu_byte(_json(ten, nhiem_vu, thoi_diem_ms), so_quay, *thanh_phan_thoi_gian(thoi_diem_ms))
 
 
 def tao_ma_v2(ten, nhiem_vu="nv4", thoi_diem_ms=None):
@@ -556,7 +568,7 @@ class GiaiMaTest(unittest.TestCase):
 
     def test_utf8_sai_bi_tu_choi(self):
         ms = (BAY_GIO - 60) * 1000
-        che = lambda raw: ma_v3_tu_byte(raw, 5, *ngay_thang_utc(ms))  # noqa: E731 (mã kiểm tra hợp lệ)
+        che = lambda raw: ma_v3_tu_byte(raw, 5, *thanh_phan_thoi_gian(ms))  # noqa: E731 (mã kiểm tra hợp lệ)
         t = str(ms).encode()
         hop_le = che(b'["Tester","nv1",' + t + b']')
         self.assertEqual(Phien().thu_key(hop_le).so_lan_chay, 1)
@@ -600,13 +612,35 @@ class GiaiMaTest(unittest.TestCase):
         self.assertEqual(len(cac_ma), 1000)
         self.assertEqual(Phien().thu_key(tao_ma("Tester", so_quay=0)).so_lan_chay, 1)
         self.assertEqual(Phien().thu_key(tao_ma("Tester", so_quay=999)).so_lan_chay, 1)
-        # Ngày/tháng trong đầu mã không khớp thời điểm (dù mã kiểm tra đúng) -> từ chối
-        ngay, thang = ngay_thang_utc(ms)
-        for sai in ((ngay % 28 + 1, thang), (ngay, thang % 12 + 1), (0, thang), (ngay, 13)):
+        # Ngày/tháng/giây/mili-giây trong đầu mã không khớp thời điểm (dù mã kiểm tra đúng) -> từ chối
+        ms = 1790000012345
+        ngay, thang, giay, mili = thanh_phan_thoi_gian(ms)
+        noi_dung = _json("Tester", "nv1", ms)
+        self.assertIsNotNone(p.giai_ma(ma_v3_tu_byte(noi_dung, 5, ngay, thang, giay, mili)))
+        for sai in ((ngay % 28 + 1, thang, giay, mili), (ngay, thang % 12 + 1, giay, mili), (0, thang, giay, mili),
+                    (ngay, 13, giay, mili), (ngay, thang, (giay + 1) % 60, mili), (ngay, thang, giay, (mili + 1) % 1000),
+                    (ngay, thang, 60, mili), (ngay, thang, giay, 1000), (ngay, thang, giay, 1023)):
             with self.subTest(sai=sai):
-                self.assertIsNone(p.giai_ma(ma_v3_tu_byte(_json("Tester", "nv1", ms), 5, *sai)))
+                self.assertIsNone(p.giai_ma(ma_v3_tu_byte(noi_dung, 5, *sai)))
         # Số quay > 999 -> từ chối
-        self.assertIsNone(p.giai_ma(ma_v3_tu_byte(_json("Tester", "nv1", ms), 1000, ngay, thang)))
+        self.assertIsNone(p.giai_ma(ma_v3_tu_byte(noi_dung, 1000, ngay, thang, giay, mili)))
+
+    def test_moi_mili_giay_cho_key_khac(self):
+        p = Phien()
+        goc = (BAY_GIO - 60) * 1000
+        cac_ma = set()
+        for lech in range(0, 2000, 7):  # các mili-giây / giây khác nhau, cùng tên, cùng số quay
+            ma = tao_ma("Tester", thoi_diem_ms=goc + lech, so_quay=123)
+            self.assertEqual(p.giai_ma(ma)["thoiDiem"], (goc + lech) // 1000)
+            cac_ma.add(ma[8:16])  # khác nhau ngay từ đầu mã, không chỉ ở phần cuối
+        self.assertEqual(len(cac_ma), len(range(0, 2000, 7)))
+
+    def test_ten_tron_vao_dong_khoa(self):
+        # Hai tên chỉ khác 1 ký tự đầu -> phần mã phía sau cũng khác (không chỉ khác 1 byte)
+        a = tao_ma("Aester", so_quay=1)
+        b = tao_ma("Bester", so_quay=1)
+        khac = sum(1 for x, y in zip(a, b) if x != y)
+        self.assertGreater(khac, len(a) // 2)
 
     def test_ngay_thang_utc_moi_thoi_diem(self):
         p = Phien()
@@ -654,13 +688,15 @@ class DoiChieuIndexHtmlTest(unittest.TestCase):
                 ma = tao_ma_v2(ten)
             elif ngau_nhien.random() < 0.15:  # ngày/tháng trong đầu mã lệch với thời điểm (mã kiểm tra vẫn đúng)
                 ms = ngau_nhien.randint(1, 2_000_000_000_000)
-                ngay, thang = ngay_thang_utc(ms)
-                ma = ma_v3_tu_byte(_json(ten, "nv1", ms), 9, ngay % 28 + 1, thang)
+                ngay, thang, giay, mili = thanh_phan_thoi_gian(ms)
+                ma = ma_v3_tu_byte(_json(ten, "nv1", ms), 9, *ngau_nhien.choice([
+                    (ngay % 28 + 1, thang, giay, mili), (ngay, thang, (giay + 1) % 60, mili),
+                    (ngay, thang, giay, (mili + 1) % 1000)]))
             if ngau_nhien.random() < 0.2:  # chèn byte UTF-8 sai vào tên
                 ten = ten + ngau_nhien.choice(["\udcff", "\ud800"])
                 raw = json.dumps([ten, "nv1", 123], ensure_ascii=False, separators=(",", ":")).encode(
                     "utf-8", "surrogateescape" if "\udcff" in ten else "surrogatepass")
-                cac_ma.append(ma_v3_tu_byte(raw, 42, 1, 1))
+                cac_ma.append(ma_v3_tu_byte(raw, 42, 1, 1, 0, 123))
                 continue
             if ngau_nhien.random() < 0.4:  # sửa ngẫu nhiên một ký tự
                 vt = ngau_nhien.randrange(9, len(ma))

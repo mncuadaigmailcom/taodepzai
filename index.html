@@ -477,6 +477,8 @@
         .spin-hint { color: #a5b4fc; font-size: 11px; }
         .spin-row { display: flex; align-items: center; gap: 10px; }
         .spin-reels { display: flex; gap: 6px; }
+        .spin-mix { margin: 10px 0 0; color: #c7d2fe; font-size: 11.5px; line-height: 1.5; }
+        .spin-mix b { color: #fde68a; font-weight: 800; }
         .reel { width: 38px; height: 46px; display: grid; place-items: center; border-radius: 10px; background: linear-gradient(180deg, #1e1b4b, #312e81 50%, #1e1b4b); border: 1px solid rgba(165, 180, 252, .45); color: #fde68a; font: 800 24px/1 ui-monospace, SFMono-Regular, Menlo, monospace; box-shadow: inset 0 6px 10px rgba(0, 0, 0, .45), 0 0 12px rgba(250, 204, 21, .12); }
         .reel.spinning { color: #c7d2fe; filter: blur(.6px); animation: reel-rung .14s linear infinite; }
         @keyframes reel-rung { 0% { transform: translateY(-3px); } 50% { transform: translateY(3px); } 100% { transform: translateY(-3px); } }
@@ -633,6 +635,7 @@
                     </div>
                     <button id="spin-btn" type="button">🎰 Quay số mới</button>
                 </div>
+                <p class="spin-mix" id="spin-mix"></p>
             </div>
             <label class="field-label" for="key-value">MÃ DEMO (KHÔNG PHẢI KEY KÍCH HOẠT)</label>
             <textarea class="key-value" id="key-value" readonly spellcheck="false"></textarea>
@@ -765,37 +768,48 @@
             return cuoi;
         }
 
-        // Mã v3 = đầu 3 byte (số quay 000-999, ngày, tháng UTC) + [tên, nhiệm vụ, thời điểm] + mã kiểm tra 32 bit,
-        // tất cả được xáo bằng dòng khóa sinh từ (bí mật, số quay, ngày, tháng) và xích từng byte với byte trước.
+        // Mã v3 = đầu 5 byte (số quay 000-999 + ngày, tháng UTC + giây, mili-giây của lúc hoàn thành)
+        //        + [tên, nhiệm vụ, thời điểm] + mã kiểm tra 32 bit.
+        // Dòng khóa sinh từ (bí mật, số quay, ngày, tháng, giây, mili-giây); từng byte của tên được trộn tiếp
+        // vào dòng khóa và mỗi byte mã được xích với byte trước -> sửa 1 ký tự là hỏng toàn bộ phần sau.
         // Thuật toán vẫn công khai: người đọc mã nguồn có thể giải/tạo mã. KHÔNG phải mã hóa bảo mật thật.
         function bamV3(dsByte, h, coSo, mod) {
             for (const b of dsByte) h = (h * coSo + b + 1) % mod;
             return h;
         }
         function byteAscii(chuoi) { return Array.from(chuoi, kyTu => kyTu.charCodeAt(0)); }
-        function ngayThangUTC(ms) {
+        function thanhPhanThoiGian(ms) {
             const d = new Date(ms);
-            return [d.getUTCDate(), d.getUTCMonth() + 1];
+            return { ngay: d.getUTCDate(), thang: d.getUTCMonth() + 1, giay: Math.floor(ms / 1000) % 60, mili: ms % 1000 };
         }
 
         function taoMaDemo(ten, lanCuoi, soQuay) {
             const noiDung = [...new TextEncoder().encode(JSON.stringify([ten.trim(), lanCuoi.id, lanCuoi.time]))];
-            const [ngay, thang] = ngayThangUTC(lanCuoi.time);
-            const giaTriDau = (soQuay * 32 + ngay) * 16 + thang;
-            const dau = [Math.floor(giaTriDau / 65536) % 256, Math.floor(giaTriDau / 256) % 256, giaTriDau % 256];
+            const { ngay, thang, giay, mili } = thanhPhanThoiGian(lanCuoi.time);
+            const giaTriDau = (((soQuay * 32 + ngay) * 16 + thang) * 64 + giay) * 1024 + mili; // < 2^35
+            const dau = [4, 3, 2, 1, 0].map(k => Math.floor(giaTriDau / 256 ** k) % 256);
             const biMat = byteAscii(BI_MAT_V3);
             const tatCa = [...biMat, ...dau, ...noiDung];
             const h1 = bamV3(tatCa, 5, 131, P31);
             const h2 = bamV3(tatCa, 3, 257, 2147483629);
             const than = [...noiDung, Math.floor(h1 / 256) % 256, h1 % 256, Math.floor(h2 / 256) % 256, h2 % 256];
-            const matNa = bamV3(biMat, 7, 131, P31);
-            const ketQua = dau.map((b, i) => (b + Math.floor(matNa / 256 ** i)) % 256);
-            let x = bamV3(byteAscii(`${BI_MAT_V3}|${soQuay}|${ngay}|${thang}`), 11, 257, P31) || 1;
-            let truoc = soQuay % 256;
+
+            const ketQua = [];
+            let y = bamV3(biMat, 7, 131, P31) || 1;
+            let truoc = 0;
+            for (const b of dau) { // Che đầu mã, xích từng byte
+                y = (y * 48271) % P31;
+                truoc = (b + Math.floor(y / 8388608) + truoc) % 256;
+                ketQua.push(truoc);
+            }
+            let x = bamV3(byteAscii(`${BI_MAT_V3}|${soQuay}|${ngay}|${thang}|${giay}|${mili}`), 11, 257, P31) || 1;
+            let byteTruoc = 0;
+            truoc = soQuay % 256;
             for (const b of than) {
-                x = (x * 48271) % P31;
+                x = ((x * 48271 + byteTruoc) % P31) || 1; // Byte của tên trộn vào dòng khóa
                 truoc = (b + Math.floor(x / 8388608) + truoc) % 256;
                 ketQua.push(truoc);
+                byteTruoc = b;
             }
             return MA_DEMO_PREFIX + btoa(String.fromCharCode(...ketQua))
                 .replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
@@ -1003,6 +1017,11 @@
             const so = laySoQuay();
             hienThiSoQuay(so);
             keyField.value = taoMaDemo(playerNameInput.value, lanCuoi, so);
+            const { ngay, thang, giay, mili } = thanhPhanThoiGian(lanCuoi.time);
+            const hai = n => String(n).padStart(2, '0');
+            document.getElementById('spin-mix').innerHTML =
+                `Kết hợp: số <b>${String(so).padStart(3, '0')}</b> · ngày <b>${hai(ngay)}/${hai(thang)}</b> (UTC)` +
+                ` · giây <b>${hai(giay)}</b> · mili-giây <b>${String(mili).padStart(3, '0')}</b> · tên người chơi`;
             return true;
         }
 

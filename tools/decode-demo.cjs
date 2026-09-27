@@ -38,22 +38,36 @@ function giaiMaV2(noiDung) {
 
 function giaiMaV3(noiDung) {
     const raw = docBase64Url(noiDung);
-    if (raw.length < 3 + 4 + 8) throw new Error(INVALID);
+    if (raw.length < 5 + 4 + 8) throw new Error(INVALID);
     const biMat = byteAscii(BI_MAT_V3);
-    const matNa = bamV3(biMat, 7, 131, P31);
-    const dau = [0, 1, 2].map(i => (raw[i] - Math.floor(matNa / 256 ** i) % 256 + 256) % 256);
-    const giaTriDau = dau[0] * 65536 + dau[1] * 256 + dau[2];
-    const thang = giaTriDau % 16;
-    const ngay = Math.floor(giaTriDau / 16) % 32;
-    const soQuay = Math.floor(giaTriDau / 512);
-    if (soQuay > 999 || ngay < 1 || ngay > 31 || thang < 1 || thang > 12) throw new Error(INVALID);
 
-    let x = bamV3(byteAscii(`${BI_MAT_V3}|${soQuay}|${ngay}|${thang}`), 11, 257, P31) || 1;
+    // Đầu mã 5 byte: số quay, ngày, tháng, giây, mili-giây
+    let y = bamV3(biMat, 7, 131, P31) || 1;
+    let giaTriDau = 0;
+    const dau = [];
+    for (let i = 0; i < 5; i++) {
+        y = (y * 48271) % P31;
+        const b = ((raw[i] - Math.floor(y / 8388608) - (i ? raw[i - 1] : 0)) % 256 + 512) % 256;
+        dau.push(b);
+        giaTriDau = giaTriDau * 256 + b;
+    }
+    const mili = giaTriDau % 1024;
+    const giay = Math.floor(giaTriDau / 1024) % 64;
+    const thang = Math.floor(giaTriDau / 65536) % 16;
+    const ngay = Math.floor(giaTriDau / 1048576) % 32;
+    const soQuay = Math.floor(giaTriDau / 33554432);
+    if (soQuay > 999 || ngay < 1 || ngay > 31 || thang < 1 || thang > 12 || giay > 59 || mili > 999) {
+        throw new Error(INVALID);
+    }
+
+    let x = bamV3(byteAscii(`${BI_MAT_V3}|${soQuay}|${ngay}|${thang}|${giay}|${mili}`), 11, 257, P31) || 1;
     let truoc = soQuay % 256;
+    let byteTruoc = 0;
     const than = [];
-    for (let i = 3; i < raw.length; i++) {
-        x = (x * 48271) % P31;
-        than.push(((raw[i] - Math.floor(x / 8388608) - truoc) % 256 + 512) % 256);
+    for (let i = 5; i < raw.length; i++) {
+        x = ((x * 48271 + byteTruoc) % P31) || 1;
+        byteTruoc = ((raw[i] - Math.floor(x / 8388608) - truoc) % 256 + 512) % 256;
+        than.push(byteTruoc);
         truoc = raw[i];
     }
     const noiDungByte = than.slice(0, -4);
@@ -65,7 +79,8 @@ function giaiMaV3(noiDung) {
 
     const ketQua = kiemTraNoiDung(Uint8Array.from(noiDungByte));
     const d = new Date(ketQua.thoiDiem);
-    if (d.getUTCDate() !== ngay || d.getUTCMonth() + 1 !== thang) throw new Error(INVALID);
+    if (d.getUTCDate() !== ngay || d.getUTCMonth() + 1 !== thang ||
+        Math.floor(ketQua.thoiDiem / 1000) % 60 !== giay || ketQua.thoiDiem % 1000 !== mili) throw new Error(INVALID);
     return { ...ketQua, soQuay };
 }
 
