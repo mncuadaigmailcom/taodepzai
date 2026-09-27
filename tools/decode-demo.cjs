@@ -27,7 +27,7 @@ function kyTuKiemTra(than) {
     return BANG_THIET_BI[layBit(h, 0, 5)] + BANG_THIET_BI[layBit(h, 5, 5)];
 }
 
-// Mã gốc của máy (vd "client:<ClientId>") -> mã thiết bị XXXX-XXXX-XXXX như script Roblox hiển thị
+// Mã gốc ("ip:" + IP mạng) -> mã thiết bị XXXX-XXXX-XXXX như trang web / script Roblox tính
 function maThietBiTuGoc(maGoc) {
     const h = sha256('taodepzai|thiet-bi|' + maGoc);
     let than = '';

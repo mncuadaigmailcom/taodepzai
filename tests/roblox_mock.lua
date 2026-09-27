@@ -135,12 +135,6 @@ return function(tuy_chon)
             SetCore = function(_, ten, bang) table.insert(log.thong_bao, { ten, bang }) end,
         },
     }
-    -- Mã máy: ClientId của Roblox (mặc định có), tắt bằng khong_client_id để thử gethwid / UserId
-    if not tuy_chon.khong_client_id then
-        dich_vu.RbxAnalyticsService = {
-            GetClientId = function() return tuy_chon.client_id or "MOCK-CLIENT-0001" end,
-        }
-    end
 
     local game = {}
     function game:GetService(ten)
@@ -148,7 +142,23 @@ return function(tuy_chon)
         if not s then error("Dịch vụ chưa mock: " .. ten) end
         return s
     end
+    -- Dịch vụ trả IP mạng: tuy_chon.ip (mặc định 113.161.10.20), ip_loi = mất mạng,
+    -- ip_theo_url = { [url] = "trả về" } để thử từng nguồn; lượt gọi ghi vào log.ip_get
+    local NGUON_IP = { ["https://api.ipify.org"] = true, ["https://ipv4.icanhazip.com"] = true, ["https://v4.ident.me"] = true }
+    log.ip_get = {}
+    function log.doi_ip(ip) tuy_chon.ip = ip end          -- đổi mạng giữa chừng
+    function log.mat_mang(loi) tuy_chon.ip_loi = loi end   -- true = mất mạng, nil = có lại
     function game:HttpGet(url)
+        if NGUON_IP[url] then
+            table.insert(log.ip_get, url)
+            if tuy_chon.ip_theo_url then
+                local kq = tuy_chon.ip_theo_url[url]
+                if kq == nil then error("HTTP 503") end
+                return kq
+            end
+            if tuy_chon.ip_loi then error("HttpGet failed: " .. tostring(tuy_chon.ip_loi)) end
+            return (tuy_chon.ip or "113.161.10.20") .. "\n"
+        end
         table.insert(log.httpget, url)
         if tuy_chon.http_loi then error(tuy_chon.http_loi) end
         if tuy_chon.nguon ~= nil then return tuy_chon.nguon end
@@ -217,7 +227,6 @@ return function(tuy_chon)
         env.setclipboard = function(s) table.insert(log.clipboard, s) end
     end
     if tuy_chon.khong_loadstring then env.loadstring = nil end
-    if tuy_chon.hwid then env.gethwid = function() return tuy_chon.hwid end end
     -- Roblox luôn có bit32 (Luau); Lua 5.1 thì không -> kiểm tra được cả hai nhánh
     env.bit32 = tuy_chon.bit32 or bit32
     if tuy_chon.gio_may_chu then

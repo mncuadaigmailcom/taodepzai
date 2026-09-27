@@ -7,8 +7,9 @@ const { TextEncoder } = require('node:util');
 const { execFileSync } = require('node:child_process');
 const { giaiMaDemo, taoMaV4, maThietBiTuGoc, chuanHoaMaThietBi } = require('../tools/decode-demo.cjs');
 
-// Mã thiết bị mà script Roblox hiển thị cho máy giả lập (ClientId MOCK-CLIENT-0001)
-const MA_TB = maThietBiTuGoc('client:MOCK-CLIENT-0001');
+// IP mạng giả lập của điện thoại -> mã thiết bị (script Roblox tính ra cùng mã khi cùng IP)
+const IP = '113.161.10.20';
+const MA_TB = maThietBiTuGoc('ip:' + IP);
 const THAN_TB = chuanHoaMaThietBi(MA_TB);
 
 const html = fs.readFileSync(path.join(__dirname, '..', 'index.html'), 'utf8');
@@ -123,6 +124,15 @@ function createPortal(sharedStore = new Map(), now = 1_000_000, tuyChon = {}) {
         extra.URLSearchParams = URLSearchParams;
     }
     if (tuyChon.crypto) extra.crypto = tuyChon.crypto;
+    // fetch giả cho các nguồn lấy IP: ipState.ip = IP trả về (null = mất mạng), ipState.theoUrl = trả theo từng URL
+    const fetchLog = [];
+    const ipState = { ip: tuyChon.ip === undefined ? IP : tuyChon.ip, theoUrl: tuyChon.ipTheoUrl || null };
+    extra.fetch = async url => {
+        fetchLog.push(url);
+        const kq = ipState.theoUrl ? ipState.theoUrl[url] : ipState.ip;
+        if (kq === null || kq === undefined) throw new TypeError('Failed to fetch');
+        return { ok: true, text: async () => kq + '\n' };
+    };
     vm.runInNewContext(script, {
         ...extra,
         document, window, localStorage, Date: ClockDate, TextEncoder,
@@ -135,7 +145,8 @@ function createPortal(sharedStore = new Map(), now = 1_000_000, tuyChon = {}) {
         console, Map
     });
     return {
-        elements, copies, store: sharedStore, advance, replaced,
+        elements, copies, store: sharedStore, advance, replaced, fetchLog, ipState,
+        flush: () => new Promise(resolve => setImmediate(resolve)),
         click: id => elements.get(id).fire('click'),
         blur: () => windowEvents.get('blur')(),
         focus: () => windowEvents.get('focus')(),
@@ -145,21 +156,18 @@ function createPortal(sharedStore = new Map(), now = 1_000_000, tuyChon = {}) {
 }
 
 async function completeTask(site, number) {
+    await site.flush();
     await site.click(`link-nv${number}`);
     site.blur();
     site.advance(5000);
     site.focus();
+    await site.flush();
 }
 
-async function enterDevice(site, code = MA_TB) {
-    site.elements.get('device-code').value = code;
-    await site.elements.get('device-code').fire('input');
-}
-
-async function enterName(site, name = 'HoiAnPlayer_09', device = MA_TB) {
+async function enterName(site, name = 'HoiAnPlayer_09') {
+    await site.flush(); // chờ trang tự lấy IP xong
     site.elements.get('player-name').value = name;
     await site.elements.get('player-name').fire('input');
-    if (device !== null) await enterDevice(site, device);
 }
 
 test('chỉ tạo mã demo khi đã nhập tên và hoàn thành đủ bốn nhiệm vụ', async () => {
@@ -197,11 +205,9 @@ test('chỉ tạo mã demo khi đã nhập tên và hoàn thành đủ bốn nhi
     await site.click('nut-giai-bai');
     assert.equal(site.modalOpen(), false);
 
-    await enterName(site, 'HoiAnPlayer_09', null);
-    assert.equal(button.disabled, true, 'Chưa có mã thiết bị thì chưa tạo key');
-    assert.match(button.children.get('span').textContent, /Nhập mã thiết bị/);
-    await enterDevice(site);
+    await enterName(site);
     assert.equal(button.disabled, false);
+    assert.equal(site.elements.get('device-code').textContent, `✓ ${MA_TB}`, 'Mã thiết bị tự lấy theo IP');
     await site.click('nut-giai-bai');
     assert.equal(site.modalOpen(), true);
     const code = site.elements.get('key-value').value;
@@ -272,7 +278,8 @@ test('F5 giữ tên/mốc nhiệm vụ, vẫn cần đủ bốn và giữ chức
     const second = createPortal(storage, 1_005_000);
     assert.equal(second.status(1), 'success');
     assert.equal(second.elements.get('player-name').value, 'HoiAnPlayer_09');
-    assert.equal(second.elements.get('device-code').value, MA_TB, 'Mã thiết bị giữ sau F5');
+    await second.flush();
+    assert.equal(second.elements.get('device-code').textContent, `✓ ${MA_TB}`, 'Mở lại trang vẫn tự lấy IP');
     assert.equal(storage.get('completedAtnv1'), firstTime);
     assert.equal(second.status(2), 'idle');
     assert.equal(second.elements.get('nut-giai-bai').disabled, true);
@@ -290,7 +297,6 @@ test('tên người chơi nằm trên nhiệm vụ, lưu sau F5 và hiển thị
     const name = first.elements.get('player-name');
     name.value = '  HoiAnPlayer_09  ';
     await name.fire('input');
-    await enterDevice(first);
     assert.equal(storage.get('taodepzai_player_name'), 'HoiAnPlayer_09');
     await first.click('nut-reset-thu-cong');
     assert.equal(storage.get('taodepzai_player_name'), 'HoiAnPlayer_09');
@@ -338,6 +344,7 @@ test('mã Free_ dùng thời điểm nhiệm vụ hoàn thành cuối, ổn đ�
     assert.equal(giaiMaDemo(originalCode).thoiDiem, lastTime);
 
     const afterReload = createPortal(storage, 1_020_000);
+    await afterReload.flush();
     await afterReload.click('nut-giai-bai');
     assert.equal(afterReload.elements.get('key-value').value, originalCode);
     await afterReload.click('back-btn');
@@ -380,7 +387,6 @@ test('phiên cũ không có mốc hoàn thành phải làm mới thay vì tạo 
     const storage = new Map([
         ['session_expire', '1180000'],
         ['taodepzai_player_name', 'Player_01'],
-        ['taodepzai_ma_thiet_bi', MA_TB],
         ...[1, 2, 3, 4].map(number => [`statusnv${number}`, 'success'])
     ]);
     const site = createPortal(storage);
@@ -472,6 +478,7 @@ test('số quay giữ sau F5, đổi khi làm mới phiên; đóng hộp thoại
     const so = storage.get('taodepzai_so_quay');
 
     const reload = createPortal(storage, 1_030_000);
+    await reload.flush();
     await reload.click('nut-giai-bai');
     assert.equal(reload.elements.get('key-value').value, code);
     assert.equal(reelDigits(reload), so.padStart(3, '0'));
@@ -532,54 +539,62 @@ test('không hiện ngày giờ / hạn key ở bất kỳ đâu trên trang, ke
     assert.equal(giaiMaDemo(code).thoiDiem, t);
 });
 
-test('mã thiết bị: kiểm tra ký tự kiểm tra, chấp nhận chữ thường / thiếu dấu gạch, key gắn đúng thiết bị', async () => {
-    const site = createPortal();
-    await enterName(site, 'Player_01', null);
+test('mã thiết bị tự lấy theo IP; không lấy được IP thì chưa cho tạo key, bấm "Lấy lại" để thử lại', async () => {
+    const site = createPortal(new Map(), 1_000_000, { ip: null });
+    await enterName(site, 'Player_01');
     for (const number of [1, 2, 3, 4]) await completeTask(site, number);
-    const help = site.elements.get('device-help');
     const button = site.elements.get('nut-giai-bai');
-    const sai = MA_TB.slice(0, -1) + (MA_TB.endsWith('0') ? '1' : '0'); // sai ký tự kiểm tra
-    for (const ma of [sai, 'ABCD-EFGH', 'ABCD-EFGH-IJKL-MNOP', 'UUUU-UUUU-UUUU', MA_TB.replace(/-/g, '') + 'X']) {
-        await enterDevice(site, ma);
-        assert.equal(button.disabled, true, ma);
-        assert.match(help.className, /loi/);
-        assert.match(help.textContent, /Mã thiết bị sai/);
-    }
-    const goLai = MA_TB.toLowerCase().replace(/-/g, ' ').replace(/0/g, 'o').replace(/1/g, 'l');
-    await enterDevice(site, goLai);
-    assert.equal(button.disabled, false, 'Chữ thường, khoảng trắng, O/0, L/1 vẫn nhận');
-    assert.match(help.className, /ok/);
-    assert.equal(help.textContent, `✓ Mã thiết bị hợp lệ: ${MA_TB}`);
-    await site.elements.get('device-code').fire('change');
-    assert.equal(site.elements.get('device-code').value, MA_TB, 'Rời ô thì định dạng lại XXXX-XXXX-XXXX');
+    const oMa = site.elements.get('device-code');
+    assert.equal(button.disabled, true, 'Chưa có IP thì chưa tạo key');
+    assert.match(button.children.get('span').textContent, /Không lấy được IP/);
+    assert.match(oMa.className, /loi/);
+    assert.deepEqual(site.fetchLog.slice(0, 3), ['https://api.ipify.org', 'https://ipv4.icanhazip.com', 'https://v4.ident.me'],
+        'Thử lần lượt cả 3 nguồn IPv4');
+
+    site.ipState.ip = IP; // có mạng lại
+    await site.click('device-refresh');
+    await site.flush();
+    assert.equal(oMa.textContent, `✓ ${MA_TB}`);
+    assert.match(oMa.className, /ok/);
+    assert.equal(button.disabled, false);
     await site.click('nut-giai-bai');
     const code1 = site.elements.get('key-value').value;
     assert.equal(giaiMaDemo(code1).thietBi, THAN_TB);
-    await site.click('back-btn');
+    assert.equal(code1.includes(IP), false);
+    for (const [id, el] of site.elements) {
+        if (id === 'key-value') continue;
+        assert.equal(String(el.textContent).includes(IP), false, `#${id} không hiện IP thật`);
+    }
 
-    const khac = maThietBiTuGoc('client:MAY-KHAC');
-    await enterDevice(site, khac);
-    await site.click('nut-giai-bai');
+    // Đổi mạng khi đang mở hộp thoại -> bấm Lấy lại -> key mới theo IP mới
+    site.ipState.ip = '14.232.7.9';
+    await site.click('device-refresh');
+    await site.flush();
     const code2 = site.elements.get('key-value').value;
-    assert.equal(giaiMaDemo(code2).thietBi, chuanHoaMaThietBi(khac));
-    assert.notEqual(code1, code2);
-    await site.click('back-btn');
-    await enterDevice(site, '');
-    assert.equal(site.store.has('taodepzai_ma_thiet_bi'), false);
-    assert.equal(button.disabled, true);
+    assert.notEqual(code2, code1);
+    assert.equal(giaiMaDemo(code2).thietBi, chuanHoaMaThietBi(maThietBiTuGoc('ip:14.232.7.9')));
 });
 
-test('link "Lấy key" từ Roblox (?tb=...&ten=...) tự điền tên + mã thiết bị rồi xoá khỏi thanh địa chỉ', () => {
+test('nguồn IP đầu trả sai (IPv6 / rác) thì dùng nguồn sau; IP được chuẩn hoá giống script Roblox', async () => {
+    const site = createPortal(new Map(), 1_000_000, { ipTheoUrl: {
+        'https://api.ipify.org': '2402:800:6310::1', 'https://ipv4.icanhazip.com': ' 113.161.010.020 ',
+    } });
+    await site.flush();
+    assert.equal(site.elements.get('device-code').textContent, `✓ ${MA_TB}`);
+    for (const sai of ['256.1.1.1', '1.2.3', '1.2.3.4.5', 'abc', '']) {
+        const s2 = createPortal(new Map(), 1_000_000, { ipTheoUrl: {
+            'https://api.ipify.org': sai, 'https://ipv4.icanhazip.com': sai, 'https://v4.ident.me': sai } });
+        await s2.flush();
+        assert.match(s2.elements.get('device-code').className, /loi/, sai);
+    }
+});
+
+test('link "Lấy key" từ Roblox (?ten=...) tự điền tên rồi xoá khỏi thanh địa chỉ', async () => {
     const storage = new Map();
-    const site = createPortal(storage, 1_000_000,
-        { search: `?tb=${MA_TB.toLowerCase()}&ten=${encodeURIComponent('Người chơi 01')}` });
-    assert.equal(site.elements.get('device-code').value, MA_TB);
+    const site = createPortal(storage, 1_000_000, { search: `?ten=${encodeURIComponent('Người chơi 01')}` });
     assert.equal(site.elements.get('player-name').value, 'Người chơi 01');
-    assert.equal(storage.get('taodepzai_ma_thiet_bi'), MA_TB);
     assert.equal(site.replaced.length, 1);
-    assert.equal(site.replaced[0][2], '/taodepzai/', 'Mã thiết bị không nằm lại trên thanh địa chỉ');
-    const sai = createPortal(new Map(), 1_000_000, { search: '?tb=ABCD-EFGH-JKMN' });
-    assert.equal(sai.elements.get('device-code').value, '', 'Mã sai trong link thì không điền');
+    assert.equal(site.replaced[0][2], '/taodepzai/');
     const khong = createPortal(new Map(), 1_000_000, { search: '' });
     assert.equal(khong.replaced.length, 0);
 });

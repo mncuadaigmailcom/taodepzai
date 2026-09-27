@@ -125,7 +125,7 @@ class LuauThatTest(unittest.TestCase):
                                 ["Tester", "nv1", (NOW - k.NGAY - 5) * 1000]])
         v3 = tao_v4([["Tester", "nv4", t, 58], ["NguoiKhac", "nv2", t, 999],
                      ["Tester", "nv3", (NOW - k.NGAY - 5) * 1000, 0], ["tester", "nv1", t, 0],
-                     ["Tester", "nv4", t, 1, k.ma_thiet_bi("client:MAY-KHAC")]])
+                     ["Tester", "nv4", t, 1, k.ma_thiet_bi("ip:14.232.7.9")]])
         sua = v3[0][:20] + ("A" if v3[0][20] != "A" else "B") + v3[0][21:]
         cases = {
             "v2_dung": v2[0], "v2_nguoi_khac": v2[1], "v2_het_han": v2[2],
@@ -144,8 +144,7 @@ class LuauThatTest(unittest.TestCase):
         self.assertIn("không phải của tài khoản Tester", kq["v3_nguoi_khac"][1])
         self.assertIn("hết hạn", kq["v2_het_han"][1])
         self.assertIn("không hợp lệ", kq["v3_bi_sua"][1])
-        self.assertIn("thiết bị khác", kq["v4_may_khac"][1])
-        self.assertIn(k.MA_TB, kq["v4_may_khac"][1])
+        self.assertIn("IP không khớp", kq["v4_may_khac"][1])
 
     def test_luu_key_tu_dien_va_tu_xoa(self):
         t = (NOW - k.NGAY + 600) * 1000  # còn 10 phút
@@ -208,22 +207,39 @@ ra("tu_xoa", p.o.Text, o_dia["taodepzai_key_12345.txt"] or "<đã xoá>", p.tt.T
         self.assertGreaterEqual(so_hop_le, 200)
 
 
-    def test_ma_thiet_bi_va_bit32_that(self):
+    def test_ma_thiet_bi_theo_ip_va_bit32_that(self):
         than = """
 ra("co_bit32", tostring(type(bit32) == "table" and bit32.rrotate ~= nil))
-local p = mo({ ten = "Tester", gio_may = %d, client_id = "ABC-123" })
-ra("tb", p.api.MaThietBi, p.gui:FindFirstChildDeep("MaThietBi").Text)
-local p2 = mo({ ten = "Tester", gio_may = %d, khong_client_id = true, hwid = "HW-9" })
-ra("hwid", p2.api.MaThietBi)
+local p = mo({ ten = "Tester", gio_may = %d, ip = "14.232.7.9" })
+ra("tb", p.api.MaThietBi(), p.gui:FindFirstChildDeep("MaThietBi").Text)
+local p2 = mo({ ten = "Tester", gio_may = %d, ip_theo_url = { ["https://v4.ident.me"] = " 014.232.007.009 " } })
+ra("du_phong", p2.api.MaThietBi())
+local p3 = mo({ ten = "Tester", gio_may = %d, ip_loi = "offline" })
+ra("mat_mang", tostring(p3.api.MaThietBi()), p3.gui:FindFirstChildDeep("MaThietBi").Text)
 p.gui:FindFirstChildDeep("NutLayKey").MouseButton1Click:Fire()
 ra("link", p.log.clipboard[1] or "")
-""" % (NOW, NOW)
+""" % (NOW, NOW, NOW)
         kq = chay_luau(than)
+        ma = k.ma_thiet_bi("ip:14.232.7.9")
         self.assertEqual(kq["co_bit32"], ["true"], "Luau thật phải có bit32 (nhánh Roblox dùng)")
-        self.assertEqual(kq["tb"][0], k.ma_thiet_bi("client:ABC-123"))
-        self.assertIn(k.ma_thiet_bi("client:ABC-123"), kq["tb"][1])
-        self.assertEqual(kq["hwid"], [k.ma_thiet_bi("hwid:HW-9")])
-        self.assertEqual(kq["link"], [f"https://mncuadaigmailcom.github.io/taodepzai/?tb={k.ma_thiet_bi('client:ABC-123')}&ten=Tester"])
+        self.assertEqual(kq["tb"][0], ma)
+        self.assertIn(ma, kq["tb"][1])
+        self.assertEqual(kq["du_phong"], [ma])
+        self.assertEqual(kq["mat_mang"][0], "nil")
+        self.assertIn("chưa lấy được", kq["mat_mang"][1])
+        self.assertEqual(kq["link"], ["https://mncuadaigmailcom.github.io/taodepzai/?ten=Tester"])
+
+    def test_key_mang_khac_trong_luau(self):
+        t = (NOW - 60) * 1000
+        ma = tao_v4([["Tester", "nv4", t, 5, k.ma_thiet_bi("ip:14.232.7.9")]])[0]
+        than = f"""
+do local n, tt = thu({chuoi_luau(ma)}) ra("khac", n, tt) end
+do local n, tt = thu({chuoi_luau(ma)}, {{ ten = "Tester", gio_may = {NOW}, ip = "14.232.7.9" }}) ra("dung", n, tt) end
+"""
+        kq = chay_luau(than)
+        self.assertEqual(kq["khac"][0], "0")
+        self.assertIn("IP không khớp", kq["khac"][1])
+        self.assertEqual(kq["dung"][0], "1")
 
 
 if __name__ == "__main__":

@@ -237,7 +237,12 @@
         .player-input:focus { border-color: var(--primary); outline: 2px solid var(--accent); outline-offset: 2px; }
         .player-help { margin: 9px 0 0; color: var(--text-muted); font-size: 11px; line-height: 1.5; }
         .device-label { margin-top: 16px; }
-        .device-input { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; letter-spacing: .08em; text-transform: uppercase; }
+        .device-row { display: flex; align-items: center; gap: 10px; }
+        .device-code { flex: 1; min-height: 46px; display: flex; align-items: center; padding: 0 14px; border: 1px solid var(--glass-border); border-radius: 14px; background: rgba(2, 6, 23, .45); color: var(--text-main); font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: 14px; font-weight: 700; letter-spacing: .06em; }
+        .device-code.ok { border-color: rgba(52, 211, 153, .45); color: #6ee7b7; }
+        .device-code.loi { border-color: rgba(248, 113, 113, .45); color: #fca5a5; }
+        #device-refresh { min-height: 46px; padding: 0 14px; border: 1px solid var(--glass-border); border-radius: 14px; background: rgba(255, 255, 255, .06); color: var(--text-main); font-weight: 700; cursor: pointer; }
+        #device-refresh:disabled { opacity: .6; cursor: wait; }
         .player-help.ok { color: #34d399; }
         .player-help.loi { color: #f87171; }
 
@@ -548,7 +553,7 @@
         </header>
 
         <div class="desc-box">
-            <strong>Hướng dẫn:</strong> Nhập tên người chơi, mã thiết bị (lấy trong script Roblox) và hoàn thành <strong>cả 4 nhiệm vụ</strong> (không cần theo thứ tự). Với từng nhiệm vụ, mở liên kết, ở tab mới ít nhất 5 giây rồi quay lại. Mã demo dùng thời điểm hoàn thành nhiệm vụ cuối cùng; phiên tự làm mới sau 3 phút.
+            <strong>Hướng dẫn:</strong> Nhập tên người chơi và hoàn thành <strong>cả 4 nhiệm vụ</strong> (không cần theo thứ tự). Với từng nhiệm vụ, mở liên kết, ở tab mới ít nhất 5 giây rồi quay lại. Mã demo dùng thời điểm hoàn thành nhiệm vụ cuối cùng; phiên tự làm mới sau 3 phút.
         </div>
         <p class="demo-banner" id="demo-banner">✦ Mã Free_ chỉ là mã demo, không kích hoạt script. Tên, thời gian và mã thiết bị được mã hoá HMAC-SHA256 trong key. Bốn liên kết hiện là mẫu.</p>
 
@@ -559,12 +564,15 @@
             </label>
             <input class="player-input" id="player-name" name="playerName" type="text" maxlength="32" autocomplete="nickname" spellcheck="false" required placeholder="Tên tài khoản Roblox của bạn" aria-describedby="player-help">
             <p class="player-help" id="player-help">Nhập <strong>đúng tên tài khoản Roblox</strong> (hoặc tên hiển thị) của bạn: script chỉ nhận key có tên trùng với tài khoản đang chơi, và key chỉ dùng được <strong>24 giờ</strong>. Tên được lưu trên trình duyệt và được mã hoá bên trong key.</p>
-            <label class="player-label device-label" for="device-code">
+            <div class="player-label device-label" id="device-label">
                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="5" y="2" width="14" height="20" rx="2"/><path d="M12 18h.01"/></svg>
-                Mã thiết bị
-            </label>
-            <input class="player-input device-input" id="device-code" name="deviceCode" type="text" maxlength="20" autocomplete="off" autocapitalize="characters" spellcheck="false" required placeholder="XXXX-XXXX-XXXX" aria-describedby="device-help">
-            <p class="player-help" id="device-help">Mở script trong Roblox: bảng key hiện <strong>Mã thiết bị</strong> (bấm “Sao chép mã”), hoặc bấm <strong>Lấy key</strong> để mở trang này với mã điền sẵn. Key chỉ dùng được trên đúng thiết bị đó.</p>
+                Mã thiết bị (tự lấy theo IP mạng)
+            </div>
+            <div class="device-row">
+                <span class="device-code" id="device-code" role="status" aria-live="polite" aria-labelledby="device-label">Đang tự lấy IP…</span>
+                <button id="device-refresh" type="button" aria-label="Lấy lại IP">🔄 Lấy lại</button>
+            </div>
+            <p class="player-help" id="device-help">Trang tự lấy <strong>IP mạng của điện thoại</strong> để gắn key với thiết bị, bạn không cần nhập gì. Hãy mở trang này và chơi Roblox <strong>trên cùng mạng</strong> (cùng wifi hoặc 4G, tắt VPN); đổi mạng thì cần lấy key mới.</p>
         </div>
 
         <section aria-labelledby="task-heading">
@@ -689,7 +697,6 @@
         const PLAYER_NAME_KEY = 'taodepzai_player_name';
         const SO_QUAY_KEY = 'taodepzai_so_quay';
         const NONCE_KEY = 'taodepzai_nonce';
-        const THIET_BI_KEY = 'taodepzai_ma_thiet_bi';
         const boNhoTam = new Map();
         const luu = {
             get(key) {
@@ -819,6 +826,20 @@
             for (let j = 0; dong.length < banRo.length; j++) dong = dong.concat(sha256([...khoa, j]));
             return MA_DEMO_PREFIX + base64Url([...nonce, ...tag, ...banRo.map((b, i) => b ^ dong[i])]);
         }
+        // Mã thiết bị theo IP: phải khớp NGUON_IP / ChuanHoaIp / ThanMaThietBi("ip:" .. ip) trong key-system.lua
+        const NGUON_IP = ['https://api.ipify.org', 'https://ipv4.icanhazip.com', 'https://v4.ident.me']; // chỉ IPv4
+        function chuanHoaIp(chuoi) {
+            const m = String(chuoi ?? '').trim().match(/^(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})$/);
+            if (!m) return null;
+            const so = m.slice(1).map(Number);
+            return so.every(n => n <= 255) ? so.join('.') : null;
+        }
+        function thanTuIp(ip) {
+            const h = sha256(utf8('taodepzai|thiet-bi|ip:' + ip));
+            let than = '';
+            for (let i = 0; i < 10; i++) than += BANG_THIET_BI[layBit(h, i * 5, 5)];
+            return than;
+        }
         // === MÃ HOÁ V4 KẾT THÚC ===
 
         const timerBadge = document.getElementById('timer-badge');
@@ -828,9 +849,11 @@
         const hopThoai = manHinhTrang.querySelector('.editor-wrapper');
         const keyField = document.getElementById('key-value');
         const playerNameInput = document.getElementById('player-name');
-        const deviceInput = document.getElementById('device-code');
-        const deviceHelp = document.getElementById('device-help');
-        const deviceHelpGoc = deviceHelp.innerHTML;
+        const deviceCode = document.getElementById('device-code');
+        const nutLayLaiIp = document.getElementById('device-refresh');
+        let thanThietBi = null;      // 10 ký tự, băm từ IP; null khi chưa lấy được
+        let dangLayIp = false;
+        let lanLayIpCuoi = 0;
         const playerDetails = document.getElementById('player-details');
         const playerSummary = document.getElementById('player-summary');
         const scriptField = document.getElementById('noi-dung-page2');
@@ -847,32 +870,16 @@
         let phanTuTruocHopThoai = null;
 
         scriptField.value = SCRIPT_CUA_BAN;
-        // Link "Lấy key" trong script Roblox: ?tb=<mã thiết bị>&ten=<tên> -> tự điền, rồi xoá khỏi thanh địa chỉ.
+        // Link "Lấy key" trong script Roblox: ?ten=<tên> -> tự điền tên, rồi xoá khỏi thanh địa chỉ.
         try {
             const thamSo = new URLSearchParams(location.search);
-            const thanTuLink = chuanHoaMaThietBi(thamSo.get('tb'));
             const tenTuLink = (thamSo.get('ten') || '').trim();
-            if (thanTuLink) luu.set(THIET_BI_KEY, dinhDangMaThietBi(thanTuLink));
             if (tenTuLink && tenTuLink.length <= 32) luu.set(PLAYER_NAME_KEY, tenTuLink);
-            if (thamSo.has('tb') || thamSo.has('ten')) history.replaceState(null, '', location.pathname + location.hash);
+            if ([...thamSo.keys()].length) history.replaceState(null, '', location.pathname + location.hash);
         } catch { /* Không có location/history (môi trường test). */ }
         playerNameInput.value = luu.get(PLAYER_NAME_KEY) || '';
-        deviceInput.value = luu.get(THIET_BI_KEY) || '';
-        deviceInput.addEventListener('input', () => {
-            const ma = deviceInput.value.trim();
-            if (ma) luu.set(THIET_BI_KEY, ma);
-            else luu.remove(THIET_BI_KEY);
-            hienThiTrangThaiThietBi();
-            kiemTraMoKhoa();
-        });
-        deviceInput.addEventListener('change', () => {
-            const than = chuanHoaMaThietBi(deviceInput.value);
-            if (than) {
-                deviceInput.value = dinhDangMaThietBi(than);
-                luu.set(THIET_BI_KEY, deviceInput.value);
-            }
-        });
-        hienThiTrangThaiThietBi();
+        nutLayLaiIp.addEventListener('click', () => capNhatIp(true, true));
+        capNhatIp(true).catch(() => {}); // Tự lấy IP ngay khi mở trang.
         playerNameInput.addEventListener('input', () => {
             const ten = playerNameInput.value.trim();
             if (ten) luu.set(PLAYER_NAME_KEY, ten);
@@ -929,18 +936,49 @@
         }
 
         function hienThiTrangThaiThietBi() {
-            const ma = deviceInput.value.trim();
-            const than = chuanHoaMaThietBi(ma);
-            if (!ma) {
-                deviceHelp.innerHTML = deviceHelpGoc;
-                deviceHelp.className = 'player-help';
-            } else if (than) {
-                deviceHelp.textContent = `✓ Mã thiết bị hợp lệ: ${dinhDangMaThietBi(than)}`;
-                deviceHelp.className = 'player-help ok';
+            if (thanThietBi) {
+                deviceCode.textContent = `✓ ${dinhDangMaThietBi(thanThietBi)}`;
+                deviceCode.className = 'device-code ok';
+            } else if (dangLayIp) {
+                deviceCode.textContent = 'Đang tự lấy IP…';
+                deviceCode.className = 'device-code';
             } else {
-                deviceHelp.textContent = '✕ Mã thiết bị sai. Hãy sao chép lại đúng 12 ký tự dạng XXXX-XXXX-XXXX từ bảng key trong Roblox.';
-                deviceHelp.className = 'player-help loi';
+                deviceCode.textContent = '✕ Không lấy được IP, bấm Lấy lại';
+                deviceCode.className = 'device-code loi';
             }
+            nutLayLaiIp.disabled = dangLayIp;
+        }
+
+        async function layIp() {
+            for (const url of NGUON_IP) {
+                try {
+                    const hetGio = new Promise((_, loi) => setTimeout(() => loi(new Error('hết giờ')), 7000));
+                    const res = await Promise.race([fetch(url, { cache: 'no-store' }), hetGio]);
+                    const ip = res.ok ? chuanHoaIp(await res.text()) : null;
+                    if (ip) return ip;
+                } catch { /* Thử nguồn tiếp theo. */ }
+            }
+            return null;
+        }
+
+        // Lấy IP khi mở trang, khi bấm "Lấy lại" và khi quay lại trang (tối đa mỗi 30 giây một lần).
+        async function capNhatIp(batBuoc = false, baoKetQua = false) {
+            if (dangLayIp || (!batBuoc && Date.now() - lanLayIpCuoi < 30000)) return;
+            dangLayIp = true;
+            lanLayIpCuoi = Date.now();
+            hienThiTrangThaiThietBi();
+            const ip = await layIp();
+            const cu = thanThietBi;
+            thanThietBi = ip ? thanTuIp(ip) : null;
+            dangLayIp = false;
+            hienThiTrangThaiThietBi();
+            kiemTraMoKhoa();
+            if (thanThietBi && thanThietBi !== cu && manHinhTrang.classList.contains('show') && !henGioQuay) {
+                capNhatMa();
+                hienThiTenNguoiChoi();
+            }
+            if (baoKetQua) notify(thanThietBi ? '✓ Đã lấy mã thiết bị theo IP mạng.' : 'Không lấy được IP. Kiểm tra mạng rồi thử lại.',
+                thanThietBi ? 'success' : 'error');
         }
 
         // Nonce 12 byte giữ trong phiên (key ổn định sau F5); quay số mới / làm mới phiên thì đổi nonce.
@@ -1012,7 +1050,7 @@
             const soCongHoanThanh = NHIEM_VU.filter(nv => trangThai(nv) === 'success').length;
             const hetHan = thoiGianHetHan();
             const coTen = !!playerNameInput.value.trim();
-            const coThietBi = !!chuanHoaMaThietBi(deviceInput.value);
+            const coThietBi = !!thanThietBi;
             const coMocThoiGian = !!lanHoanThanhCuoi();
             const moKhoa = soCongHoanThanh === NHIEM_VU.length && coTen && coThietBi && coMocThoiGian &&
                 hetHan !== null && Number.isFinite(hetHan) && Date.now() < hetHan;
@@ -1023,7 +1061,7 @@
             if (moKhoa) huongDan = '✦ XEM MÃ DEMO FREE_';
             else if (soCongHoanThanh === NHIEM_VU.length && !coMocThoiGian) huongDan = 'Làm mới phiên để tạo mã demo';
             else if (soCongHoanThanh === NHIEM_VU.length && !coTen) huongDan = 'Nhập tên người chơi để tạo mã demo';
-            else if (soCongHoanThanh === NHIEM_VU.length && !coThietBi) huongDan = 'Nhập mã thiết bị (trong script Roblox) để tạo mã';
+            else if (soCongHoanThanh === NHIEM_VU.length && !coThietBi) huongDan = dangLayIp ? 'Đang lấy IP thiết bị…' : 'Không lấy được IP: bấm Lấy lại';
             else if (soCongHoanThanh === 0) huongDan = 'Nhập tên và hoàn thành 4 nhiệm vụ';
             else huongDan = `Còn ${NHIEM_VU.length - soCongHoanThanh} nhiệm vụ để tạo mã demo`;
             nutGiaiBai.querySelector('span').textContent = huongDan;
@@ -1146,11 +1184,11 @@
 
         function capNhatMa() {
             const lanCuoi = lanHoanThanhCuoi();
-            if (!lanCuoi || !playerNameInput.value.trim() || !chuanHoaMaThietBi(deviceInput.value)) return false;
+            if (!lanCuoi || !playerNameInput.value.trim() || !thanThietBi) return false;
             const so = laySoQuay();
             hienThiSoQuay(so);
             // Không hiện ngày/giờ ở đâu cả: mọi thông tin chỉ nằm (đã mã hoá) trong key.
-            keyField.value = taoMaDemo(playerNameInput.value, lanCuoi, so, deviceInput.value, layNonce());
+            keyField.value = taoMaDemo(playerNameInput.value, lanCuoi, so, dinhDangMaThietBi(thanThietBi), layNonce());
             return true;
         }
 
@@ -1189,7 +1227,7 @@
 
         function hienThiTenNguoiChoi() {
             const ten = playerNameInput.value.trim();
-            const than = chuanHoaMaThietBi(deviceInput.value);
+            const than = thanThietBi;
             playerSummary.textContent = ten ? `Người chơi: ${ten}${than ? ` · Thiết bị: ${dinhDangMaThietBi(than)}` : ''}` : '';
             playerSummary.hidden = !ten;
         }
@@ -1252,10 +1290,10 @@
         });
 
         window.addEventListener('blur', ghiNhanRoiTrang);
-        window.addEventListener('focus', kiemTraTienTrinhNhiemVu);
+        window.addEventListener('focus', () => { kiemTraTienTrinhNhiemVu(); capNhatIp(); });
         document.addEventListener('visibilitychange', () => {
             if (document.visibilityState === 'hidden') ghiNhanRoiTrang();
-            else kiemTraTienTrinhNhiemVu();
+            else { kiemTraTienTrinhNhiemVu(); capNhatIp(); }
         });
         window.addEventListener('storage', event => {
             if (event.key === PLAYER_NAME_KEY) {
@@ -1265,11 +1303,7 @@
                     if (!henGioQuay) capNhatMa();
                 }
             }
-            if (event.key === THIET_BI_KEY) {
-                deviceInput.value = luu.get(THIET_BI_KEY) || '';
-                hienThiTrangThaiThietBi();
-            }
-            if ((event.key === SO_QUAY_KEY || event.key === NONCE_KEY || event.key === THIET_BI_KEY) &&
+            if ((event.key === SO_QUAY_KEY || event.key === NONCE_KEY) &&
                 manHinhTrang.classList.contains('show') && !henGioQuay) capNhatMa();
             if (!kiemTraHanSuDung()) veLai(); // Đồng bộ nếu trang được mở ở nhiều tab.
         });

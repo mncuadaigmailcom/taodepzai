@@ -4,12 +4,15 @@ Trang HTML tĩnh tại `index.html`. Mở tệp trong trình duyệt hoặc ch�
 
 ## Mã Free_v4_ (mã hoá HMAC-SHA256 + mã thiết bị)
 
-Để tạo key, người dùng nhập **tên người chơi**, **mã thiết bị** và hoàn thành 4 nhiệm vụ.
+Để tạo key, người dùng chỉ cần nhập **tên người chơi** và hoàn thành 4 nhiệm vụ. **Mã thiết bị được lấy tự động theo IP mạng của điện thoại**, không cần nhập:
 
-- **Mã thiết bị** có dạng `XXXX-XXXX-XXXX` và hiện trong bảng key của script Roblox.
-  - Bấm “Sao chép mã” để lấy mã, hoặc bấm **Lấy key** để mở trang với tên và mã điền sẵn qua `?tb=...&ten=...`.
-  - Trang đọc xong sẽ xoá tham số khỏi thanh địa chỉ.
-  - Mã được băm SHA-256 từ ClientId của Roblox (hoặc `gethwid()` của executor, cuối cùng là UserId). Hai ký tự cuối là ký tự kiểm tra, nên gõ sai sẽ bị báo ngay.
+- **Trang web:** khi mở trang (và khi quay lại trang, hoặc bấm “🔄 Lấy lại”), trang gọi lần lượt `https://api.ipify.org`, `https://ipv4.icanhazip.com`, `https://v4.ident.me` (chỉ IPv4) để lấy IP công khai.
+- **Tạo mã:** IP được chuẩn hoá rồi băm SHA-256 (`"taodepzai|thiet-bi|ip:" + ip`) thành mã `XXXX-XXXX-XXXX`. Trang chỉ hiện mã này, không hiện IP thật.
+- **Script Roblox:** tự lấy IP từ cùng các nguồn bằng `game:HttpGet` rồi so khớp. Nếu không khớp, script lấy lại IP một lần (phòng khi vừa đổi mạng) rồi mới từ chối.
+- **Vì vậy phải lấy key và chơi Roblox trên cùng mạng** (cùng wifi hoặc cùng 4G, tắt VPN / iCloud Private Relay). Đổi mạng thì cần lấy key mới.
+  - Key đã lưu không bị xoá khi đang ở mạng khác hoặc mất mạng; về lại mạng cũ là dùng tiếp.
+  - Người dùng chung wifi (hoặc chung IP của nhà mạng) có thể dùng chung key.
+- Nút **Lấy key** trong game sao chép link trang kèm `?ten=...` để trang tự điền tên. Trang đọc xong thì xoá tham số khỏi thanh địa chỉ.
 - **Không hiện ngày giờ ở đâu cả.** Dòng dưới vòng quay chỉ còn chữ mô tả cố định. Thời điểm, tên và mã thiết bị chỉ nằm trong key ở dạng đã mã hoá.
 - **Vòng quay 3 số:** mỗi lần quay sẽ đổi số và đổi **nonce ngẫu nhiên 96 bit** (`crypto.getRandomValues`), nên key luôn khác, kể cả khi trùng số. Key vẫn giữ nguyên sau F5; làm mới phiên thì đổi nonce.
 
@@ -40,7 +43,7 @@ Tìm mảng `NHIEM_VU` ở cuối `index.html`:
 
 ## Cách hoạt động
 
-Bốn nhiệm vụ xếp thành một cột. Người dùng **phải nhập tên + mã thiết bị** và hoàn thành **đủ cả bốn nhiệm vụ** trong phiên 3 phút, không cần theo thứ tự. Mỗi nhiệm vụ theo dõi riêng 5 giây rời tab; quay lại sớm chỉ báo lỗi nhiệm vụ đó.
+Bốn nhiệm vụ xếp thành một cột. Người dùng **phải nhập tên** (mã thiết bị tự lấy theo IP) và hoàn thành **đủ cả bốn nhiệm vụ** trong phiên 3 phút, không cần theo thứ tự. Mỗi nhiệm vụ theo dõi riêng 5 giây rời tab; quay lại sớm chỉ báo lỗi nhiệm vụ đó.
 
 Khi một nhiệm vụ hoàn thành, thời điểm hoàn thành được lưu trong trình duyệt. Sau 4/4, trang lấy **thời điểm của nhiệm vụ hoàn thành cuối cùng** và ID nhiệm vụ đó cùng tên người chơi để tạo mã `Free_v4_...` (đã mã hoá, xem trên). Mã ổn định sau F5 nếu vẫn cùng tên, phiên và số vòng quay; đổi tên, bấm **🎰 Quay số mới** hoặc tạo phiên mới sẽ tạo mã khác. Tên được lưu trong trình duyệt và giữ lại khi reset phiên, còn trạng thái nhiệm vụ và mốc thời gian được reset sau 3 phút hoặc khi bấm nút làm mới. Bản sao của mã đã gửi đi vẫn có thể đọc được sau khi reset.
 
@@ -58,7 +61,7 @@ Trang vẫn có đếm ngược, reset thủ công/tự động, thông báo, hi
 
 ## Script nhập key cho Roblox (`key-system.lua`)
 
-Script mở bảng nhập key trong game và hiện **mã thiết bị** của máy. Nó giải mã key `Free_v4_...` bằng cùng thuật toán (SHA-256 dùng `bit32` của Roblox; không có `bit32` thì tự tính) rồi kiểm tra các điều dưới đây.
+Script mở bảng nhập key trong game, tự lấy IP mạng và hiện **mã thiết bị (IP)** của máy. Nó giải mã key `Free_v4_...` bằng cùng thuật toán (SHA-256 dùng `bit32` của Roblox; không có `bit32` thì tự tính) rồi kiểm tra các điều dưới đây.
 
 Mặc định script nhận **cả key `Free_v2_`** của trang đang chạy trên GitHub Pages trước khi merge bản mới. Key v2 **không có mã thiết bị**, nhưng vẫn phải đúng tên và còn hạn. Khi trang đã lên bản v4, hãy đặt `CHAP_NHAN_KEY_V2 = false` để bắt buộc mã thiết bị. Key `Free_v3_` cũ không còn được nhận.
 
@@ -66,9 +69,8 @@ Mặc định script nhận **cả key `Free_v2_`** của trang đang chạy tr�
 2. **Đúng người chơi:** tên trong key phải trùng **tên tài khoản Roblox** (`player.Name`) hoặc **tên hiển thị** (`DisplayName`).
    - Không phân biệt hoa/thường, bỏ dấu `@` ở đầu.
    - Key của người khác bị từ chối, và bảng không hiện tên chủ key.
-3. **Đúng thiết bị:** mã thiết bị trong key phải trùng mã của máy đang chạy.
-   - Gửi key hoặc chép file key sang máy khác đều bị từ chối.
-   - Khi từ chối, bảng báo mã của máy mình để lấy key mới.
+3. **Đúng thiết bị (IP):** mã thiết bị trong key phải trùng mã tính từ IP mạng hiện tại, nên người ở mạng khác không dùng được key.
+   - Không lấy được IP thì báo lỗi mạng và chưa chạy script; bấm Xác nhận lại khi có mạng.
    - Tắt bằng `KIEM_TRA_THIET_BI = false`.
 4. **Còn hạn:** key dùng được **24 giờ** kể từ lúc hoàn thành nhiệm vụ cuối.
    - Giờ lấy theo máy chủ Roblox (`workspace:GetServerTimeNow()`), nên chỉnh đồng hồ máy không gia hạn được key.
@@ -76,7 +78,7 @@ Mặc định script nhận **cả key `Free_v2_`** của trang đang chạy tr�
 
 **Lưu key:** key xác nhận thành công được lưu vào file của executor (`writefile`), mỗi tài khoản một file `taodepzai_key_<UserId>.txt`. Lần sau mở script, key còn hạn được **tự điền vào ô nhập** (vẫn cần bấm Xác nhận). Khi key hết hạn 24 giờ (tính từ lúc hoàn thành nhiệm vụ cuối), key **tự bị xoá** khỏi file: ngay lúc hết hạn nếu game còn mở (xoá cả trong ô nhập nếu bảng đang hiện), hoặc lúc mở lại script. Key sai không ghi đè key đã lưu. Executor không có `writefile` thì script vẫn chạy, chỉ không lưu được.
 
-Khi hợp lệ, bảng báo thời gian còn lại, **xoá giao diện nhập key** rồi tải và chạy `https://mncuadaigmailcom.github.io/aiaiaitao2/script.js`. Nếu tải lỗi hoặc script lỗi cú pháp, bảng vẫn giữ lại để thử lại. Có thể nhấn Enter để xác nhận. Nút “Lấy key” sao chép link trang tạo mã kèm sẵn mã thiết bị và tên; nút “Sao chép mã” sao chép mã thiết bị.
+Khi hợp lệ, bảng báo thời gian còn lại, **xoá giao diện nhập key** rồi tải và chạy `https://mncuadaigmailcom.github.io/aiaiaitao2/script.js`. Nếu tải lỗi hoặc script lỗi cú pháp, bảng vẫn giữ lại để thử lại. Có thể nhấn Enter để xác nhận. Nút “Lấy key” sao chép link trang tạo mã kèm sẵn tên.
 
 Sau khi GitHub Pages cập nhật, chạy trong executor:
 
@@ -96,4 +98,4 @@ git fetch origin main
 LUAU=/tmp/luau-src/luau python3 tests/luau_test.py
 ```
 
-**Lưu ý:** cách này chặn được việc xem hạn key, dùng lại key của người khác, key của máy khác và key đã quá 24 giờ. Tuy nhiên bí mật mã hoá nằm công khai trong mã nguồn, nên người biết đọc code vẫn có thể tự tạo key cho tên của chính họ mà không làm nhiệm vụ, hoặc sửa script để bỏ qua kiểm tra. Muốn chặn hẳn cần máy chủ cấp key có chữ ký bí mật.
+**Lưu ý:** cách này chặn được việc xem hạn key, dùng lại key của người khác, key của người ở mạng (IP) khác và key đã quá 24 giờ. Tuy nhiên bí mật mã hoá nằm công khai trong mã nguồn, nên người biết đọc code vẫn có thể tự tạo key cho tên của chính họ mà không làm nhiệm vụ, hoặc sửa script để bỏ qua kiểm tra. Muốn chặn hẳn cần máy chủ cấp key có chữ ký bí mật.

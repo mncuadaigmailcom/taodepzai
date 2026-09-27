@@ -1,14 +1,15 @@
 --[[
     taodepzai · KEY SYSTEM (v4)
     Key Free_v4_... do trang https://mncuadaigmailcom.github.io/taodepzai/ tạo ra gồm
-    [số vòng quay 3 số, thời điểm hoàn thành (ms), nhiệm vụ cuối, MÃ THIẾT BỊ, tên người chơi],
+    [số vòng quay 3 số, thời điểm hoàn thành (ms), nhiệm vụ cuối, MÃ THIẾT BỊ (theo IP), tên người chơi],
     được mã hoá bằng HMAC-SHA256 (nonce ngẫu nhiên 96 bit + tag 128 bit). Nhìn key không đọc được
     tên, ngày giờ hay mã thiết bị; sửa 1 ký tự là key hỏng.
     Script giải mã key (cùng thuật toán với taoMaDemo trong index.html) rồi kiểm tra:
       0. Tag khớp -> key không bị sửa / tự bịa.
       1. Tên trong key phải trùng tên tài khoản Roblox (hoặc tên hiển thị) của bạn.
-      2. Mã thiết bị trong key phải trùng mã của máy đang chạy (bảng key hiện mã này,
-         nút "Lấy key" mở trang web với mã điền sẵn) -> gửi key cho máy khác không dùng được.
+      2. Còn hạn 24 giờ (xem dưới) và mã thiết bị trong key phải trùng mã của máy đang chạy:
+         mã = băm SHA-256 của IP mạng; trang web tự lấy IP của điện thoại lúc làm nhiệm vụ,
+         script tự lấy IP lúc chơi -> gửi key cho người ở mạng khác không dùng được.
       3. Key chỉ có hạn 24 giờ kể từ lúc hoàn thành nhiệm vụ cuối cùng
          (giờ lấy theo máy chủ Roblox nếu có, chỉnh đồng hồ máy không gia hạn được).
     Đúng hết -> ẩn (xoá) bảng nhập key rồi chạy script chính.
@@ -25,7 +26,7 @@ local CAU_HINH = {
     KEY_PREFIX         = "Free_v4_",      -- mã hoá HMAC-SHA256: số quay + thời điểm + tên + mã thiết bị
     CHAP_NHAN_KEY_V2   = true,            -- nhận cả key Free_v2_ (trang web bản cũ đang chạy, KHÔNG có
                                           -- mã thiết bị); đặt false sau khi trang web đã lên bản Free_v4_
-    KIEM_TRA_THIET_BI  = true,            -- key v4 phải được tạo bằng mã thiết bị của máy này
+    KIEM_TRA_THIET_BI  = true,            -- key v4 phải được tạo trên cùng IP mạng với máy đang chơi
     HAN_KEY_GIAY       = 24 * 60 * 60,    -- key có hạn 1 ngày
     LECH_GIO_CHO_PHEP  = 5 * 60,          -- cho phép giờ máy lệch tối đa 5 phút
     KIEM_TRA_TEN       = true,            -- false = không bắt trùng tên
@@ -364,7 +365,7 @@ local function LayBit(dsByte, tu, so)
 end
 
 -- ================= Mã thiết bị =================
--- Mã gốc của máy (ClientId Roblox / HWID executor) -> băm SHA-256 -> 10 ký tự + 2 ký tự kiểm tra.
+-- Mã gốc ("ip:" .. IP mạng) -> băm SHA-256 -> 10 ký tự + 2 ký tự kiểm tra.
 -- Phải khớp chuanHoaMaThietBi / maKiemTraThietBi trong index.html.
 local BANG_THIET_BI = "0123456789ABCDEFGHJKMNPQRSTVWXYZ" -- Crockford base32 (không có I, L, O, U)
 
@@ -387,16 +388,44 @@ local function DinhDangThietBi(than)
     return d:sub(1, 4) .. "-" .. d:sub(5, 8) .. "-" .. d:sub(9, 12)
 end
 
-local function LayMaGocThietBi()
-    local ok, id = pcall(function() return game:GetService("RbxAnalyticsService"):GetClientId() end)
-    if ok and type(id) == "string" and id ~= "" then return "client:" .. id end
-    ok, id = pcall(function() return gethwid() end)
-    if ok and type(id) == "string" and id ~= "" then return "hwid:" .. id end
-    return "user:" .. tostring(player.UserId)
+-- Mã thiết bị = băm của IP mạng (IPv4 công khai) của máy. Trang web tự lấy IP của điện thoại
+-- lúc làm nhiệm vụ, script tự lấy IP lúc chơi -> phải cùng mạng (cùng wifi / 4G) mới khớp.
+-- Phải khớp NGUON_IP / thanTuIp trong index.html.
+local NGUON_IP = { "https://api.ipify.org", "https://ipv4.icanhazip.com", "https://v4.ident.me" }
+
+-- "1.02.3.4\n" -> "1.2.3.4"; nil nếu không phải IPv4
+local function ChuanHoaIp(s)
+    if type(s) ~= "string" then return nil end
+    local a, b, c, d = Trim(s):match("^(%d%d?%d?)%.(%d%d?%d?)%.(%d%d?%d?)%.(%d%d?%d?)$")
+    if not a then return nil end
+    local so = { tonumber(a), tonumber(b), tonumber(c), tonumber(d) }
+    for i = 1, 4 do
+        if so[i] > 255 then return nil end
+    end
+    return table.concat(so, ".")
 end
 
-local THAN_THIET_BI = ThanMaThietBi(LayMaGocThietBi())
-local MA_THIET_BI = DinhDangThietBi(THAN_THIET_BI) -- dạng XXXX-XXXX-XXXX, hiện trong bảng key
+local function LayIp()
+    for _, url in ipairs(NGUON_IP) do
+        local ok, kq = pcall(function() return game:HttpGet(url) end)
+        local ip = ok and ChuanHoaIp(kq)
+        if ip then return ip end
+    end
+    return nil
+end
+
+local THAN_THIET_BI, MA_THIET_BI -- nil khi chưa lấy được IP
+local KhiDoiThietBi = function() end -- giao diện gắn vào sau
+
+local function CapNhatThietBi()
+    local ip = LayIp()
+    if ip then
+        THAN_THIET_BI = ThanMaThietBi("ip:" .. ip)
+        MA_THIET_BI = DinhDangThietBi(THAN_THIET_BI)
+    end
+    KhiDoiThietBi()
+    return THAN_THIET_BI
+end
 
 -- ================= Key v4 =================
 -- Free_v4_ + base64url( nonce 12 byte | tag 16 byte | bản mã )
@@ -527,10 +556,6 @@ local function KiemTraKey(nhap)
         return false, "Key này không phải của tài khoản " .. player.Name
             .. ". Trên web hãy nhập đúng tên \"" .. player.Name .. "\"" .. tenHienThi .. " rồi lấy key mới."
     end
-    if CAU_HINH.KIEM_TRA_THIET_BI and thongTin.phienBan >= 4 and thongTin.thietBi ~= THAN_THIET_BI then
-        return false, "Key này được tạo cho thiết bị khác. Mã thiết bị của bạn là " .. MA_THIET_BI
-            .. ": nhập mã này trên web (hoặc bấm \"Lấy key\") rồi lấy key mới."
-    end
     local bayGio = BayGio()
     if thongTin.thoiDiem - bayGio > CAU_HINH.LECH_GIO_CHO_PHEP then
         return false, "Thời gian trong key ở tương lai. Kiểm tra lại giờ máy rồi lấy key mới."
@@ -539,6 +564,18 @@ local function KiemTraKey(nhap)
     thongTin.hetHan = hetHan
     if bayGio >= hetHan then
         return false, "Key đã hết hạn lúc " .. DinhDangGio(hetHan) .. ". Hãy lấy key mới."
+    end
+    if CAU_HINH.KIEM_TRA_THIET_BI and thongTin.phienBan >= 4 and thongTin.thietBi ~= THAN_THIET_BI then
+        -- Chưa có IP hoặc mạng vừa đổi -> lấy lại IP một lần rồi so tiếp
+        CapNhatThietBi()
+        if not THAN_THIET_BI then
+            return false, "Không lấy được IP mạng để kiểm tra key. Kiểm tra kết nối rồi bấm Xác nhận lại.",
+                { loi = "mang" }
+        end
+        if thongTin.thietBi ~= THAN_THIET_BI then
+            return false, "Key này được tạo trên thiết bị / mạng khác (IP không khớp). Hãy mở trang lấy key "
+                .. "bằng điện thoại này, cùng wifi hoặc 4G đang chơi, rồi lấy key mới.", { loi = "thiet_bi" }
+        end
     end
     thongTin.conLai = hetHan - bayGio
     thongTin.ma = ma
@@ -673,33 +710,18 @@ New("TextLabel", {
     TextXAlignment = Enum.TextXAlignment.Left,
 }, khung)
 
-New("TextLabel", {
+local nhanThietBi = New("TextLabel", {
     Name = "MaThietBi",
     BackgroundTransparency = 1,
     Position = UDim2.new(0, 16, 0, 58),
-    Size = UDim2.new(1, -120, 0, 24),
+    Size = UDim2.new(1, -32, 0, 24),
     Font = Enum.Font.GothamBold,
-    Text = "Mã thiết bị: " .. MA_THIET_BI,
+    Text = "Mã thiết bị (IP): đang lấy...",
     TextColor3 = MAU.CHU,
     TextSize = 13,
+    TextTruncate = Enum.TextTruncate.AtEnd,
     TextXAlignment = Enum.TextXAlignment.Left,
 }, khung)
-
-local nutChepThietBi = New("TextButton", {
-    Name = "NutChepThietBi",
-    AnchorPoint = Vector2.new(1, 0),
-    Position = UDim2.new(1, -16, 0, 58),
-    Size = UDim2.new(0, 96, 0, 24),
-    BackgroundColor3 = MAU.O,
-    BorderSizePixel = 0,
-    Font = Enum.Font.GothamBold,
-    Text = "Sao chép mã",
-    TextColor3 = MAU.VANG,
-    TextSize = 12,
-    AutoButtonColor = true,
-}, khung)
-Bo(nutChepThietBi, 6)
-Vien(nutChepThietBi)
 
 local nutDong = New("TextButton", {
     Name = "NutDong",
@@ -784,6 +806,13 @@ local trangThai = New("TextLabel", {
 }, khung)
 
 gui.Parent = parentGui
+
+KhiDoiThietBi = function()
+    if gui.Parent == nil then return end
+    nhanThietBi.Text = MA_THIET_BI and ("Mã thiết bị (IP): " .. MA_THIET_BI)
+        or "Mã thiết bị (IP): chưa lấy được, kiểm tra mạng"
+end
+CapNhatThietBi()
 
 -- ================= Logic =================
 local function BaoTrangThai(text, mau)
@@ -907,25 +936,17 @@ local function MaHoaUrl(s)
     return (tostring(s):gsub("[^%w%-_%.~]", function(c) return string.format("%%%02X", c:byte()) end))
 end
 
--- Link lấy key kèm sẵn mã thiết bị + tên -> trang web tự điền
+-- Link lấy key kèm sẵn tên -> trang web tự điền (mã thiết bị trang tự lấy theo IP)
 local function LinkLayKey()
     local noi = CAU_HINH.LINK_LAY_KEY:find("?", 1, true) and "&" or "?"
-    return CAU_HINH.LINK_LAY_KEY .. noi .. "tb=" .. MA_THIET_BI .. "&ten=" .. MaHoaUrl(player.Name)
+    return CAU_HINH.LINK_LAY_KEY .. noi .. "ten=" .. MaHoaUrl(player.Name)
 end
-
-nutChepThietBi.MouseButton1Click:Connect(function()
-    if SaoChep(MA_THIET_BI) then
-        BaoTrangThai("Đã sao chép mã thiết bị " .. MA_THIET_BI .. ". Dán vào ô \"Mã thiết bị\" trên web.", MAU.VANG)
-    else
-        BaoTrangThai("Mã thiết bị của bạn: " .. MA_THIET_BI .. " (nhập vào ô \"Mã thiết bị\" trên web).", MAU.VANG)
-    end
-end)
 
 if nutLayKey then
     nutLayKey.MouseButton1Click:Connect(function()
         local link = LinkLayKey()
         if SaoChep(link) then
-            BaoTrangThai("Đã sao chép link lấy key (có sẵn mã thiết bị), dán vào trình duyệt.", MAU.VANG)
+            BaoTrangThai("Đã sao chép link lấy key, dán vào trình duyệt trên máy này (cùng mạng).", MAU.VANG)
         else
             BaoTrangThai("Link lấy key: " .. link, MAU.VANG)
         end
@@ -941,12 +962,16 @@ end)
 if CAU_HINH.LUU_KEY then
     local daLuu = DocKeyDaLuu()
     if daLuu and daLuu ~= "" then
-        local conHan, _, tt = KiemTraKey(daLuu)
+        local conHan, loi, tt = KiemTraKey(daLuu)
         if conHan then
             oKey.Text = tt.ma
             BaoTrangThai("Đã điền key đã lưu · còn " .. DinhDangConLai(tt.conLai)
                 .. " (tự xoá lúc " .. DinhDangGio(tt.hetHan) .. "). Bấm Xác nhận key.", MAU.VANG)
             HenGioXoaKey(tt.ma, tt.conLai)
+        elseif tt and (tt.loi == "mang" or tt.loi == "thiet_bi") then
+            -- Lỗi mạng / đang ở mạng khác: giữ file (quay lại đúng mạng là dùng tiếp)
+            oKey.Text = daLuu
+            BaoTrangThai("Key đã lưu: " .. tostring(loi), MAU.VANG)
         else
             XoaKeyDaLuu()
         end
@@ -954,4 +979,4 @@ if CAU_HINH.LUU_KEY then
 end
 
 -- Trả về các hàm kiểm tra (để test; không ảnh hưởng khi chạy bằng loadstring)
-return { GiaiMaKey = GiaiMaKey, KiemTraKey = KiemTraKey, MaThietBi = MA_THIET_BI }
+return { GiaiMaKey = GiaiMaKey, KiemTraKey = KiemTraKey, MaThietBi = function() return MA_THIET_BI end }

@@ -68,7 +68,8 @@ def ma_thiet_bi(ma_goc):
     return f"{d[:4]}-{d[4:8]}-{d[8:]}"
 
 
-GOC_TB = "client:MOCK-CLIENT-0001"  # ClientId mặc định của mock
+IP = "113.161.10.20"  # IP mạng mặc định của mock (tests/roblox_mock.lua)
+GOC_TB = "ip:" + IP
 THAN_TB = than_thiet_bi(GOC_TB)
 MA_TB = ma_thiet_bi(GOC_TB)
 
@@ -298,8 +299,7 @@ class GiaoDienTest(unittest.TestCase):
     def test_nut_lay_key_sao_chep_link(self):
         p = Phien()
         p.bam("NutLayKey")
-        self.assertEqual(list(p.log.clipboard.values()),
-                         [f"https://mncuadaigmailcom.github.io/taodepzai/?tb={MA_TB}&ten=Tester"])
+        self.assertEqual(list(p.log.clipboard.values()), ["https://mncuadaigmailcom.github.io/taodepzai/?ten=Tester"])
 
     def test_nut_dong(self):
         p = Phien()
@@ -626,7 +626,7 @@ class GiaiMaTest(unittest.TestCase):
                  "rrotate": goi(lambda a, n: ((a >> n) | (a << (32 - n))) & 0xFFFFFFFF)}
         p_bit = Phien(bit32=bit32)
         self.assertGreater(dem["n"], 1000, "Có bit32 thì phải dùng bit32")
-        self.assertEqual(p_bit.api.MaThietBi, MA_TB)
+        self.assertEqual(p_bit.api.MaThietBi(), MA_TB)
         p = Phien()
         for ten in ("Tester", "Nguyễn 🎮 " + "x" * 20):
             ma = tao_ma(ten, so_quay=999)
@@ -740,61 +740,105 @@ class GiaiMaTest(unittest.TestCase):
 
 
 class ThietBiTest(unittest.TestCase):
-    def test_hien_ma_thiet_bi_va_sao_chep(self):
+    """Mã thiết bị = băm IP mạng: trang web tự lấy IP điện thoại, script tự lấy IP lúc chơi."""
+
+    def test_tu_lay_ip_va_hien_ma_thiet_bi(self):
         p = Phien()
-        self.assertEqual(p.api.MaThietBi, MA_TB, "Lua và Python phải tính ra cùng mã thiết bị")
+        self.assertEqual(p.api.MaThietBi(), MA_TB, "Lua và Python phải tính ra cùng mã từ cùng IP")
         self.assertRegex(MA_TB, r"^[0-9A-HJKMNP-TV-Z]{4}-[0-9A-HJKMNP-TV-Z]{4}-[0-9A-HJKMNP-TV-Z]{4}$")
         self.assertIn(MA_TB, p.phan_tu("MaThietBi").Text)
-        p.bam("NutChepThietBi")
-        self.assertEqual(list(p.log.clipboard.values()), [MA_TB])
-        self.assertIn("Đã sao chép mã thiết bị", p.trang_thai)
-        p2 = Phien(khong_clipboard=True)
-        p2.bam("NutChepThietBi")
-        self.assertIn(MA_TB, p2.trang_thai)
+        self.assertNotIn(IP, p.phan_tu("MaThietBi").Text, "Không hiện IP thật")
+        self.assertEqual(list(p.log.ip_get.values()), ["https://api.ipify.org"], "Nguồn đầu được thì dừng")
+        p.thu_key(tao_ma("Tester"))
+        self.assertEqual(p.so_lan_chay, 1)
+        self.assertEqual(len(p.log.ip_get), 1, "IP khớp thì không lấy lại")
+        self.assertEqual(p.httpget(), [URL])
 
-    def test_key_cua_thiet_bi_khac_bi_tu_choi(self):
-        than_khac = than_thiet_bi("client:MAY-KHAC")
+    def test_key_tao_o_mang_khac_bi_tu_choi(self):
+        than_khac = than_thiet_bi("ip:14.232.7.9")
         o_dia = {}
         p = Phien(o_dia=o_dia).thu_key(tao_ma("Tester", thiet_bi=than_khac))
         self.assertEqual(p.so_lan_chay, 0)
         self.assertFalse(p.da_an_gui)
-        self.assertIn("thiết bị khác", p.trang_thai)
-        self.assertIn(MA_TB, p.trang_thai, "Chỉ cho biết mã của máy mình")
-        self.assertNotIn(than_khac[:4], p.trang_thai.replace(MA_TB, ""), "Không lộ mã thiết bị trong key")
+        self.assertIn("IP không khớp", p.trang_thai)
+        self.assertNotIn(than_khac[:4], p.trang_thai, "Không lộ mã thiết bị trong key")
         self.assertEqual(o_dia, {}, "Key sai thiết bị không được lưu")
-        # Máy kia (ClientId khác) thì dùng được
-        self.assertEqual(Phien(client_id="MAY-KHAC").thu_key(tao_ma("Tester", thiet_bi=than_khac)).so_lan_chay, 1)
+        self.assertEqual(len(p.log.ip_get), 2, "Không khớp thì lấy lại IP 1 lần (phòng khi vừa đổi mạng)")
+        # Người ở đúng mạng đó thì dùng được
+        self.assertEqual(Phien(ip="14.232.7.9").thu_key(tao_ma("Tester", thiet_bi=than_khac)).so_lan_chay, 1)
 
-    def test_key_da_luu_mang_sang_may_khac_bi_xoa(self):
+    def test_doi_mang_sau_khi_mo_script(self):
+        # Mở script ở wifi, rồi chuyển 4G và lấy key trên 4G -> bấm xác nhận vẫn nhận (script lấy lại IP)
+        p = Phien()
+        p.log.doi_ip("14.232.7.9")
+        p.thu_key(tao_ma("Tester", thiet_bi=than_thiet_bi("ip:14.232.7.9")))
+        self.assertEqual(p.so_lan_chay, 1)
+
+    def test_mat_mang_roi_co_lai(self):
+        p = Phien(ip_loi="timeout")
+        self.assertIn("chưa lấy được", p.phan_tu("MaThietBi").Text)
+        self.assertEqual(len(p.log.ip_get), 3, "Thử đủ 3 nguồn")
+        p.thu_key(tao_ma("Tester"))
+        self.assertEqual(p.so_lan_chay, 0)
+        self.assertIn("Không lấy được IP", p.trang_thai)
+        self.assertEqual(p.httpget(), [], "Chưa kiểm tra được thì không tải script")
+        p.log.mat_mang(None)
+        p.bam()
+        self.assertEqual(p.so_lan_chay, 1)
+
+    def test_nguon_ip_du_phong_va_chuan_hoa(self):
+        p = Phien(ip_theo_url={"https://api.ipify.org": "2402:800:6310::1",
+                               "https://ipv4.icanhazip.com": " 113.161.010.020 \n"})
+        self.assertEqual(p.api.MaThietBi(), MA_TB, "Bỏ IPv6, chuẩn hoá số 0 đầu giống trang web")
+        self.assertEqual(Phien(ip_theo_url={"https://v4.ident.me": IP}).api.MaThietBi(), MA_TB)
+        for sai in ("256.1.1.1", "1.2.3", "1.2.3.4.5", "abc", "", "1.2.3.4x", "1111.2.3.4"):
+            with self.subTest(sai=sai):
+                p = Phien(ip_theo_url={u: sai for u in ("https://api.ipify.org", "https://ipv4.icanhazip.com",
+                                                        "https://v4.ident.me")})
+                self.assertIsNone(p.api.MaThietBi())
+
+    def test_key_da_luu_khi_o_mang_khac(self):
         o_dia = {}
         ma = tao_ma("Tester")
         Phien(o_dia=o_dia).thu_key(ma)
         self.assertEqual(o_dia, {FILE: ma})
-        p = Phien(o_dia=o_dia, client_id="MAY-KHAC")  # chép file key sang máy khác
-        self.assertEqual(p.o_key, "")
+        p = Phien(o_dia=o_dia, ip="14.232.7.9")  # mở lại ở mạng khác
+        self.assertEqual(o_dia, {FILE: ma}, "Đổi mạng tạm thời không xoá key đã lưu")
+        self.assertEqual(p.o_key, ma)
+        self.assertIn("IP không khớp", p.trang_thai)
+        p.bam()
+        self.assertEqual(p.so_lan_chay, 0)
+        p2 = Phien(o_dia=o_dia)  # về lại mạng cũ -> dùng tiếp
+        self.assertIn("Đã điền key đã lưu", p2.trang_thai)
+        self.assertEqual(p2.bam() or p2.so_lan_chay, 1)
+        # Hết hạn thì vẫn xoá dù đang ở mạng khác
+        p3 = Phien(o_dia=o_dia, ip="14.232.7.9", gio_may=BAY_GIO + NGAY)
         self.assertEqual(o_dia, {})
+        self.assertEqual(p3.o_key, "")
 
-    def test_nguon_ma_thiet_bi(self):
-        self.assertEqual(Phien(client_id="ABC").api.MaThietBi, ma_thiet_bi("client:ABC"))
-        self.assertEqual(Phien(khong_client_id=True, hwid="HW-1").api.MaThietBi, ma_thiet_bi("hwid:HW-1"))
-        self.assertEqual(Phien(khong_client_id=True, user_id=777).api.MaThietBi, ma_thiet_bi("user:777"))
-        p = Phien(khong_client_id=True, hwid="HW-1")
-        self.assertEqual(p.thu_key(tao_ma("Tester", thiet_bi=than_thiet_bi("hwid:HW-1"))).so_lan_chay, 1)
+    def test_mat_mang_khi_mo_lai_khong_xoa_key(self):
+        o_dia = {}
+        ma = tao_ma("Tester")
+        Phien(o_dia=o_dia).thu_key(ma)
+        p = Phien(o_dia=o_dia, ip_loi="offline")
+        self.assertEqual(o_dia, {FILE: ma})
+        self.assertIn("Không lấy được IP", p.trang_thai)
+
+    def test_key_v2_khong_kiem_tra_ip(self):
+        self.assertEqual(Phien(ip_loi="offline").thu_key(tao_ma_v2("Tester")).so_lan_chay, 1)
 
     def test_tat_kiem_tra_thiet_bi(self):
-        ma = tao_ma("Tester", thiet_bi=than_thiet_bi("client:MAY-KHAC"))
+        ma = tao_ma("Tester", thiet_bi=than_thiet_bi("ip:14.232.7.9"))
         self.assertEqual(Phien(script=SCRIPT_KHONG_TB).thu_key(ma).so_lan_chay, 1)
-        # vẫn phải đúng tên
         self.assertEqual(Phien(script=SCRIPT_KHONG_TB).thu_key(tao_ma("NguoiKhac")).so_lan_chay, 0)
 
-    def test_link_lay_key_kem_ma_thiet_bi_va_ten(self):
+    def test_link_lay_key_kem_ten(self):
         p = Phien(ten="Tao Dep_01")
         p.bam("NutLayKey")
-        self.assertEqual(list(p.log.clipboard.values()),
-                         [f"https://mncuadaigmailcom.github.io/taodepzai/?tb={MA_TB}&ten=Tao%20Dep_01"])
+        self.assertEqual(list(p.log.clipboard.values()), ["https://mncuadaigmailcom.github.io/taodepzai/?ten=Tao%20Dep_01"])
         p2 = Phien(khong_clipboard=True)
         p2.bam("NutLayKey")
-        self.assertIn(f"taodepzai/?tb={MA_TB}&ten=Tester", p2.trang_thai)
+        self.assertIn("taodepzai/?ten=Tester", p2.trang_thai)
 
 
 @unittest.skipUnless(CO_NODE, "Cần Node.js để đối chiếu với index.html")
@@ -854,7 +898,7 @@ class DoiChieuIndexHtmlTest(unittest.TestCase):
         self.assertGreater(so_hop_le, 80)
 
     def test_ma_thiet_bi_giong_node(self):
-        goc = ["client:MOCK-CLIENT-0001", "hwid:ABC", "user:1", "client:" + "x" * 100, "client:Tên 🎮"]
+        goc = ["ip:113.161.10.20", "ip:1.2.3.4", "ip:255.255.255.255", "ip:0.0.0.0"]
         code = ("const t=require(process.argv[1]);const ds=JSON.parse(require('fs').readFileSync(0,'utf8'));"
                 "console.log(JSON.stringify(ds.map(g=>[t.maThietBiTuGoc(g),t.chuanHoaMaThietBi(t.maThietBiTuGoc(g))])))")
         kq = json.loads(subprocess.run(["node", "-e", code, str(GOC / "tools" / "decode-demo.cjs")],
@@ -862,9 +906,7 @@ class DoiChieuIndexHtmlTest(unittest.TestCase):
         for g, (ma, than) in zip(goc, kq):
             self.assertEqual(ma, ma_thiet_bi(g))
             self.assertEqual(than, than_thiet_bi(g))
-            if g.isascii():
-                self.assertEqual(Phien(client_id=g[len("client:"):]).api.MaThietBi if g.startswith("client:") else ma,
-                                 ma)
+            self.assertEqual(Phien(ip=g[3:]).api.MaThietBi(), ma)
 
 
 if __name__ == "__main__":
