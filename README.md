@@ -13,6 +13,8 @@ Tìm khối `// CHỈNH CẤU HÌNH TẠI ĐÂY` ở cuối `index.html`:
 
 ## Cách hoạt động
 
+Phía trên bốn nhiệm vụ có ô **Tên người chơi** (không bắt buộc). Tên được lưu trên trình duyệt, hiện trong cửa sổ nhận key và vẫn còn sau F5 hoặc reset nhiệm vụ; tên không được gửi đến máy chủ hay xác minh với trò chơi.
+
 Bốn nhiệm vụ được xếp **thành một cột từ trên xuống dưới** trên cả máy tính và điện thoại. Phải hoàn thành **đủ cả bốn nhiệm vụ** (không cần theo thứ tự) mới mở được key. Với mỗi nhiệm vụ, bấm liên kết, ở tab mới ít nhất 5 giây rồi quay lại; từng nhiệm vụ có trạng thái, lượt chờ và lỗi thử lại riêng. Phiên chung kéo dài 3 phút từ lần bấm nhiệm vụ đầu tiên, sau đó tự reset cả bốn nhiệm vụ. Có nút reset thủ công, lưu trạng thái sau F5, đếm ngược, thông báo, hiệu ứng 3D, sao chép key và sao chép script cũ.
 
 **Lưu ý:** Đây chỉ là kiểm tra thời gian chuyển tab ở trình duyệt, không xác thực trang đích đã tải hay người dùng thực sự xem nội dung. Key lưu trong HTML/JavaScript có thể bị xem trước khi mở khóa; nếu key phải giữ bí mật hoặc việc hoàn thành nhiệm vụ phải được xác minh, cần một dịch vụ phía máy chủ và cơ chế xác thực do các trang đích hỗ trợ. Không đưa key bí mật thật vào kho mã công khai.

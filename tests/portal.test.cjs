@@ -224,6 +224,33 @@ test('F5 giữ nhiệm vụ đã hoàn thành nhưng vẫn yêu cầu đủ bố
     assert.match(second.copies[0], /loadstring\(game:HttpGet/);
 });
 
+test('tên người chơi nằm trên nhiệm vụ, lưu sau F5 và hiển thị khi nhận key', async () => {
+    assert.ok(html.indexOf('id="player-name"') < html.indexOf('id="task-heading"'));
+    const storage = new Map();
+    const first = createPortal(storage);
+    const name = first.elements.get('player-name');
+    name.value = '  HoiAnPlayer_09  ';
+    await name.fire('input');
+    assert.equal(storage.get('taodepzai_player_name'), 'HoiAnPlayer_09');
+    await first.click('nut-reset-thu-cong');
+    assert.equal(storage.get('taodepzai_player_name'), 'HoiAnPlayer_09');
+
+    const afterReload = createPortal(storage);
+    assert.equal(afterReload.elements.get('player-name').value, 'HoiAnPlayer_09');
+    for (const number of [1, 2, 3, 4]) await completeTask(afterReload, number);
+    await afterReload.click('nut-giai-bai');
+    const summary = afterReload.elements.get('player-summary');
+    assert.equal(summary.textContent, 'Người chơi: HoiAnPlayer_09');
+    assert.equal(summary.hidden, false);
+    await afterReload.click('back-btn');
+    afterReload.elements.get('player-name').value = '   ';
+    await afterReload.elements.get('player-name').fire('input');
+    assert.equal(storage.has('taodepzai_player_name'), false);
+    await afterReload.click('nut-giai-bai');
+    assert.equal(summary.hidden, true);
+    await afterReload.click('back-btn');
+});
+
 test('bốn nhiệm vụ xếp thành một cột từ trên xuống dưới ở mọi màn hình', () => {
     const css = html.split('<style>')[1].split('</style>')[0];
     assert.equal((html.match(/<article class="task-placeholder"/g) || []).length, 4);
