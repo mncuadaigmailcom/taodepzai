@@ -132,7 +132,12 @@ async function completeTask(site, number) {
     site.focus();
 }
 
-test('chỉ mở key sau khi hoàn thành đủ bốn nhiệm vụ; quay lại sớm chỉ báo lỗi nhiệm vụ đó', async () => {
+async function enterName(site, name = 'HoiAnPlayer_09') {
+    site.elements.get('player-name').value = name;
+    await site.elements.get('player-name').fire('input');
+}
+
+test('chỉ tạo mã demo khi đã nhập tên và hoàn thành đủ bốn nhiệm vụ', async () => {
     const site = createPortal();
     const button = site.elements.get('nut-giai-bai');
     assert.equal(button.disabled, true);
@@ -161,12 +166,20 @@ test('chỉ mở key sau khi hoàn thành đủ bốn nhiệm vụ; quay lại s
 
     await completeTask(site, 4);
     assert.equal(site.elements.get('unlocked-count').textContent, '4 / 4 hoàn thành');
+    assert.equal(site.store.has('completedAtnv4'), true);
+    assert.equal(button.disabled, true);
+    assert.match(button.children.get('span').textContent, /Nhập tên người chơi/);
+    await site.click('nut-giai-bai');
+    assert.equal(site.modalOpen(), false);
+
+    await enterName(site);
     assert.equal(button.disabled, false);
     await site.click('nut-giai-bai');
     assert.equal(site.modalOpen(), true);
-    assert.equal(site.elements.get('key-value').value, 'TAODEPZAI-KEY-MAU');
+    const code = site.elements.get('key-value').value;
+    assert.match(code, /^Free_[0-9A-Z]{14}$/);
     await site.click('copy-key-btn');
-    assert.deepEqual(site.copies, ['TAODEPZAI-KEY-MAU']);
+    assert.deepEqual(site.copies, [code]);
     await site.click('back-btn');
     assert.equal(site.modalOpen(), false);
 });
@@ -187,17 +200,23 @@ test('không tự hoàn thành nếu chưa rời trang, bốn cổng dùng trạ
     site.focus();
     assert.equal(site.status(4), 'error');
     assert.equal(site.status(3), 'success');
+    assert.equal(site.store.has('completedAtnv3'), true);
+    assert.equal(site.store.has('completedAtnv4'), false);
     assert.equal(site.elements.get('nut-giai-bai').disabled, true);
     assert.equal(site.elements.get('unlocked-count').textContent, '1 / 4 hoàn thành');
 });
 
-test('hết phiên 3 phút tự khóa key và reset cả bốn nhiệm vụ; reset thủ công vẫn hoạt động', async () => {
+test('hết phiên 3 phút xóa mã demo và mốc hoàn thành; reset thủ công giữ tên', async () => {
     const site = createPortal();
+    await enterName(site);
     for (const number of [1, 2, 3, 4]) await completeTask(site, number);
     await site.click('nut-giai-bai');
     assert.equal(site.modalOpen(), true);
     site.advance(160000); // 20 giây làm nhiệm vụ + 160 giây còn lại của phiên.
-    for (const number of [1, 2, 3, 4]) assert.equal(site.status(number), 'idle');
+    for (const number of [1, 2, 3, 4]) {
+        assert.equal(site.status(number), 'idle');
+        assert.equal(site.store.has(`completedAtnv${number}`), false);
+    }
     assert.equal(site.modalOpen(), false);
     assert.equal(site.elements.get('key-value').value, '');
     assert.equal(site.elements.get('nut-giai-bai').disabled, true);
@@ -206,15 +225,20 @@ test('hết phiên 3 phút tự khóa key và reset cả bốn nhiệm vụ; res
     await site.click('nut-reset-thu-cong');
     assert.equal(site.status(1), 'idle');
     assert.equal(site.store.has('session_expire'), false);
+    assert.equal(site.store.get('taodepzai_player_name'), 'HoiAnPlayer_09');
 });
 
-test('F5 giữ nhiệm vụ đã hoàn thành nhưng vẫn yêu cầu đủ bốn và giữ copy script', async () => {
+test('F5 giữ tên/mốc nhiệm vụ, vẫn cần đủ bốn và giữ chức năng copy script', async () => {
     const storage = new Map();
     const first = createPortal(storage);
+    await enterName(first);
     await completeTask(first, 1);
     assert.equal(first.status(1), 'success');
+    const firstTime = storage.get('completedAtnv1');
     const second = createPortal(storage, 1_005_000);
     assert.equal(second.status(1), 'success');
+    assert.equal(second.elements.get('player-name').value, 'HoiAnPlayer_09');
+    assert.equal(storage.get('completedAtnv1'), firstTime);
     assert.equal(second.status(2), 'idle');
     assert.equal(second.elements.get('nut-giai-bai').disabled, true);
     for (const number of [2, 3, 4]) await completeTask(second, number);
@@ -224,7 +248,7 @@ test('F5 giữ nhiệm vụ đã hoàn thành nhưng vẫn yêu cầu đủ bố
     assert.match(second.copies[0], /loadstring\(game:HttpGet/);
 });
 
-test('tên người chơi nằm trên nhiệm vụ, lưu sau F5 và hiển thị khi nhận key', async () => {
+test('tên người chơi nằm trên nhiệm vụ, lưu sau F5 và hiển thị khi nhận mã demo', async () => {
     assert.ok(html.indexOf('id="player-name"') < html.indexOf('id="task-heading"'));
     const storage = new Map();
     const first = createPortal(storage);
@@ -242,13 +266,60 @@ test('tên người chơi nằm trên nhiệm vụ, lưu sau F5 và hiển thị
     const summary = afterReload.elements.get('player-summary');
     assert.equal(summary.textContent, 'Người chơi: HoiAnPlayer_09');
     assert.equal(summary.hidden, false);
+    const originalCode = afterReload.elements.get('key-value').value;
     await afterReload.click('back-btn');
     afterReload.elements.get('player-name').value = '   ';
     await afterReload.elements.get('player-name').fire('input');
     assert.equal(storage.has('taodepzai_player_name'), false);
+    assert.equal(afterReload.elements.get('nut-giai-bai').disabled, true);
     await afterReload.click('nut-giai-bai');
-    assert.equal(summary.hidden, true);
+    assert.equal(afterReload.modalOpen(), false);
+    await enterName(afterReload, 'AnotherPlayer');
+    await afterReload.click('nut-giai-bai');
+    assert.equal(summary.textContent, 'Người chơi: AnotherPlayer');
+    assert.notEqual(afterReload.elements.get('key-value').value, originalCode);
     await afterReload.click('back-btn');
+});
+
+test('mã Free_ dùng thời điểm nhiệm vụ hoàn thành cuối, ổn định sau F5 và đổi khi tạo phiên mới', async () => {
+    const storage = new Map();
+    const first = createPortal(storage);
+    await enterName(first, 'Player_01');
+    for (const number of [4, 1, 3, 2]) await completeTask(first, number);
+    const lastTime = Number(storage.get('completedAtnv2'));
+    for (const number of [4, 1, 3]) {
+        assert.ok(lastTime > Number(storage.get(`completedAtnv${number}`)));
+    }
+    await first.click('nut-giai-bai');
+    const originalCode = first.elements.get('key-value').value;
+    assert.match(originalCode, /^Free_[0-9A-Z]{14}$/);
+
+    const afterReload = createPortal(storage, 1_020_000);
+    await afterReload.click('nut-giai-bai');
+    assert.equal(afterReload.elements.get('key-value').value, originalCode);
+    await afterReload.click('back-btn');
+    await afterReload.click('nut-reset-thu-cong');
+    assert.equal(storage.has('completedAtnv2'), false);
+    for (const number of [4, 1, 3, 2]) await completeTask(afterReload, number);
+    await afterReload.click('nut-giai-bai');
+    assert.notEqual(afterReload.elements.get('key-value').value, originalCode);
+});
+
+test('phiên cũ không có mốc hoàn thành phải làm mới thay vì tạo mã sai', async () => {
+    const storage = new Map([
+        ['session_expire', '1180000'],
+        ['taodepzai_player_name', 'Player_01'],
+        ...[1, 2, 3, 4].map(number => [`statusnv${number}`, 'success'])
+    ]);
+    const site = createPortal(storage);
+    assert.equal(site.elements.get('unlocked-count').textContent, '4 / 4 hoàn thành');
+    assert.equal(site.elements.get('nut-giai-bai').disabled, true);
+    assert.match(site.elements.get('nut-giai-bai').children.get('span').textContent, /Làm mới phiên/);
+    await site.click('nut-giai-bai');
+    assert.equal(site.modalOpen(), false);
+    await site.click('nut-reset-thu-cong');
+    for (const number of [1, 2, 3, 4]) await completeTask(site, number);
+    assert.equal(site.elements.get('nut-giai-bai').disabled, false);
 });
 
 test('bốn nhiệm vụ xếp thành một cột từ trên xuống dưới ở mọi màn hình', () => {

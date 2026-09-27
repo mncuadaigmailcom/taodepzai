@@ -4,7 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
     <meta name="theme-color" content="#090d1a">
-    <title>Lấy Key Script Taodepzai | 4 Cổng Mở Khóa</title>
+    <title>Tạo mã demo Free_ | Taodepzai</title>
     <style>
         @import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap');
 
@@ -526,22 +526,22 @@
                     <path d="m5 3 1 2.5L8.5 6 6 7 5 9.5 4 7 1.5 6 4 5.5z" opacity=".6"/>
                 </svg>
             </div>
-            <h1>Lấy Key Script Taodepzai</h1>
-            <p class="sub-title">Hoàn thành đủ 4 nhiệm vụ để mở khóa key</p>
+            <h1>Tạo Mã Demo Free_</h1>
+            <p class="sub-title">Taodepzai · Nhập tên và hoàn thành đủ 4 nhiệm vụ</p>
         </header>
 
         <div class="desc-box">
-            <strong>Hướng dẫn:</strong> Hoàn thành <strong>cả 4 nhiệm vụ</strong> bên dưới (không cần theo thứ tự). Với từng nhiệm vụ, mở liên kết, ở tab mới ít nhất 5 giây rồi quay lại. Mỗi nhiệm vụ theo dõi riêng; phiên tự làm mới sau 3 phút tính từ lần bắt đầu đầu tiên.
+            <strong>Hướng dẫn:</strong> Nhập tên người chơi và hoàn thành <strong>cả 4 nhiệm vụ</strong> (không cần theo thứ tự). Với từng nhiệm vụ, mở liên kết, ở tab mới ít nhất 5 giây rồi quay lại. Mã demo dùng thời điểm hoàn thành nhiệm vụ cuối cùng; phiên tự làm mới sau 3 phút.
         </div>
-        <p class="demo-banner" id="demo-banner">✦ Đây là bản mẫu: key và 4 liên kết sẽ được thay khi bạn gửi thông tin thật.</p>
+        <p class="demo-banner" id="demo-banner">✦ Mã Free_ chỉ là mã demo, không kích hoạt script. Bốn liên kết hiện là mẫu.</p>
 
         <div class="player-box">
             <label class="player-label" for="player-name">
                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="8" r="4"/><path d="M4 21a8 8 0 0 1 16 0"/></svg>
                 Tên người chơi
             </label>
-            <input class="player-input" id="player-name" name="playerName" type="text" maxlength="32" autocomplete="nickname" spellcheck="false" placeholder="Nhập tên người chơi của bạn" aria-describedby="player-help">
-            <p class="player-help" id="player-help">Không bắt buộc để mở key. Tên được lưu trên trình duyệt này và hiển thị khi bạn nhận key.</p>
+            <input class="player-input" id="player-name" name="playerName" type="text" maxlength="32" autocomplete="nickname" spellcheck="false" required placeholder="Nhập tên người chơi của bạn" aria-describedby="player-help">
+            <p class="player-help" id="player-help">Bắt buộc để tạo mã demo Free_. Tên chỉ được lưu trên trình duyệt này, không xác minh tài khoản.</p>
         </div>
 
         <section aria-labelledby="task-heading">
@@ -592,7 +592,7 @@
         <button class="download-btn" id="nut-giai-bai" type="button" disabled>
             <svg class="lock-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
             <svg class="unlock-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0"/></svg>
-            <span>Hoàn thành đủ 4 nhiệm vụ để nhận key</span>
+            <span>Nhập tên và hoàn thành 4 nhiệm vụ</span>
         </button>
         <button class="reset-manual-btn" id="nut-reset-thu-cong" type="button">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 12a9 9 0 1 0 2.6-6.4L3 8"/><path d="M3 3v5h5"/></svg>
@@ -604,13 +604,13 @@
     <div id="white-screen" aria-hidden="true">
         <div class="editor-wrapper" role="dialog" aria-modal="true" aria-labelledby="dialog-title" tabindex="-1">
             <div class="editor-header">
-                <div class="editor-label" id="dialog-title"><span class="pulse-dot" aria-hidden="true"></span> KEY CỦA BẠN ĐÃ MỞ KHÓA</div>
+                <div class="editor-label" id="dialog-title"><span class="pulse-dot" aria-hidden="true"></span> MÃ DEMO FREE_ CỦA BẠN</div>
                 <button class="close-btn" id="close-btn" type="button" aria-label="Đóng cửa sổ key">×</button>
             </div>
             <p class="player-summary" id="player-summary" hidden></p>
-            <label class="field-label" for="key-value">KEY SCRIPT TAODEPZAI</label>
+            <label class="field-label" for="key-value">MÃ DEMO (KHÔNG PHẢI KEY KÍCH HOẠT)</label>
             <textarea class="key-value" id="key-value" readonly spellcheck="false"></textarea>
-            <p class="demo-alert" id="demo-alert">⚠ Key hiện tại chỉ là mẫu, chưa sử dụng được với script thật.</p>
+            <p class="demo-alert" id="demo-alert">⚠ Mã Free_ được tạo ở trình duyệt để minh họa; không kích hoạt script Taodepzai.</p>
             <div class="action-buttons">
                 <button id="back-btn" type="button">
                     <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M19 12H5m7 7-7-7 7-7"/></svg>
@@ -618,7 +618,7 @@
                 </button>
                 <button id="copy-key-btn" type="button">
                     <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
-                    Sao chép Key
+                    Sao chép mã demo
                 </button>
             </div>
             <details class="script-details">
@@ -634,10 +634,9 @@
     </div>
 
     <script>
-        // CHỈNH CẤU HÌNH TẠI ĐÂY khi có key và 4 liên kết thật.
-        // Key trong HTML/JavaScript luôn có thể xem bằng công cụ trình duyệt; không dùng để giữ bí mật.
-        const KEY_TAODEPZAI = 'TAODEPZAI-KEY-MAU';
-        const DANG_LA_BAN_MAU = true; // Đổi thành false sau khi thay key và cả 4 liên kết.
+        // Chỉ thay các URL/tên bên dưới khi có liên kết thật. Mã Free_ vẫn luôn là mã demo.
+        // Mã tạo trên trình duyệt không phải cơ chế phát hành hay bảo vệ key thật.
+        const DANG_LA_BAN_MAU = true; // Đổi false khi đã thay cả 4 liên kết mẫu.
         const SCRIPT_CUA_BAN = `loadstring(game:HttpGet("https://raw.githubusercontent.com/HieudepzaiHub/main/abc"))()`;
         const NHIEM_VU = [
             { id: 'nv1', so: '01', ten: 'Google', url: 'https://www.google.com/' },
@@ -688,9 +687,11 @@
             const ten = playerNameInput.value.trim();
             if (ten) luu.set(PLAYER_NAME_KEY, ten);
             else luu.remove(PLAYER_NAME_KEY);
+            kiemTraMoKhoa();
         });
-        document.getElementById('demo-banner').hidden = !DANG_LA_BAN_MAU;
-        document.getElementById('demo-alert').hidden = !DANG_LA_BAN_MAU;
+        if (!DANG_LA_BAN_MAU) {
+            document.getElementById('demo-banner').textContent = '✦ Mã Free_ chỉ là mã demo, không kích hoạt script.';
+        }
         NHIEM_VU.forEach(nv => {
             const lienKet = document.getElementById(`link-${nv.id}`);
             lienKet.href = nv.url;
@@ -713,6 +714,36 @@
         function thoiGianHetHan() {
             const raw = luu.get('session_expire');
             return raw === null ? null : Number(raw);
+        }
+
+        // Lấy mốc hoàn thành của nhiệm vụ cuối cùng trong bốn nhiệm vụ.
+        function lanHoanThanhCuoi() {
+            let cuoi = null;
+            NHIEM_VU.forEach(nv => {
+                if (trangThai(nv) !== 'success') return;
+                const raw = luu.get(`completedAt${nv.id}`);
+                const time = raw === null ? NaN : Number(raw);
+                if (Number.isFinite(time) && time > 0 && (!cuoi || time > cuoi.time)) {
+                    cuoi = { id: nv.id, time };
+                }
+            });
+            return cuoi;
+        }
+
+        // Chỉ trộn dữ liệu để tạo mã minh họa, KHÔNG phải thuật toán xác thực key.
+        function taoMaDemo(ten, lanCuoi) {
+            const duLieu = `${ten.trim().normalize('NFKC').toLowerCase()}|${lanCuoi.id}|${lanCuoi.time}`;
+            let phanA = 0x811c9dc5;
+            let phanB = 0x9e3779b9;
+            for (const kyTu of duLieu) {
+                const ma = kyTu.codePointAt(0);
+                phanA = Math.imul(phanA ^ ma, 16777619);
+                phanB = Math.imul(phanB ^ ma, 2246822519);
+            }
+            const noiDuoi = [phanA, phanB]
+                .map(phan => (phan >>> 0).toString(36).toUpperCase().padStart(7, '0'))
+                .join('');
+            return `Free_${noiDuoi}`;
         }
 
         function hienThiDongHo() {
@@ -763,16 +794,20 @@
         function kiemTraMoKhoa() {
             const soCongHoanThanh = NHIEM_VU.filter(nv => trangThai(nv) === 'success').length;
             const hetHan = thoiGianHetHan();
-            const moKhoa = soCongHoanThanh === NHIEM_VU.length &&
+            const coTen = !!playerNameInput.value.trim();
+            const coMocThoiGian = !!lanHoanThanhCuoi();
+            const moKhoa = soCongHoanThanh === NHIEM_VU.length && coTen && coMocThoiGian &&
                 hetHan !== null && Number.isFinite(hetHan) && Date.now() < hetHan;
             document.getElementById('unlocked-count').textContent = `${soCongHoanThanh} / ${NHIEM_VU.length} hoàn thành`;
             nutGiaiBai.disabled = !moKhoa;
             nutGiaiBai.classList.toggle('active', moKhoa);
-            nutGiaiBai.querySelector('span').textContent = moKhoa
-                ? '🔑 BẤM ĐỂ NHẬN KEY TAODEPZAI'
-                : soCongHoanThanh === 0
-                    ? 'Hoàn thành đủ 4 nhiệm vụ để nhận key'
-                    : `Còn ${NHIEM_VU.length - soCongHoanThanh} nhiệm vụ để nhận key`;
+            let huongDan;
+            if (moKhoa) huongDan = '✦ XEM MÃ DEMO FREE_';
+            else if (soCongHoanThanh === NHIEM_VU.length && !coMocThoiGian) huongDan = 'Làm mới phiên để tạo mã demo';
+            else if (soCongHoanThanh === NHIEM_VU.length && !coTen) huongDan = 'Nhập tên người chơi để tạo mã demo';
+            else if (soCongHoanThanh === 0) huongDan = 'Nhập tên và hoàn thành 4 nhiệm vụ';
+            else huongDan = `Còn ${NHIEM_VU.length - soCongHoanThanh} nhiệm vụ để tạo mã demo`;
+            nutGiaiBai.querySelector('span').textContent = huongDan;
             if (!moKhoa && manHinhTrang.classList.contains('show')) dongHopThoai();
         }
 
@@ -799,6 +834,7 @@
                 luu.remove(`status${nv.id}`);
                 luu.remove(`startTime${nv.id}`);
                 luu.remove(`leftAt${nv.id}`);
+                luu.remove(`completedAt${nv.id}`);
                 clearTimeout(loiHenGio.get(nv.id));
                 loiHenGio.delete(nv.id);
             });
@@ -825,6 +861,7 @@
             clearTimeout(loiHenGio.get(nv.id));
             luu.set(`startTime${nv.id}`, Date.now());
             luu.remove(`leftAt${nv.id}`);
+            luu.remove(`completedAt${nv.id}`);
             luu.set(`status${nv.id}`, 'checking');
             congVuaMo = nv.id;
             veLai();
@@ -861,9 +898,12 @@
                 luu.remove(`leftAt${nv.id}`);
                 if (Number.isFinite(roiLuc) && roiLuc > 0 && daQua >= THOI_GIAN_CHO_NV) {
                     luu.set(`status${nv.id}`, 'success');
+                    luu.set(`completedAt${nv.id}`, Date.now());
                     const conThieu = NHIEM_VU.filter(item => trangThai(item) !== 'success').length;
                     notify(conThieu === 0
-                        ? '✓ Đã hoàn thành đủ 4 nhiệm vụ. Key đã sẵn sàng!'
+                        ? (playerNameInput.value.trim()
+                            ? '✓ Đã hoàn thành 4 nhiệm vụ. Mã demo Free_ đã sẵn sàng!'
+                            : '✓ Đã hoàn thành 4 nhiệm vụ. Hãy nhập tên để tạo mã demo.')
                         : `✓ Nhiệm vụ ${nv.so} đã xong. Còn ${conThieu} nhiệm vụ nữa.`, 'success');
                 } else {
                     luu.set(`status${nv.id}`, 'error');
@@ -884,8 +924,10 @@
 
         function moHopThoai() {
             if (kiemTraHanSuDung() || nutGiaiBai.disabled) return;
+            const lanCuoi = lanHoanThanhCuoi();
+            if (!lanCuoi) return;
             phanTuTruocHopThoai = document.activeElement;
-            keyField.value = KEY_TAODEPZAI;
+            keyField.value = taoMaDemo(playerNameInput.value, lanCuoi);
             hienThiTenNguoiChoi();
             manHinhTrang.classList.add('show');
             manHinhTrang.setAttribute('aria-hidden', 'false');
@@ -917,7 +959,7 @@
 
         nutGiaiBai.addEventListener('click', moHopThoai);
         nutReset.addEventListener('click', () => resetPhien('manual'));
-        document.getElementById('copy-key-btn').addEventListener('click', () => saoChep(keyField, 'key'));
+        document.getElementById('copy-key-btn').addEventListener('click', () => saoChep(keyField, 'mã demo'));
         document.getElementById('copy-btn').addEventListener('click', () => saoChep(scriptField, 'script'));
         document.getElementById('back-btn').addEventListener('click', () => dongHopThoai());
         document.getElementById('close-btn').addEventListener('click', () => dongHopThoai());
@@ -944,7 +986,13 @@
         window.addEventListener('storage', event => {
             if (event.key === PLAYER_NAME_KEY) {
                 playerNameInput.value = luu.get(PLAYER_NAME_KEY) || '';
-                if (manHinhTrang.classList.contains('show')) hienThiTenNguoiChoi();
+                if (manHinhTrang.classList.contains('show')) {
+                    hienThiTenNguoiChoi();
+                    const lanCuoi = lanHoanThanhCuoi();
+                    if (lanCuoi && playerNameInput.value.trim()) {
+                        keyField.value = taoMaDemo(playerNameInput.value, lanCuoi);
+                    }
+                }
             }
             if (!kiemTraHanSuDung()) veLai(); // Đồng bộ nếu trang được mở ở nhiều tab.
         });
@@ -966,6 +1014,7 @@
                     luu.remove(`status${nv.id}`);
                     luu.remove(`startTime${nv.id}`);
                     luu.remove(`leftAt${nv.id}`);
+                    luu.remove(`completedAt${nv.id}`);
                 }
             });
             veLai();
