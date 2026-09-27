@@ -110,7 +110,9 @@ return function(tuy_chon)
     end
 
     local playerGui = TaoInstance("PlayerGui"); playerGui.Name = "PlayerGui"
-    local localPlayer = TaoInstance("Player"); localPlayer.Name = "Tester"
+    local localPlayer = TaoInstance("Player")
+    localPlayer.Name = tuy_chon.ten or "Tester"
+    localPlayer.DisplayName = tuy_chon.ten_hien_thi or localPlayer.Name
     playerGui.Parent = localPlayer
     local coreGui = TaoInstance("CoreGui"); coreGui.Name = "CoreGui"
     local hui = TaoInstance("Folder"); hui.Name = "HiddenUI"
@@ -162,6 +164,11 @@ return function(tuy_chon)
 
     local env = {
         game = game, workspace = {}, Instance = Instance, task = task,
+        math = math, tonumber = tonumber,
+        os = {
+            time = function() return tuy_chon.gio_may or os.time() end,
+            date = os.date,
+        },
         Color3 = { fromRGB = Mau, new = Mau },
         UDim = { new = function(s, o) return { S = s, O = o } end },
         UDim2 = { new = function(xs, xo, ys, yo)
@@ -182,6 +189,10 @@ return function(tuy_chon)
         env.setclipboard = function(s) table.insert(log.clipboard, s) end
     end
     if tuy_chon.khong_loadstring then env.loadstring = nil end
+    if tuy_chon.bit32 then env.bit32 = tuy_chon.bit32 end
+    if tuy_chon.gio_may_chu then
+        env.workspace.GetServerTimeNow = function() return tuy_chon.gio_may_chu end
+    end
     -- loadstring của script chính chạy trong cùng env (như executor)
     if env.loadstring then
         env.loadstring = function(src)

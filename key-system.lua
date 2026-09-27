@@ -1,19 +1,26 @@
 --[[
-    taodepzai · KEY SYSTEM
-    - Nhập key có chứa "Free_v2__" -> xác nhận thành công.
-    - Thành công: ẩn (xoá) giao diện nhập key rồi chạy script chính.
-    - Key sai / tải lỗi: báo lỗi ngay trên giao diện, cho nhập lại.
-
-    Dùng trong executor:
-        loadstring(game:HttpGet("<link tới file key-system.lua này>"))()
+    taodepzai · KEY SYSTEM (v2)
+    Key Free_v2__... do trang https://mncuadaigmailcom.github.io/taodepzai/ tạo ra
+    chứa [tên người chơi, nhiệm vụ cuối, thời điểm hoàn thành]. Script này giải mã key
+    (cùng thuật toán với taoMaDemo trong index.html) rồi kiểm tra:
+      1. Tên trong key phải trùng tên tài khoản Roblox (hoặc tên hiển thị) của bạn
+         -> key của người khác không dùng được.
+      2. Key chỉ có hạn 24 giờ kể từ lúc hoàn thành nhiệm vụ cuối cùng
+         (giờ lấy theo máy chủ Roblox nếu có, chỉnh đồng hồ máy không gia hạn được).
+    Đúng hết -> ẩn (xoá) bảng nhập key rồi chạy script chính.
 
     Test: python3 tests/key_system_test.py
-    LƯU Ý: kiểm tra key nằm ở phía người chơi, ai đọc mã nguồn cũng có thể
-    bỏ qua. Đây chỉ là "cổng" đơn giản, không phải bảo mật thật.
+    LƯU Ý: thuật toán tạo key là công khai, người biết đọc code vẫn có thể tự tạo key
+    cho tên của chính họ. Chặn được việc dùng lại key của người khác / key cũ,
+    nhưng không phải bảo mật tuyệt đối (muốn vậy cần máy chủ cấp key có chữ ký).
 ]]
 
 local CAU_HINH = {
-    KEY_CAN_CO   = "Free_v2__", -- key chỉ cần CHỨA chuỗi này (phân biệt hoa/thường)
+    KEY_PREFIX         = "Free_v2_",      -- key do trang web tạo luôn bắt đầu "Free_v2__"
+    HAN_KEY_GIAY       = 24 * 60 * 60,    -- key có hạn 1 ngày
+    LECH_GIO_CHO_PHEP  = 5 * 60,          -- cho phép giờ máy lệch tối đa 5 phút
+    KIEM_TRA_TEN       = true,            -- false = không bắt trùng tên
+    CHAP_NHAN_TEN_HIEN_THI = true,        -- chấp nhận cả DisplayName, không chỉ username
     SCRIPT_URL   = "https://mncuadaigmailcom.github.io/aiaiaitao2/script.js",
     LINK_LAY_KEY = "https://mncuadaigmailcom.github.io/taodepzai/", -- để "" nếu muốn ẩn nút
     TIEU_DE      = "taodepzai · Key System",
@@ -25,24 +32,254 @@ local TweenService = game:GetService("TweenService")
 
 local player = Players.LocalPlayer
 
--- ================= Kiểm tra key =================
-local function LamSachKey(key)
-    if type(key) ~= "string" then return "" end
-    key = key:gsub("^%s+", "")
-    key = key:gsub("%s+$", "")
-    return key
+-- ================= Tiện ích =================
+local function Trim(s)
+    s = s:gsub("^%s+", "")
+    s = s:gsub("%s+$", "")
+    return s
 end
 
-local function KiemTraKey(key)
-    key = LamSachKey(key)
-    if key == "" then
-        return false, "Bạn chưa nhập key!"
+local function Xor8(a, b)
+    if bit32 and bit32.bxor then return bit32.bxor(a, b) end
+    local kq, gia = 0, 1
+    for _ = 1, 8 do
+        if a % 2 ~= b % 2 then kq = kq + gia end
+        a = math.floor(a / 2)
+        b = math.floor(b / 2)
+        gia = gia * 2
     end
-    -- find(..., 1, true): tìm chuỗi thường, không coi "_" hay "%" là pattern
-    if string.find(key, CAU_HINH.KEY_CAN_CO, 1, true) then
+    return kq
+end
+
+local B64_GIA_TRI = {}
+do
+    local bang = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_"
+    for i = 1, #bang do B64_GIA_TRI[bang:sub(i, i)] = i - 1 end
+end
+
+-- base64url (không có dấu "=") -> mảng byte; nil nếu sai định dạng
+local function GiaiBase64Url(s)
+    if #s % 4 == 1 then return nil end
+    local bytes, dem, soBit = {}, 0, 0
+    for i = 1, #s do
+        local v = B64_GIA_TRI[s:sub(i, i)]
+        if not v then return nil end
+        dem = dem * 64 + v
+        soBit = soBit + 6
+        if soBit >= 8 then
+            soBit = soBit - 8
+            local chia = 2 ^ soBit
+            local byte = math.floor(dem / chia)
+            dem = dem - byte * chia
+            bytes[#bytes + 1] = byte
+        end
+    end
+    if dem ~= 0 then return nil end -- bit thừa khác 0: key đã bị sửa
+    return bytes
+end
+
+local function Utf8HopLe(s)
+    local i, n = 1, #s
+    while i <= n do
+        local c = s:byte(i)
+        local so, min
+        if c < 0x80 then so, min = 0, 0
+        elseif c >= 0xC2 and c <= 0xDF then so, min = 1, 0x80
+        elseif c >= 0xE0 and c <= 0xEF then so, min = 2, 0x800
+        elseif c >= 0xF0 and c <= 0xF4 then so, min = 3, 0x10000
+        else return false end
+        local cp = c % (2 ^ (6 - so + (so == 0 and 1 or 0)))
+        for k = 1, so do
+            local d = s:byte(i + k)
+            if not d or d < 0x80 or d > 0xBF then return false end
+            cp = cp * 64 + (d - 0x80)
+        end
+        if cp < min or cp > 0x10FFFF or (cp >= 0xD800 and cp <= 0xDFFF) then return false end
+        i = i + so + 1
+    end
+    return true
+end
+
+-- Độ dài theo cách JavaScript đếm (UTF-16), để khớp giới hạn 32 ký tự của trang web
+local function DoDaiJs(s)
+    local n = 0
+    for i = 1, #s do
+        local c = s:byte(i)
+        if c < 0x80 or c >= 0xC0 then n = n + 1 end -- đầu mỗi ký tự
+        if c >= 0xF0 then n = n + 1 end             -- ký tự ngoài BMP (emoji) = 2 đơn vị
+    end
+    return n
+end
+
+local function Utf8Char(cp)
+    if cp < 0x80 then return string.char(cp) end
+    if cp < 0x800 then
+        return string.char(0xC0 + math.floor(cp / 64), 0x80 + cp % 64)
+    end
+    if cp < 0x10000 then
+        return string.char(0xE0 + math.floor(cp / 4096), 0x80 + math.floor(cp / 64) % 64, 0x80 + cp % 64)
+    end
+    return string.char(0xF0 + math.floor(cp / 262144), 0x80 + math.floor(cp / 4096) % 64,
+        0x80 + math.floor(cp / 64) % 64, 0x80 + cp % 64)
+end
+
+-- Đọc đúng dạng JSON.stringify([ten, nhiemVu, thoiDiem]) mà trang web tạo
+local THOAT_JSON = { ['"'] = '"', ['\\'] = '\\', ['/'] = '/', b = '\b', f = '\f', n = '\n', r = '\r', t = '\t' }
+local function DocMangJson(s)
+    local i = 1
+    local function BoTrang() i = s:find("[^ \t\r\n]", i) or (#s + 1) end
+    local function Can(kyTu)
+        BoTrang()
+        if s:sub(i, i) ~= kyTu then return false end
+        i = i + 1
         return true
     end
-    return false, "Key sai! Key phải chứa \"" .. CAU_HINH.KEY_CAN_CO .. "\""
+    local function DocChuoi()
+        if not Can('"') then return nil end
+        local phan = {}
+        while true do
+            local c = s:sub(i, i)
+            if c == "" then return nil end
+            if c == '"' then i = i + 1; return table.concat(phan) end
+            if c == "\\" then
+                local e = s:sub(i + 1, i + 1)
+                if THOAT_JSON[e] then
+                    phan[#phan + 1] = THOAT_JSON[e]
+                    i = i + 2
+                elseif e == "u" then
+                    local hex = s:match("^u(%x%x%x%x)", i + 1)
+                    if not hex then return nil end
+                    local cp = tonumber(hex, 16)
+                    i = i + 6
+                    if cp >= 0xD800 and cp <= 0xDBFF then
+                        local hex2 = s:match("^\\u(%x%x%x%x)", i)
+                        local thap = hex2 and tonumber(hex2, 16)
+                        if not thap or thap < 0xDC00 or thap > 0xDFFF then return nil end
+                        cp = 0x10000 + (cp - 0xD800) * 0x400 + (thap - 0xDC00)
+                        i = i + 6
+                    elseif cp >= 0xDC00 and cp <= 0xDFFF then
+                        return nil
+                    end
+                    phan[#phan + 1] = Utf8Char(cp)
+                else
+                    return nil
+                end
+            elseif c:byte() < 32 then
+                return nil
+            else
+                phan[#phan + 1] = c
+                i = i + 1
+            end
+        end
+    end
+    if not Can("[") then return nil end
+    local ten = DocChuoi()
+    if not ten or not Can(",") then return nil end
+    local nhiemVu = DocChuoi()
+    if not nhiemVu or not Can(",") then return nil end
+    BoTrang()
+    local so = s:match("^%d+", i)
+    if not so then return nil end
+    i = i + #so
+    if not Can("]") then return nil end
+    BoTrang()
+    if i <= #s then return nil end
+    return ten, nhiemVu, tonumber(so)
+end
+
+-- ================= Giải mã key =================
+-- Trả về { ten, nhiemVu, thoiDiem (giây, UTC) } hoặc nil
+local function GiaiMaKey(ma)
+    if type(ma) ~= "string" or ma:sub(1, #CAU_HINH.KEY_PREFIX) ~= CAU_HINH.KEY_PREFIX then return nil end
+    local noiDung = ma:sub(#CAU_HINH.KEY_PREFIX + 1)
+    if #noiDung < 8 or #noiDung > 512 or noiDung:find("[^%w_%-]") then return nil end
+    local bytes = GiaiBase64Url(noiDung)
+    if not bytes then return nil end
+    local kyTu = {}
+    for viTri = 0, #bytes - 1 do
+        -- Phải khớp phép che byte của taoMaDemo trong index.html
+        kyTu[viTri + 1] = string.char(Xor8(bytes[viTri + 1], (viTri * 73 + 0xA5) % 256))
+    end
+    local json = table.concat(kyTu)
+    if not Utf8HopLe(json) then return nil end
+    local ten, nhiemVu, thoiDiemMs = DocMangJson(json)
+    if not ten or ten == "" or ten ~= Trim(ten) or DoDaiJs(ten) > 32 then return nil end
+    if not (nhiemVu == "nv1" or nhiemVu == "nv2" or nhiemVu == "nv3" or nhiemVu == "nv4") then return nil end
+    if not thoiDiemMs or thoiDiemMs <= 0 or thoiDiemMs > 8.64e15 then return nil end
+    return { ten = ten, nhiemVu = nhiemVu, thoiDiem = math.floor(thoiDiemMs / 1000) }
+end
+
+-- ================= Thời gian & tên =================
+local function BayGio()
+    -- Ưu tiên giờ máy chủ Roblox: chỉnh đồng hồ máy không làm key sống lâu hơn
+    local ok, t = pcall(function() return workspace:GetServerTimeNow() end)
+    if ok and type(t) == "number" and t > 1e9 then return math.floor(t) end
+    ok, t = pcall(function() return DateTime.now().UnixTimestamp end)
+    if ok and type(t) == "number" and t > 1e9 then return t end
+    return os.time()
+end
+
+local function DinhDangGio(t)
+    local ok, kq = pcall(function()
+        local d = os.date("*t", t)
+        return string.format("%02d:%02d ngày %02d/%02d/%04d", d.hour, d.min, d.day, d.month, d.year)
+    end)
+    return ok and kq or tostring(t)
+end
+
+local function DinhDangConLai(giay)
+    local gio = math.floor(giay / 3600)
+    local phut = math.floor((giay % 3600) / 60)
+    if gio > 0 then return gio .. " giờ " .. phut .. " phút" end
+    return phut .. " phút"
+end
+
+local function ChuanHoaTen(s)
+    s = Trim(tostring(s or ""))
+    s = s:gsub("^@", "")
+    return s:lower() -- chỉ đổi chữ ASCII, không làm hỏng chữ có dấu
+end
+
+local function TenKhop(tenTrongKey)
+    local can = ChuanHoaTen(tenTrongKey)
+    if can == ChuanHoaTen(player.Name) then return true end
+    if CAU_HINH.CHAP_NHAN_TEN_HIEN_THI and player.DisplayName and can == ChuanHoaTen(player.DisplayName) then
+        return true
+    end
+    return false
+end
+
+-- ================= Kiểm tra key =================
+-- Trả về: ok, thongBaoLoi, thongTin
+local function KiemTraKey(nhap)
+    nhap = type(nhap) == "string" and Trim(nhap) or ""
+    if nhap == "" then
+        return false, "Bạn chưa nhập key!"
+    end
+    -- Lấy phần key trong đoạn dán vào (dán thừa chữ vẫn nhận)
+    local ma = nhap:match(CAU_HINH.KEY_PREFIX:gsub("%p", "%%%0") .. "[%w_%-]+")
+    if not ma then
+        return false, "Key sai! Key phải bắt đầu bằng \"Free_v2__\""
+    end
+    local thongTin = GiaiMaKey(ma)
+    if not thongTin then
+        return false, "Key không hợp lệ (bị sửa hoặc thiếu ký tự). Hãy sao chép lại key."
+    end
+    if CAU_HINH.KIEM_TRA_TEN and not TenKhop(thongTin.ten) then
+        return false, "Key này không phải của tài khoản " .. player.Name
+            .. ". Hãy tạo key bằng đúng tên của bạn."
+    end
+    local bayGio = BayGio()
+    if thongTin.thoiDiem - bayGio > CAU_HINH.LECH_GIO_CHO_PHEP then
+        return false, "Thời gian trong key ở tương lai. Kiểm tra lại giờ máy rồi lấy key mới."
+    end
+    local hetHan = thongTin.thoiDiem + CAU_HINH.HAN_KEY_GIAY
+    thongTin.hetHan = hetHan
+    if bayGio >= hetHan then
+        return false, "Key đã hết hạn lúc " .. DinhDangGio(hetHan) .. ". Hãy lấy key mới."
+    end
+    thongTin.conLai = hetHan - bayGio
+    return true, nil, thongTin
 end
 
 -- ================= Chọn nơi đặt GUI =================
@@ -113,7 +350,7 @@ local khung = New("Frame", {
     Name = "Khung",
     AnchorPoint = Vector2.new(0.5, 0.5),
     Position = UDim2.new(0.5, 0, 0.5, 0),
-    Size = UDim2.new(0, 340, 0, 212),
+    Size = UDim2.new(0, 340, 0, 236),
     BackgroundColor3 = MAU.NEN,
     BorderSizePixel = 0,
     Active = true,
@@ -140,7 +377,8 @@ New("TextLabel", {
     Position = UDim2.new(0, 16, 0, 36),
     Size = UDim2.new(1, -32, 0, 18),
     Font = Enum.Font.Gotham,
-    Text = "Nhập key để sử dụng script",
+    Text = "Tạo key bằng tên: " .. tostring(player.Name),
+    TextTruncate = Enum.TextTruncate.AtEnd,
     TextColor3 = MAU.PHU,
     TextSize = 13,
     TextXAlignment = Enum.TextXAlignment.Left,
@@ -169,7 +407,7 @@ local oKey = New("TextBox", {
     BorderSizePixel = 0,
     ClearTextOnFocus = false,
     Font = Enum.Font.Gotham,
-    PlaceholderText = "Dán key Free_v2__... vào đây",
+    PlaceholderText = "Dán key Free_v2__... (hạn 24 giờ)",
     PlaceholderColor3 = MAU.PHU,
     Text = "",
     TextColor3 = MAU.CHU,
@@ -218,7 +456,7 @@ local trangThai = New("TextLabel", {
     Name = "TrangThai",
     BackgroundTransparency = 1,
     Position = UDim2.new(0, 16, 0, 162),
-    Size = UDim2.new(1, -32, 0, 38),
+    Size = UDim2.new(1, -32, 0, 62),
     Font = Enum.Font.Gotham,
     Text = "",
     TextColor3 = MAU.PHU,
@@ -302,13 +540,14 @@ end
 
 local function XacNhan()
     if dangXuLy then return end
-    local ok, loi = KiemTraKey(oKey.Text)
+    local ok, loi, thongTin = KiemTraKey(oKey.Text)
     if not ok then
         return ThatBai(loi)
     end
     dangXuLy = true
     DatNut(false, "Đang tải...")
-    BaoTrangThai("✔ Key hợp lệ! Đang tải script...", MAU.XANH)
+    BaoTrangThai("✔ Key hợp lệ! Còn " .. DinhDangConLai(thongTin.conLai)
+        .. " (hết hạn " .. DinhDangGio(thongTin.hetHan) .. "). Đang tải script...", MAU.XANH)
     task.spawn(ChayScriptChinh)
 end
 
@@ -336,3 +575,6 @@ nutDong.MouseButton1Click:Connect(function()
     if dangXuLy then return end
     gui:Destroy()
 end)
+
+-- Trả về các hàm kiểm tra (để test; không ảnh hưởng khi chạy bằng loadstring)
+return { GiaiMaKey = GiaiMaKey, KiemTraKey = KiemTraKey }

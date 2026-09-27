@@ -30,7 +30,13 @@ Trang vẫn có đếm ngược, reset thủ công/tự động, thông báo, hi
 
 ## Script nhập key cho Roblox (`key-system.lua`)
 
-Mở bảng nhập key trong game. Key **chỉ cần chứa** `Free_v2__` (phân biệt hoa/thường, tự bỏ khoảng trắng đầu/cuối) là được chấp nhận. Mọi mã do trang này tạo ra đều bắt đầu bằng `Free_v2__`. Khi key đúng, script tải `https://mncuadaigmailcom.github.io/aiaiaitao2/script.js`, **xoá bảng nhập key** rồi chạy script chính. Nếu tải lỗi hoặc script lỗi cú pháp, bảng vẫn giữ lại, hiện lỗi và cho bấm thử lại. Nút “Lấy key” sao chép link trang tạo mã. Có thể nhấn Enter trong ô key để xác nhận.
+Script mở bảng nhập key trong game, giải mã key `Free_v2__...` bằng cùng thuật toán với `taoMaDemo` rồi kiểm tra ba điều:
+
+1. **Đúng định dạng:** key giải mã được, không bị sửa hay thiếu ký tự. Dán thừa chữ trước/sau key vẫn nhận.
+2. **Đúng người chơi:** tên trong key phải trùng **tên tài khoản Roblox** (`player.Name`) hoặc **tên hiển thị** (`DisplayName`). Không phân biệt hoa/thường, bỏ dấu `@` ở đầu. Key của người khác bị từ chối và bảng không hiện tên chủ key.
+3. **Còn hạn:** key dùng được **24 giờ** kể từ lúc hoàn thành nhiệm vụ cuối. Giờ lấy theo máy chủ Roblox (`workspace:GetServerTimeNow()`), nên chỉnh đồng hồ máy không gia hạn được key. Key có thời điểm ở tương lai quá 5 phút cũng bị từ chối.
+
+Khi hợp lệ, bảng báo thời gian còn lại, **xoá giao diện nhập key** rồi tải và chạy `https://mncuadaigmailcom.github.io/aiaiaitao2/script.js`. Nếu tải lỗi hoặc script lỗi cú pháp, bảng vẫn giữ lại để thử lại. Có thể nhấn Enter để xác nhận, và nút “Lấy key” sẽ sao chép link trang tạo mã.
 
 Sau khi GitHub Pages cập nhật, chạy trong executor:
 
@@ -38,8 +44,8 @@ Sau khi GitHub Pages cập nhật, chạy trong executor:
 loadstring(game:HttpGet("https://mncuadaigmailcom.github.io/taodepzai/key-system.lua"))()
 ```
 
-Muốn đổi chuỗi key, link script hoặc link lấy key, sửa bảng `CAU_HINH` ở đầu file.
+Muốn đổi hạn key, độ lệch giờ, tắt kiểm tra tên/tên hiển thị hoặc đổi link, sửa bảng `CAU_HINH` ở đầu file.
 
-Chạy test (giả lập Roblox bằng Lua 5.1): `pip install lupa` rồi `python3 tests/key_system_test.py`.
+Chạy test (giả lập Roblox bằng Lua 5.1; có Node thì đối chiếu thêm với `index.html` và `tools/decode-demo.cjs`): `pip install lupa` rồi `python3 tests/key_system_test.py`.
 
-**Lưu ý:** việc kiểm tra key chạy ở máy người chơi, nên ai đọc mã nguồn cũng có thể bỏ qua hoặc tự tạo key. Đây chỉ là cổng đơn giản, không phải bảo mật thật.
+**Lưu ý:** cách này chặn được việc dùng lại key của người khác và key đã quá 24 giờ. Tuy nhiên thuật toán nằm công khai trong mã nguồn, nên người biết đọc code vẫn có thể tự tạo key cho tên của chính họ mà không làm nhiệm vụ, hoặc sửa script để bỏ qua kiểm tra. Muốn chặn hẳn cần máy chủ cấp key có chữ ký bí mật.
