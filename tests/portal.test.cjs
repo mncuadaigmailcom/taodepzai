@@ -125,10 +125,20 @@ function createPortal(sharedStore = new Map(), now = 1_000_000) {
     };
 }
 
-test('một cổng đủ lấy key; quay lại sớm chỉ báo lỗi cổng đó', async () => {
+async function completeTask(site, number) {
+    await site.click(`link-nv${number}`);
+    site.blur();
+    site.advance(5000);
+    site.focus();
+}
+
+test('chỉ mở key sau khi hoàn thành đủ bốn nhiệm vụ; quay lại sớm chỉ báo lỗi nhiệm vụ đó', async () => {
     const site = createPortal();
     const button = site.elements.get('nut-giai-bai');
     assert.equal(button.disabled, true);
+    await site.click('nut-giai-bai');
+    assert.equal(site.modalOpen(), false);
+
     await site.click('link-nv1');
     site.blur();
     site.advance(2000);
@@ -138,13 +148,19 @@ test('một cổng đủ lấy key; quay lại sớm chỉ báo lỗi cổng đ�
     site.advance(2500);
     assert.equal(site.status(1), 'idle');
 
-    await site.click('link-nv2');
-    site.blur();
-    site.advance(5000);
-    site.focus();
-    assert.equal(site.status(1), 'idle');
-    assert.equal(site.status(2), 'success');
-    assert.equal(site.status(3), 'idle');
+    for (const [number, completed] of [[2, 1], [1, 2], [3, 3]]) {
+        await completeTask(site, number);
+        assert.equal(site.status(number), 'success');
+        assert.equal(site.elements.get('unlocked-count').textContent, `${completed} / 4 hoàn thành`);
+        assert.equal(button.disabled, true);
+        assert.match(button.children.get('span').textContent, new RegExp(`Còn ${4 - completed} nhiệm vụ`));
+        await site.click('nut-giai-bai');
+        assert.equal(site.modalOpen(), false);
+        assert.equal(site.elements.get('key-value').value, '');
+    }
+
+    await completeTask(site, 4);
+    assert.equal(site.elements.get('unlocked-count').textContent, '4 / 4 hoàn thành');
     assert.equal(button.disabled, false);
     await site.click('nut-giai-bai');
     assert.equal(site.modalOpen(), true);
@@ -171,20 +187,19 @@ test('không tự hoàn thành nếu chưa rời trang, bốn cổng dùng trạ
     site.focus();
     assert.equal(site.status(4), 'error');
     assert.equal(site.status(3), 'success');
-    assert.equal(site.elements.get('nut-giai-bai').disabled, false);
+    assert.equal(site.elements.get('nut-giai-bai').disabled, true);
+    assert.equal(site.elements.get('unlocked-count').textContent, '1 / 4 hoàn thành');
 });
 
-test('đồng hồ 3 phút tự reset và nút reset thủ công vẫn hoạt động', async () => {
+test('hết phiên 3 phút tự khóa key và reset cả bốn nhiệm vụ; reset thủ công vẫn hoạt động', async () => {
     const site = createPortal();
-    await site.click('link-nv4');
-    site.blur();
-    site.advance(5000);
-    site.focus();
+    for (const number of [1, 2, 3, 4]) await completeTask(site, number);
     await site.click('nut-giai-bai');
     assert.equal(site.modalOpen(), true);
-    site.advance(175000);
-    assert.equal(site.status(4), 'idle');
+    site.advance(160000); // 20 giây làm nhiệm vụ + 160 giây còn lại của phiên.
+    for (const number of [1, 2, 3, 4]) assert.equal(site.status(number), 'idle');
     assert.equal(site.modalOpen(), false);
+    assert.equal(site.elements.get('key-value').value, '');
     assert.equal(site.elements.get('nut-giai-bai').disabled, true);
     assert.equal(site.elements.get('countdown-text').textContent, 'Phiên chưa bắt đầu');
     await site.click('link-nv1');
@@ -193,17 +208,16 @@ test('đồng hồ 3 phút tự reset và nút reset thủ công vẫn hoạt đ
     assert.equal(site.store.has('session_expire'), false);
 });
 
-test('F5 khôi phục thành công từng cổng trong phiên và giữ chức năng copy script', async () => {
+test('F5 giữ nhiệm vụ đã hoàn thành nhưng vẫn yêu cầu đủ bốn và giữ copy script', async () => {
     const storage = new Map();
     const first = createPortal(storage);
-    await first.click('link-nv1');
-    first.blur();
-    first.advance(5000);
-    first.focus();
+    await completeTask(first, 1);
     assert.equal(first.status(1), 'success');
     const second = createPortal(storage, 1_005_000);
     assert.equal(second.status(1), 'success');
     assert.equal(second.status(2), 'idle');
+    assert.equal(second.elements.get('nut-giai-bai').disabled, true);
+    for (const number of [2, 3, 4]) await completeTask(second, number);
     assert.equal(second.elements.get('nut-giai-bai').disabled, false);
     await second.click('nut-giai-bai');
     await second.click('copy-btn');

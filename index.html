@@ -483,17 +483,17 @@
                 </svg>
             </div>
             <h1>Lấy Key Script Taodepzai</h1>
-            <p class="sub-title">4 cổng mở khóa độc lập · Chỉ cần hoàn thành một cổng</p>
+            <p class="sub-title">Hoàn thành đủ 4 nhiệm vụ để mở khóa key</p>
         </header>
 
         <div class="desc-box">
-            <strong>Hướng dẫn:</strong> Chỉ cần hoàn thành <strong>một trong bốn</strong> cổng bên dưới. Mở liên kết, ở tab mới ít nhất 5 giây rồi quay lại. Mỗi cổng theo dõi riêng; phiên tự làm mới sau 3 phút tính từ lần bắt đầu đầu tiên.
+            <strong>Hướng dẫn:</strong> Hoàn thành <strong>cả 4 nhiệm vụ</strong> bên dưới (không cần theo thứ tự). Với từng nhiệm vụ, mở liên kết, ở tab mới ít nhất 5 giây rồi quay lại. Mỗi nhiệm vụ theo dõi riêng; phiên tự làm mới sau 3 phút tính từ lần bắt đầu đầu tiên.
         </div>
         <p class="demo-banner" id="demo-banner">✦ Đây là bản mẫu: key và 4 liên kết sẽ được thay khi bạn gửi thông tin thật.</p>
 
         <section aria-labelledby="task-heading">
             <div class="section-heading">
-                <h2 id="task-heading">Chọn cổng mở khóa</h2>
+                <h2 id="task-heading">Hoàn thành 4 nhiệm vụ</h2>
                 <span id="unlocked-count">0 / 4 hoàn thành</span>
             </div>
             <div class="task-grid">
@@ -539,7 +539,7 @@
         <button class="download-btn" id="nut-giai-bai" type="button" disabled>
             <svg class="lock-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
             <svg class="unlock-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0"/></svg>
-            <span>Hoàn thành một cổng để nhận key</span>
+            <span>Hoàn thành đủ 4 nhiệm vụ để nhận key</span>
         </button>
         <button class="reset-manual-btn" id="nut-reset-thu-cong" type="button">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 12a9 9 0 1 0 2.6-6.4L3 8"/><path d="M3 3v5h5"/></svg>
@@ -699,13 +699,17 @@
 
         function kiemTraMoKhoa() {
             const soCongHoanThanh = NHIEM_VU.filter(nv => trangThai(nv) === 'success').length;
-            const moKhoa = soCongHoanThanh > 0 && thoiGianHetHan() !== null;
-            document.getElementById('unlocked-count').textContent = `${soCongHoanThanh} / 4 hoàn thành`;
+            const hetHan = thoiGianHetHan();
+            const moKhoa = soCongHoanThanh === NHIEM_VU.length &&
+                hetHan !== null && Number.isFinite(hetHan) && Date.now() < hetHan;
+            document.getElementById('unlocked-count').textContent = `${soCongHoanThanh} / ${NHIEM_VU.length} hoàn thành`;
             nutGiaiBai.disabled = !moKhoa;
             nutGiaiBai.classList.toggle('active', moKhoa);
             nutGiaiBai.querySelector('span').textContent = moKhoa
                 ? '🔑 BẤM ĐỂ NHẬN KEY TAODEPZAI'
-                : 'Hoàn thành một cổng để nhận key';
+                : soCongHoanThanh === 0
+                    ? 'Hoàn thành đủ 4 nhiệm vụ để nhận key'
+                    : `Còn ${NHIEM_VU.length - soCongHoanThanh} nhiệm vụ để nhận key`;
             if (!moKhoa && manHinhTrang.classList.contains('show')) dongHopThoai();
         }
 
@@ -794,7 +798,10 @@
                 luu.remove(`leftAt${nv.id}`);
                 if (Number.isFinite(roiLuc) && roiLuc > 0 && daQua >= THOI_GIAN_CHO_NV) {
                     luu.set(`status${nv.id}`, 'success');
-                    notify(`✓ Cổng ${nv.so} đã hoàn thành. Key đã sẵn sàng!`, 'success');
+                    const conThieu = NHIEM_VU.filter(item => trangThai(item) !== 'success').length;
+                    notify(conThieu === 0
+                        ? '✓ Đã hoàn thành đủ 4 nhiệm vụ. Key đã sẵn sàng!'
+                        : `✓ Nhiệm vụ ${nv.so} đã xong. Còn ${conThieu} nhiệm vụ nữa.`, 'success');
                 } else {
                     luu.set(`status${nv.id}`, 'error');
                     henXoaLoi(nv);
