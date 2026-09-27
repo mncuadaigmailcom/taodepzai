@@ -716,7 +716,7 @@ local nhanThietBi = New("TextLabel", {
     Position = UDim2.new(0, 16, 0, 58),
     Size = UDim2.new(1, -32, 0, 24),
     Font = Enum.Font.GothamBold,
-    Text = "Mã thiết bị (IP): đang lấy...",
+    Text = "Mạng (4G / 5G / wifi): đang kiểm tra...",
     TextColor3 = MAU.CHU,
     TextSize = 13,
     TextTruncate = Enum.TextTruncate.AtEnd,
@@ -809,8 +809,9 @@ gui.Parent = parentGui
 
 KhiDoiThietBi = function()
     if gui.Parent == nil then return end
-    nhanThietBi.Text = MA_THIET_BI and ("Mã thiết bị (IP): " .. MA_THIET_BI)
-        or "Mã thiết bị (IP): chưa lấy được, kiểm tra mạng"
+    -- Không hiện mã mạng / IP, chỉ báo đã nhận mạng hay chưa
+    nhanThietBi.Text = MA_THIET_BI and "Mạng (4G / 5G / wifi): ✓ đã nhận"
+        or "Mạng: chưa lấy được, kiểm tra kết nối"
 end
 CapNhatThietBi()
 

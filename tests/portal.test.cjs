@@ -207,7 +207,11 @@ test('chỉ tạo mã demo khi đã nhập tên và hoàn thành đủ bốn nhi
 
     await enterName(site);
     assert.equal(button.disabled, false);
-    assert.equal(site.elements.get('device-code').textContent, `✓ ${MA_TB}`, 'Mã thiết bị tự lấy theo IP');
+    assert.equal(site.elements.get('device-box').hidden, true, 'Lấy được mạng thì ẩn hẳn khung mã thiết bị');
+    for (const [id, el] of site.elements) {
+        assert.equal(String(el.textContent).includes(MA_TB), false, `#${id} không hiện mã thiết bị`);
+        assert.equal(String(el.textContent).includes(IP), false, `#${id} không hiện IP`);
+    }
     await site.click('nut-giai-bai');
     assert.equal(site.modalOpen(), true);
     const code = site.elements.get('key-value').value;
@@ -279,7 +283,8 @@ test('F5 giữ tên/mốc nhiệm vụ, vẫn cần đủ bốn và giữ chức
     assert.equal(second.status(1), 'success');
     assert.equal(second.elements.get('player-name').value, 'HoiAnPlayer_09');
     await second.flush();
-    assert.equal(second.elements.get('device-code').textContent, `✓ ${MA_TB}`, 'Mở lại trang vẫn tự lấy IP');
+    assert.equal(second.elements.get('device-box').hidden, true, 'Mở lại trang vẫn tự lấy mạng, khung vẫn ẩn');
+    assert.deepEqual(second.fetchLog, ['https://api.ipify.org']);
     assert.equal(storage.get('completedAtnv1'), firstTime);
     assert.equal(second.status(2), 'idle');
     assert.equal(second.elements.get('nut-giai-bai').disabled, true);
@@ -306,7 +311,7 @@ test('tên người chơi nằm trên nhiệm vụ, lưu sau F5 và hiển thị
     for (const number of [1, 2, 3, 4]) await completeTask(afterReload, number);
     await afterReload.click('nut-giai-bai');
     const summary = afterReload.elements.get('player-summary');
-    assert.equal(summary.textContent, `Người chơi: HoiAnPlayer_09 · Thiết bị: ${MA_TB}`);
+    assert.equal(summary.textContent, 'Người chơi: HoiAnPlayer_09', 'Không hiện mã thiết bị');
     assert.equal(summary.hidden, false);
     assert.equal(afterReload.elements.get('player-details').open, false);
     const originalCode = afterReload.elements.get('key-value').value;
@@ -321,7 +326,7 @@ test('tên người chơi nằm trên nhiệm vụ, lưu sau F5 và hiển thị
     assert.equal(afterReload.modalOpen(), false);
     await enterName(afterReload, 'AnotherPlayer');
     await afterReload.click('nut-giai-bai');
-    assert.equal(summary.textContent, `Người chơi: AnotherPlayer · Thiết bị: ${MA_TB}`);
+    assert.equal(summary.textContent, 'Người chơi: AnotherPlayer');
     assert.notEqual(afterReload.elements.get('key-value').value, originalCode);
     assert.equal(giaiMaDemo(originalCode).ten, 'HoiAnPlayer_09');
     assert.equal(giaiMaDemo(afterReload.elements.get('key-value').value).ten, 'AnotherPlayer');
@@ -539,23 +544,24 @@ test('không hiện ngày giờ / hạn key ở bất kỳ đâu trên trang, ke
     assert.equal(giaiMaDemo(code).thoiDiem, t);
 });
 
-test('mã thiết bị tự lấy theo IP; không lấy được IP thì chưa cho tạo key, bấm "Lấy lại" để thử lại', async () => {
+test('mã mạng lấy ngầm theo IP; không lấy được thì hiện khung lỗi, bấm "Thử lại" để lấy lại', async () => {
     const site = createPortal(new Map(), 1_000_000, { ip: null });
     await enterName(site, 'Player_01');
     for (const number of [1, 2, 3, 4]) await completeTask(site, number);
     const button = site.elements.get('nut-giai-bai');
     const oMa = site.elements.get('device-code');
     assert.equal(button.disabled, true, 'Chưa có IP thì chưa tạo key');
-    assert.match(button.children.get('span').textContent, /Không lấy được IP/);
-    assert.match(oMa.className, /loi/);
+    assert.match(button.children.get('span').textContent, /Không lấy được mạng/);
+    assert.equal(site.elements.get('device-box').hidden, false, 'Chỉ hiện khung khi lỗi mạng');
+    assert.match(oMa.textContent, /Không lấy được mạng/);
     assert.deepEqual(site.fetchLog.slice(0, 3), ['https://api.ipify.org', 'https://ipv4.icanhazip.com', 'https://v4.ident.me'],
         'Thử lần lượt cả 3 nguồn IPv4');
 
     site.ipState.ip = IP; // có mạng lại
     await site.click('device-refresh');
     await site.flush();
-    assert.equal(oMa.textContent, `✓ ${MA_TB}`);
-    assert.match(oMa.className, /ok/);
+    assert.equal(site.elements.get('device-box').hidden, true, 'Có mạng lại thì ẩn khung');
+    assert.equal(oMa.textContent, '');
     assert.equal(button.disabled, false);
     await site.click('nut-giai-bai');
     const code1 = site.elements.get('key-value').value;
@@ -564,6 +570,7 @@ test('mã thiết bị tự lấy theo IP; không lấy được IP thì chưa c
     for (const [id, el] of site.elements) {
         if (id === 'key-value') continue;
         assert.equal(String(el.textContent).includes(IP), false, `#${id} không hiện IP thật`);
+        assert.equal(String(el.textContent).includes(MA_TB), false, `#${id} không hiện mã thiết bị`);
     }
 
     // Đổi mạng khi đang mở hộp thoại -> bấm Lấy lại -> key mới theo IP mới
@@ -580,12 +587,16 @@ test('nguồn IP đầu trả sai (IPv6 / rác) thì dùng nguồn sau; IP đư�
         'https://api.ipify.org': '2402:800:6310::1', 'https://ipv4.icanhazip.com': ' 113.161.010.020 ',
     } });
     await site.flush();
-    assert.equal(site.elements.get('device-code').textContent, `✓ ${MA_TB}`);
+    assert.equal(site.elements.get('device-box').hidden, true);
+    await enterName(site);
+    for (const number of [1, 2, 3, 4]) await completeTask(site, number);
+    await site.click('nut-giai-bai');
+    assert.equal(giaiMaDemo(site.elements.get('key-value').value).thietBi, THAN_TB);
     for (const sai of ['256.1.1.1', '1.2.3', '1.2.3.4.5', 'abc', '']) {
         const s2 = createPortal(new Map(), 1_000_000, { ipTheoUrl: {
             'https://api.ipify.org': sai, 'https://ipv4.icanhazip.com': sai, 'https://v4.ident.me': sai } });
         await s2.flush();
-        assert.match(s2.elements.get('device-code').className, /loi/, sai);
+        assert.equal(s2.elements.get('device-box').hidden, false, sai);
     }
 });
 
@@ -610,4 +621,13 @@ test('key của trang giống hệt bộ tạo độc lập (node:crypto) khi c�
     assert.equal(nonce.length, 12);
     assert.equal(code, taoMaV4('Tên Có Dấu 🎮', 'nv4', Number(storage.get('completedAtnv4')),
         Number(storage.get('taodepzai_so_quay')), MA_TB, nonce));
+});
+
+test('HTML: khung mã thiết bị ẩn sẵn (không có ô nhập ID), trang không có chữ "IP" hiển thị', () => {
+    const html = fs.readFileSync(path.join(__dirname, '..', 'index.html'), 'utf8');
+    assert.match(html, /<div class="device-box" id="device-box" hidden>/);
+    assert.doesNotMatch(html, /id="device-input"|placeholder="[^"]*thiết bị/i, 'Không có ô nhập ID');
+    const body = html.slice(html.indexOf('<body'), html.indexOf('<script'));
+    const chu = body.replace(/<!--[\s\S]*?-->/g, '').replace(/<[^>]+>/g, ' ');
+    assert.doesNotMatch(chu, /\bIP\b/, 'Không hiện chữ IP / mã thiết bị trên trang');
 });

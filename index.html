@@ -238,6 +238,8 @@
         .player-help { margin: 9px 0 0; color: var(--text-muted); font-size: 11px; line-height: 1.5; }
         .device-label { margin-top: 16px; }
         .device-row { display: flex; align-items: center; gap: 10px; }
+        .device-box { margin-top: 12px; }
+        .device-box[hidden] { display: none; }
         .device-code { flex: 1; min-height: 46px; display: flex; align-items: center; padding: 0 14px; border: 1px solid var(--glass-border); border-radius: 14px; background: rgba(2, 6, 23, .45); color: var(--text-main); font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: 14px; font-weight: 700; letter-spacing: .06em; }
         .device-code.ok { border-color: rgba(52, 211, 153, .45); color: #6ee7b7; }
         .device-code.loi { border-color: rgba(248, 113, 113, .45); color: #fca5a5; }
@@ -555,7 +557,7 @@
         <div class="desc-box">
             <strong>Hướng dẫn:</strong> Nhập tên người chơi và hoàn thành <strong>cả 4 nhiệm vụ</strong> (không cần theo thứ tự). Với từng nhiệm vụ, mở liên kết, ở tab mới ít nhất 5 giây rồi quay lại. Mã demo dùng thời điểm hoàn thành nhiệm vụ cuối cùng; phiên tự làm mới sau 3 phút.
         </div>
-        <p class="demo-banner" id="demo-banner">✦ Mã Free_ chỉ là mã demo, không kích hoạt script. Tên, thời gian và mã thiết bị được mã hoá HMAC-SHA256 trong key. Bốn liên kết hiện là mẫu.</p>
+        <p class="demo-banner" id="demo-banner">✦ Mã Free_ chỉ là mã demo, không kích hoạt script. Tên, thời gian và mã mạng được mã hoá HMAC-SHA256 trong key. Bốn liên kết hiện là mẫu.</p>
 
         <div class="player-box">
             <label class="player-label" for="player-name">
@@ -563,16 +565,15 @@
                 Tên người chơi
             </label>
             <input class="player-input" id="player-name" name="playerName" type="text" maxlength="32" autocomplete="nickname" spellcheck="false" required placeholder="Tên tài khoản Roblox của bạn" aria-describedby="player-help">
-            <p class="player-help" id="player-help">Nhập <strong>đúng tên tài khoản Roblox</strong> (hoặc tên hiển thị) của bạn: script chỉ nhận key có tên trùng với tài khoản đang chơi, và key chỉ dùng được <strong>24 giờ</strong>. Tên được lưu trên trình duyệt và được mã hoá bên trong key.</p>
-            <div class="player-label device-label" id="device-label">
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="5" y="2" width="14" height="20" rx="2"/><path d="M12 18h.01"/></svg>
-                Mã thiết bị (tự lấy theo IP mạng)
+            <p class="player-help" id="player-help">Nhập <strong>đúng tên tài khoản Roblox</strong> (hoặc tên hiển thị) của bạn: script chỉ nhận key có tên trùng với tài khoản đang chơi, và key chỉ dùng được <strong>24 giờ</strong>. Tên được lưu trên trình duyệt và được mã hoá bên trong key. Key cũng tự gắn với <strong>mạng bạn đang dùng</strong> (4G, 5G hoặc wifi), nên hãy chơi Roblox trên cùng mạng đó và tắt VPN.</p>
+            <!-- Mã mạng (IP 4G / 5G / wifi) được lấy ngầm và mã hoá vào key; khung này chỉ hiện khi không lấy được mạng. -->
+            <div class="device-box" id="device-box" hidden>
+                <div class="device-row">
+                    <span class="device-code loi" id="device-code" role="status" aria-live="polite">✕ Không lấy được mạng</span>
+                    <button id="device-refresh" type="button" aria-label="Lấy lại mạng">🔄 Thử lại</button>
+                </div>
+                <p class="player-help" id="device-help">Kiểm tra kết nối 4G / 5G / wifi rồi bấm <strong>Thử lại</strong>.</p>
             </div>
-            <div class="device-row">
-                <span class="device-code" id="device-code" role="status" aria-live="polite" aria-labelledby="device-label">Đang tự lấy IP…</span>
-                <button id="device-refresh" type="button" aria-label="Lấy lại IP">🔄 Lấy lại</button>
-            </div>
-            <p class="player-help" id="device-help">Trang tự lấy <strong>IP mạng của điện thoại</strong> để gắn key với thiết bị, bạn không cần nhập gì. Hãy mở trang này và chơi Roblox <strong>trên cùng mạng</strong> (cùng wifi hoặc 4G, tắt VPN); đổi mạng thì cần lấy key mới.</p>
         </div>
 
         <section aria-labelledby="task-heading">
@@ -849,9 +850,10 @@
         const hopThoai = manHinhTrang.querySelector('.editor-wrapper');
         const keyField = document.getElementById('key-value');
         const playerNameInput = document.getElementById('player-name');
+        const khungThietBi = document.getElementById('device-box');
         const deviceCode = document.getElementById('device-code');
         const nutLayLaiIp = document.getElementById('device-refresh');
-        let thanThietBi = null;      // 10 ký tự, băm từ IP; null khi chưa lấy được
+        let thanThietBi = null;      // 10 ký tự, băm từ IP mạng (4G/5G/wifi); null khi chưa lấy được
         let dangLayIp = false;
         let lanLayIpCuoi = 0;
         const playerDetails = document.getElementById('player-details');
@@ -887,7 +889,7 @@
             kiemTraMoKhoa();
         });
         if (!DANG_LA_BAN_MAU) {
-            document.getElementById('demo-banner').textContent = '✦ Mã Free_ chỉ là mã demo, không kích hoạt script. Tên, thời gian và mã thiết bị được mã hoá HMAC-SHA256 trong key.';
+            document.getElementById('demo-banner').textContent = '✦ Mã Free_ chỉ là mã demo, không kích hoạt script. Tên, thời gian và mã mạng được mã hoá HMAC-SHA256 trong key.';
         }
         NHIEM_VU.forEach(nv => {
             const lienKet = document.getElementById(`link-${nv.id}`);
@@ -935,17 +937,11 @@
             } catch { return Math.floor(Math.random() * 1000); }
         }
 
+        // Không bao giờ hiện mã mạng / IP: chỉ hiện khung báo lỗi khi không lấy được mạng.
         function hienThiTrangThaiThietBi() {
-            if (thanThietBi) {
-                deviceCode.textContent = `✓ ${dinhDangMaThietBi(thanThietBi)}`;
-                deviceCode.className = 'device-code ok';
-            } else if (dangLayIp) {
-                deviceCode.textContent = 'Đang tự lấy IP…';
-                deviceCode.className = 'device-code';
-            } else {
-                deviceCode.textContent = '✕ Không lấy được IP, bấm Lấy lại';
-                deviceCode.className = 'device-code loi';
-            }
+            const loi = !thanThietBi && !dangLayIp;
+            khungThietBi.hidden = !loi;
+            deviceCode.textContent = loi ? '✕ Không lấy được mạng' : '';
             nutLayLaiIp.disabled = dangLayIp;
         }
 
@@ -977,7 +973,7 @@
                 capNhatMa();
                 hienThiTenNguoiChoi();
             }
-            if (baoKetQua) notify(thanThietBi ? '✓ Đã lấy mã thiết bị theo IP mạng.' : 'Không lấy được IP. Kiểm tra mạng rồi thử lại.',
+            if (baoKetQua) notify(thanThietBi ? '✓ Đã kết nối mạng.' : 'Không lấy được mạng. Kiểm tra 4G / 5G / wifi rồi thử lại.',
                 thanThietBi ? 'success' : 'error');
         }
 
@@ -1061,7 +1057,7 @@
             if (moKhoa) huongDan = '✦ XEM MÃ DEMO FREE_';
             else if (soCongHoanThanh === NHIEM_VU.length && !coMocThoiGian) huongDan = 'Làm mới phiên để tạo mã demo';
             else if (soCongHoanThanh === NHIEM_VU.length && !coTen) huongDan = 'Nhập tên người chơi để tạo mã demo';
-            else if (soCongHoanThanh === NHIEM_VU.length && !coThietBi) huongDan = dangLayIp ? 'Đang lấy IP thiết bị…' : 'Không lấy được IP: bấm Lấy lại';
+            else if (soCongHoanThanh === NHIEM_VU.length && !coThietBi) huongDan = dangLayIp ? 'Đang kiểm tra mạng…' : 'Không lấy được mạng: bấm Thử lại';
             else if (soCongHoanThanh === 0) huongDan = 'Nhập tên và hoàn thành 4 nhiệm vụ';
             else huongDan = `Còn ${NHIEM_VU.length - soCongHoanThanh} nhiệm vụ để tạo mã demo`;
             nutGiaiBai.querySelector('span').textContent = huongDan;
@@ -1227,8 +1223,7 @@
 
         function hienThiTenNguoiChoi() {
             const ten = playerNameInput.value.trim();
-            const than = thanThietBi;
-            playerSummary.textContent = ten ? `Người chơi: ${ten}${than ? ` · Thiết bị: ${dinhDangMaThietBi(than)}` : ''}` : '';
+            playerSummary.textContent = ten ? `Người chơi: ${ten}` : '';
             playerSummary.hidden = !ten;
         }
 

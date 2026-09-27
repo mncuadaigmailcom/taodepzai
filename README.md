@@ -6,8 +6,10 @@ Trang HTML tĩnh tại `index.html`. Mở tệp trong trình duyệt hoặc ch�
 
 Để tạo key, người dùng chỉ cần nhập **tên người chơi** và hoàn thành 4 nhiệm vụ. **Mã thiết bị được lấy tự động theo IP mạng của điện thoại**, không cần nhập:
 
-- **Trang web:** khi mở trang (và khi quay lại trang, hoặc bấm “🔄 Lấy lại”), trang gọi lần lượt `https://api.ipify.org`, `https://ipv4.icanhazip.com`, `https://v4.ident.me` (chỉ IPv4) để lấy IP công khai.
-- **Tạo mã:** IP được chuẩn hoá rồi băm SHA-256 (`"taodepzai|thiet-bi|ip:" + ip`) thành mã `XXXX-XXXX-XXXX`. Trang chỉ hiện mã này, không hiện IP thật.
+- **Trang web:** khi mở trang (và khi quay lại trang), trang gọi lần lượt `https://api.ipify.org`, `https://ipv4.icanhazip.com`, `https://v4.ident.me` (chỉ IPv4) để lấy IP công khai.
+- **Tạo mã:** IP được chuẩn hoá rồi băm SHA-256 (`"taodepzai|thiet-bi|ip:" + ip`) thành mã mạng và mã hoá vào key.
+  - **Không có ô ID và không hiện mã hay IP**, cả trên web lẫn trong game (game chỉ ghi “Mạng: ✓ đã nhận”).
+  - Chỉ khi không lấy được mạng, trang mới hiện khung báo lỗi kèm nút “🔄 Thử lại”.
 - **Script Roblox:** tự lấy IP từ cùng các nguồn bằng `game:HttpGet` rồi so khớp. Nếu không khớp, script lấy lại IP một lần (phòng khi vừa đổi mạng) rồi mới từ chối.
 - **Vì vậy phải lấy key và chơi Roblox trên cùng mạng** (cùng wifi hoặc cùng 4G, tắt VPN / iCloud Private Relay). Đổi mạng thì cần lấy key mới.
   - Key đã lưu không bị xoá khi đang ở mạng khác hoặc mất mạng; về lại mạng cũ là dùng tiếp.
