@@ -2,6 +2,21 @@
 
 Trang HTML tĩnh tại `index.html`. Mở tệp trong trình duyệt hoặc chạy `python3 -m http.server 8000` để xem trên máy. Chạy kiểm thử bằng `node --test tests/portal.test.cjs`.
 
+## Mã Free_v3_ (vòng quay 3 số)
+
+Trong cửa sổ nhận mã có **vòng quay 3 số** (000–999). Mỗi lần bấm **🎰 Quay số mới**, ba ô số quay rồi dừng lần lượt, và trang tạo một key mới cho cùng tên, cùng thời điểm (1000 key khác nhau có thể có). Trong lúc quay, nút sao chép bị khoá để không chép nhầm key cũ. Đóng cửa sổ giữa chừng thì huỷ lượt quay và giữ số cũ.
+
+Cách tạo mã v3 (`taoMaDemo` trong `index.html`, giống hệt `tools/decode-demo.cjs` và `key-system.lua`):
+
+1. **Đầu mã 3 byte** = số quay + **ngày + tháng** (UTC) của lúc hoàn thành nhiệm vụ cuối, được che bằng mặt nạ.
+2. **Nội dung** = `[tên, nhiệm vụ, thời điểm]` dạng JSON UTF-8, kèm **mã kiểm tra 32 bit** (2 hàm băm độc lập trên chuỗi bí mật + đầu mã + nội dung).
+3. **Dòng khoá** sinh từ (chuỗi bí mật, số quay, ngày, tháng) bằng bộ sinh Park–Miller. Mỗi byte được cộng khoá và **xích với byte trước**, nên sửa một ký tự thì phần sau hỏng hết và mã kiểm tra không khớp.
+4. Khi giải mã, ngày/tháng ở đầu mã phải khớp thời điểm bên trong; số quay phải trong khoảng 000–999.
+
+Mọi phép tính dùng số nguyên dưới 2^53, nên JS và Lua cho kết quả giống hệt nhau (test đối chiếu tự động).
+
+**Giới hạn:** chuỗi bí mật và thuật toán vẫn nằm công khai trong mã nguồn trang. Cách này chặn được việc sửa hoặc bịa key bằng tay, nhưng người đọc code vẫn có thể tự viết chương trình tạo key. Muốn chặn hẳn cần máy chủ ký key bằng khoá bí mật.
+
 ## Cấu hình liên kết
 
 Tìm mảng `NHIEM_VU` ở cuối `index.html`:
@@ -14,15 +29,15 @@ Tìm mảng `NHIEM_VU` ở cuối `index.html`:
 
 Bốn nhiệm vụ xếp thành một cột. Người dùng **phải nhập tên** và hoàn thành **đủ cả bốn nhiệm vụ** trong phiên 3 phút, không cần theo thứ tự. Mỗi nhiệm vụ theo dõi riêng 5 giây rời tab; quay lại sớm chỉ báo lỗi nhiệm vụ đó.
 
-Khi một nhiệm vụ hoàn thành, thời điểm hoàn thành được lưu trong trình duyệt. Sau 4/4, trang lấy **thời điểm của nhiệm vụ hoàn thành cuối cùng** và ID nhiệm vụ đó cùng tên người chơi để tạo mã `Free_v2_...`. Tên không hiện bằng chữ trong mã, nhưng **có thể đọc lại khi biết thuật toán**. Mã ổn định sau F5 nếu vẫn cùng tên và phiên; đổi tên hoặc tạo phiên mới sẽ tạo mã khác. Tên được lưu trong trình duyệt và giữ lại khi reset phiên, còn trạng thái nhiệm vụ và mốc thời gian được reset sau 3 phút hoặc khi bấm nút làm mới. Bản sao của mã đã gửi đi vẫn có thể đọc được sau khi reset.
+Khi một nhiệm vụ hoàn thành, thời điểm hoàn thành được lưu trong trình duyệt. Sau 4/4, trang lấy **thời điểm của nhiệm vụ hoàn thành cuối cùng** và ID nhiệm vụ đó cùng tên người chơi để tạo mã `Free_v3_...`. Tên không hiện bằng chữ trong mã, nhưng **có thể đọc lại khi biết thuật toán**. Mã ổn định sau F5 nếu vẫn cùng tên, phiên và số vòng quay; đổi tên, bấm **🎰 Quay số mới** hoặc tạo phiên mới sẽ tạo mã khác. Tên được lưu trong trình duyệt và giữ lại khi reset phiên, còn trạng thái nhiệm vụ và mốc thời gian được reset sau 3 phút hoặc khi bấm nút làm mới. Bản sao của mã đã gửi đi vẫn có thể đọc được sau khi reset.
 
 Để đọc tên từ **mã demo mới**, tại thư mục repo chạy:
 
 ```bash
-node tools/decode-demo.cjs 'Free_v2_...'
+node tools/decode-demo.cjs 'Free_v3_...'
 ```
 
-Công cụ in ra tên gốc (cả chữ hoa và dấu tiếng Việt), ID nhiệm vụ cuối và thời điểm hoàn thành dạng UTC. Các mã cũ có **14 ký tự sau `Free_`** là hash một chiều, **không thể đọc ngược tên**; hãy dùng bản trang mới để tạo mã `Free_v2_...` (nếu phiên cũ đã hết hạn, cần làm lại bốn nhiệm vụ). Công cụ không xác nhận được mã có thật hoặc người chơi đã làm nhiệm vụ: ai đọc mã nguồn cũng có thể tự tạo mã giả.
+Công cụ in ra tên gốc (cả chữ hoa và dấu tiếng Việt), ID nhiệm vụ cuối, thời điểm hoàn thành dạng UTC và số vòng quay (mã `Free_v2_` cũ vẫn đọc được). Các mã cũ có **14 ký tự sau `Free_`** là hash một chiều, **không thể đọc ngược tên**; hãy dùng bản trang mới để tạo mã `Free_v3_...` (nếu phiên cũ đã hết hạn, cần làm lại bốn nhiệm vụ). Công cụ không xác nhận được mã có thật hoặc người chơi đã làm nhiệm vụ: ai đọc mã nguồn cũng có thể tự tạo mã giả.
 
 Trang vẫn có đếm ngược, reset thủ công/tự động, thông báo, hiệu ứng 3D, sao chép mã demo và sao chép script cũ. Tên trên cửa sổ nhận mã được thu gọn theo mặc định để không lộ ngay khi chia sẻ ảnh; trường tên trong trang chính vẫn hiển thị khi người dùng nhập.
 
@@ -30,9 +45,9 @@ Trang vẫn có đếm ngược, reset thủ công/tự động, thông báo, hi
 
 ## Script nhập key cho Roblox (`key-system.lua`)
 
-Script mở bảng nhập key trong game, giải mã key `Free_v2__...` bằng cùng thuật toán với `taoMaDemo` rồi kiểm tra ba điều:
+Script mở bảng nhập key trong game, giải mã key `Free_v3_...` bằng cùng thuật toán với `taoMaDemo` rồi kiểm tra ba điều (key `Free_v2_` cũ bị từ chối, trừ khi đặt `CHAP_NHAN_KEY_V2 = true`):
 
-1. **Đúng định dạng:** key giải mã được, không bị sửa hay thiếu ký tự. Dán thừa chữ trước/sau key vẫn nhận.
+1. **Đúng định dạng:** key giải mã được, mã kiểm tra 32 bit khớp, ngày/tháng khớp thời điểm; không bị sửa hay thiếu ký tự. Dán thừa chữ trước/sau key vẫn nhận.
 2. **Đúng người chơi:** tên trong key phải trùng **tên tài khoản Roblox** (`player.Name`) hoặc **tên hiển thị** (`DisplayName`). Không phân biệt hoa/thường, bỏ dấu `@` ở đầu. Key của người khác bị từ chối và bảng không hiện tên chủ key.
 3. **Còn hạn:** key dùng được **24 giờ** kể từ lúc hoàn thành nhiệm vụ cuối. Giờ lấy theo máy chủ Roblox (`workspace:GetServerTimeNow()`), nên chỉnh đồng hồ máy không gia hạn được key. Key có thời điểm ở tương lai quá 5 phút cũng bị từ chối.
 

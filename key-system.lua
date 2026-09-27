@@ -1,8 +1,10 @@
 --[[
     taodepzai · KEY SYSTEM (v2)
-    Key Free_v2__... do trang https://mncuadaigmailcom.github.io/taodepzai/ tạo ra
-    chứa [tên người chơi, nhiệm vụ cuối, thời điểm hoàn thành]. Script này giải mã key
-    (cùng thuật toán với taoMaDemo trong index.html) rồi kiểm tra:
+    Key Free_v3_... do trang https://mncuadaigmailcom.github.io/taodepzai/ tạo ra gồm
+    vòng quay 3 số + ngày/tháng + [tên người chơi, nhiệm vụ cuối, thời điểm hoàn thành]
+    + mã kiểm tra 32 bit, được xáo bằng dòng khoá sinh từ (số quay, ngày, tháng).
+    Script này giải mã key (cùng thuật toán với taoMaDemo trong index.html) rồi kiểm tra:
+      0. Mã kiểm tra khớp -> key không bị sửa / tự bịa.
       1. Tên trong key phải trùng tên tài khoản Roblox (hoặc tên hiển thị) của bạn
          -> key của người khác không dùng được.
       2. Key chỉ có hạn 24 giờ kể từ lúc hoàn thành nhiệm vụ cuối cùng
@@ -19,7 +21,8 @@
 ]]
 
 local CAU_HINH = {
-    KEY_PREFIX         = "Free_v2_",      -- key do trang web tạo luôn bắt đầu "Free_v2__"
+    KEY_PREFIX         = "Free_v3_",      -- key mới: vòng quay 3 số + ngày/tháng + tên
+    CHAP_NHAN_KEY_V2   = false,           -- true = vẫn nhận key Free_v2_ cũ (yếu hơn)
     HAN_KEY_GIAY       = 24 * 60 * 60,    -- key có hạn 1 ngày
     LECH_GIO_CHO_PHEP  = 5 * 60,          -- cho phép giờ máy lệch tối đa 5 phút
     KIEM_TRA_TEN       = true,            -- false = không bắt trùng tên
@@ -193,25 +196,117 @@ local function DocMangJson(s)
 end
 
 -- ================= Giải mã key =================
--- Trả về { ten, nhiemVu, thoiDiem (giây, UTC) } hoặc nil
-local function GiaiMaKey(ma)
-    if type(ma) ~= "string" or ma:sub(1, #CAU_HINH.KEY_PREFIX) ~= CAU_HINH.KEY_PREFIX then return nil end
-    local noiDung = ma:sub(#CAU_HINH.KEY_PREFIX + 1)
-    if #noiDung < 8 or #noiDung > 512 or noiDung:find("[^%w_%-]") then return nil end
-    local bytes = GiaiBase64Url(noiDung)
-    if not bytes then return nil end
-    local kyTu = {}
-    for viTri = 0, #bytes - 1 do
-        -- Phải khớp phép che byte của taoMaDemo trong index.html
-        kyTu[viTri + 1] = string.char(Xor8(bytes[viTri + 1], (viTri * 73 + 0xA5) % 256))
-    end
-    local json = table.concat(kyTu)
+-- Kiểm tra phần [tên, nhiệm vụ, thời điểm ms] chung cho v2 và v3
+local function KiemTraNoiDung(json)
     if not Utf8HopLe(json) then return nil end
     local ten, nhiemVu, thoiDiemMs = DocMangJson(json)
     if not ten or ten == "" or ten ~= Trim(ten) or DoDaiJs(ten) > 32 then return nil end
     if not (nhiemVu == "nv1" or nhiemVu == "nv2" or nhiemVu == "nv3" or nhiemVu == "nv4") then return nil end
     if not thoiDiemMs or thoiDiemMs <= 0 or thoiDiemMs > 8.64e15 then return nil end
-    return { ten = ten, nhiemVu = nhiemVu, thoiDiem = math.floor(thoiDiemMs / 1000) }
+    return ten, nhiemVu, thoiDiemMs
+end
+
+local function ByteSangChuoi(dsByte, tu, den)
+    local kyTu = {}
+    for i = tu, den do kyTu[#kyTu + 1] = string.char(dsByte[i]) end
+    return table.concat(kyTu)
+end
+
+-- v2 (cũ): XOR theo vị trí, không có mã kiểm tra
+local function GiaiMaV2(noiDung)
+    local bytes = GiaiBase64Url(noiDung)
+    if not bytes then return nil end
+    for viTri = 0, #bytes - 1 do
+        bytes[viTri + 1] = Xor8(bytes[viTri + 1], (viTri * 73 + 0xA5) % 256)
+    end
+    local ten, nhiemVu, thoiDiemMs = KiemTraNoiDung(ByteSangChuoi(bytes, 1, #bytes))
+    if not ten then return nil end
+    return { ten = ten, nhiemVu = nhiemVu, thoiDiem = math.floor(thoiDiemMs / 1000), phienBan = 2 }
+end
+
+-- v3: phải khớp BI_MAT_V3 / bamV3 / taoMaDemo trong index.html
+local BI_MAT_V3 = "taodepzai|v3|HoiAn"
+local P31 = 2147483647 -- 2^31 - 1: x * 48271 < 2^47 nên số thực double tính chính xác
+
+local function BamV3(dsByte, h, coSo, mod)
+    for i = 1, #dsByte do h = (h * coSo + dsByte[i] + 1) % mod end
+    return h
+end
+
+local function ByteCua(chuoi)
+    local t = {}
+    for i = 1, #chuoi do t[i] = chuoi:byte(i) end
+    return t
+end
+
+-- Ngày/tháng UTC từ mili-giây (thuật toán civil_from_days, không phụ thuộc os.date)
+local function NgayThangUTC(ms)
+    local z = math.floor(ms / 86400000) + 719468
+    local era = math.floor(z / 146097)
+    local doe = z - era * 146097
+    local yoe = math.floor((doe - math.floor(doe / 1460) + math.floor(doe / 36524) - math.floor(doe / 146096)) / 365)
+    local doy = doe - (365 * yoe + math.floor(yoe / 4) - math.floor(yoe / 100))
+    local mp = math.floor((5 * doy + 2) / 153)
+    local ngay = doy - math.floor((153 * mp + 2) / 5) + 1
+    local thang = mp < 10 and mp + 3 or mp - 9
+    return ngay, thang
+end
+
+local function GiaiMaV3(noiDung)
+    local raw = GiaiBase64Url(noiDung)
+    if not raw or #raw < 3 + 4 + 8 then return nil end
+    local biMat = ByteCua(BI_MAT_V3)
+    local matNa = BamV3(biMat, 7, 131, P31)
+    local dau = {}
+    for i = 0, 2 do
+        dau[i + 1] = (raw[i + 1] - math.floor(matNa / 256 ^ i)) % 256
+    end
+    local giaTriDau = dau[1] * 65536 + dau[2] * 256 + dau[3]
+    local thang = giaTriDau % 16
+    local ngay = math.floor(giaTriDau / 16) % 32
+    local soQuay = math.floor(giaTriDau / 512)
+    if soQuay > 999 or ngay < 1 or ngay > 31 or thang < 1 or thang > 12 then return nil end
+
+    local x = BamV3(ByteCua(BI_MAT_V3 .. "|" .. soQuay .. "|" .. ngay .. "|" .. thang), 11, 257, P31)
+    if x == 0 then x = 1 end
+    local truoc = soQuay % 256
+    local than = {}
+    for i = 4, #raw do
+        x = (x * 48271) % P31
+        than[#than + 1] = (raw[i] - math.floor(x / 8388608) - truoc) % 256
+        truoc = raw[i]
+    end
+
+    -- Mã kiểm tra 32 bit (2 hàm băm độc lập) phải khớp -> không sửa / bịa được key
+    local soNoiDung = #than - 4
+    local tatCa = {}
+    for i = 1, #biMat do tatCa[#tatCa + 1] = biMat[i] end
+    for i = 1, 3 do tatCa[#tatCa + 1] = dau[i] end
+    for i = 1, soNoiDung do tatCa[#tatCa + 1] = than[i] end
+    local h1 = BamV3(tatCa, 5, 131, P31)
+    local h2 = BamV3(tatCa, 3, 257, 2147483629)
+    if than[soNoiDung + 1] ~= math.floor(h1 / 256) % 256 or than[soNoiDung + 2] ~= h1 % 256
+        or than[soNoiDung + 3] ~= math.floor(h2 / 256) % 256 or than[soNoiDung + 4] ~= h2 % 256 then
+        return nil
+    end
+
+    local ten, nhiemVu, thoiDiemMs = KiemTraNoiDung(ByteSangChuoi(than, 1, soNoiDung))
+    if not ten then return nil end
+    local ngayThat, thangThat = NgayThangUTC(thoiDiemMs)
+    if ngayThat ~= ngay or thangThat ~= thang then return nil end
+    return { ten = ten, nhiemVu = nhiemVu, thoiDiem = math.floor(thoiDiemMs / 1000), soQuay = soQuay, phienBan = 3 }
+end
+
+-- Trả về { ten, nhiemVu, thoiDiem (giây, UTC), soQuay?, phienBan } hoặc nil
+local function GiaiMaKey(ma)
+    if type(ma) ~= "string" then return nil end
+    local phienBan, noiDung = ma:match("^Free_v(%d)_(.*)$")
+    if not noiDung or #noiDung < 8 or #noiDung > 700 or noiDung:find("[^%w_%-]") then return nil end
+    if phienBan == "3" and CAU_HINH.KEY_PREFIX == "Free_v3_" then return GiaiMaV3(noiDung) end
+    if phienBan == "2" and (CAU_HINH.CHAP_NHAN_KEY_V2 or CAU_HINH.KEY_PREFIX == "Free_v2_") then
+        return GiaiMaV2(noiDung)
+    end
+    return nil
 end
 
 -- ================= Thời gian & tên =================
@@ -262,9 +357,14 @@ local function KiemTraKey(nhap)
         return false, "Bạn chưa nhập key!"
     end
     -- Lấy phần key trong đoạn dán vào (dán thừa chữ vẫn nhận)
-    local ma = nhap:match(CAU_HINH.KEY_PREFIX:gsub("%p", "%%%0") .. "[%w_%-]+")
+    local ma = nhap:match("Free_v%d_[%w_%-]+")
     if not ma then
-        return false, "Key sai! Key phải bắt đầu bằng \"Free_v2__\""
+        return false, "Key sai! Key phải bắt đầu bằng \"" .. CAU_HINH.KEY_PREFIX .. "\""
+    end
+    if ma:sub(1, #CAU_HINH.KEY_PREFIX) ~= CAU_HINH.KEY_PREFIX
+        and not (CAU_HINH.CHAP_NHAN_KEY_V2 and ma:sub(1, 8) == "Free_v2_") then
+        return false, "Key " .. ma:sub(1, 8) .. " cũ không còn dùng được. Hãy lấy key "
+            .. CAU_HINH.KEY_PREFIX .. " mới trên trang web."
     end
     local thongTin = GiaiMaKey(ma)
     if not thongTin then
@@ -439,7 +539,7 @@ local oKey = New("TextBox", {
     BorderSizePixel = 0,
     ClearTextOnFocus = false,
     Font = Enum.Font.Gotham,
-    PlaceholderText = "Dán key Free_v2__... (hạn 24 giờ)",
+    PlaceholderText = "Dán key " .. CAU_HINH.KEY_PREFIX .. "... (hạn 24 giờ)",
     PlaceholderColor3 = MAU.PHU,
     Text = "",
     TextColor3 = MAU.CHU,

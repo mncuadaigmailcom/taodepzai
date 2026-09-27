@@ -118,6 +118,7 @@ function createPortal(sharedStore = new Map(), now = 1_000_000) {
         setTimeout: (fn, ms) => schedule(fn, ms),
         clearTimeout: id => timers.delete(id),
         setInterval: (fn, ms) => schedule(fn, ms, true),
+        clearInterval: id => timers.delete(id),
         console, Map
     });
     return {
@@ -182,10 +183,11 @@ test('chỉ tạo mã demo khi đã nhập tên và hoàn thành đủ bốn nhi
     await site.click('nut-giai-bai');
     assert.equal(site.modalOpen(), true);
     const code = site.elements.get('key-value').value;
-    assert.match(code, /^Free_v2_[A-Za-z0-9_-]+$/);
+    assert.match(code, /^Free_v3_[A-Za-z0-9_-]+$/);
     assert.equal(code.includes('HoiAnPlayer_09'), false);
     assert.deepEqual(giaiMaDemo(code), {
-        ten: 'HoiAnPlayer_09', nhiemVu: 'nv4', thoiDiem: Number(site.store.get('completedAtnv4'))
+        ten: 'HoiAnPlayer_09', nhiemVu: 'nv4', thoiDiem: Number(site.store.get('completedAtnv4')),
+        soQuay: Number(site.store.get('taodepzai_so_quay'))
     });
     assert.equal(site.elements.get('player-details').open, false);
     await site.click('copy-key-btn');
@@ -307,7 +309,7 @@ test('mã Free_ dùng thời điểm nhiệm vụ hoàn thành cuối, ổn đ�
     }
     await first.click('nut-giai-bai');
     const originalCode = first.elements.get('key-value').value;
-    assert.match(originalCode, /^Free_v2_[A-Za-z0-9_-]+$/);
+    assert.match(originalCode, /^Free_v3_[A-Za-z0-9_-]+$/);
     assert.equal(giaiMaDemo(originalCode).nhiemVu, 'nv2');
     assert.equal(giaiMaDemo(originalCode).thoiDiem, lastTime);
 
@@ -332,13 +334,15 @@ test('giải lại đúng tên có dấu, chữ hoa và ký tự đặc biệt t
     const code = site.elements.get('key-value').value;
     assert.equal(code.includes('Nguyễn'), false);
     assert.deepEqual(giaiMaDemo(code), {
-        ten: name, nhiemVu: 'nv1', thoiDiem: Number(site.store.get('completedAtnv1'))
+        ten: name, nhiemVu: 'nv1', thoiDiem: Number(site.store.get('completedAtnv1')),
+        soQuay: Number(site.store.get('taodepzai_so_quay'))
     });
     const output = execFileSync(process.execPath, ['tools/decode-demo.cjs', code], {
         cwd: path.join(__dirname, '..'), encoding: 'utf8'
     });
     assert.match(output, /Nguyễn Thị Ánh 🍃 \| Δ/);
     assert.match(output, /nv1/);
+    assert.match(output, /Số vòng quay: \d{3}/);
     assert.match(output, /có thể bị giả mạo/);
 });
 
@@ -373,4 +377,81 @@ test('bốn nhiệm vụ xếp thành một cột từ trên xuống dưới ở
     assert.doesNotMatch(css, /grid-template-columns:\s*repeat\(4|scroll-snap-type:|overflow-x:\s*auto/);
     assert.doesNotMatch(html, /scroll-hint/);
     assert.match(html, /class="logo-wrapper"/);
+});
+
+function reelDigits(site) {
+    return [0, 1, 2].map(i => site.elements.get(`reel-${i}`).textContent).join('');
+}
+
+async function openKeyDialog(site, name = 'HoiAnPlayer_09') {
+    await enterName(site, name);
+    for (const number of [1, 2, 3, 4]) await completeTask(site, number);
+    await site.click('nut-giai-bai');
+    assert.equal(site.modalOpen(), true);
+    return site.elements.get('key-value').value;
+}
+
+test('vòng quay 3 số: hiện đúng số trong mã, mỗi lần quay tạo key mới giải được', async () => {
+    const site = createPortal();
+    const first = await openKeyDialog(site);
+    const so = site.store.get('taodepzai_so_quay');
+    assert.match(so, /^\d{1,3}$/);
+    assert.equal(reelDigits(site), so.padStart(3, '0'));
+    assert.equal(giaiMaDemo(first).soQuay, Number(so));
+
+    const codes = new Set([first]);
+    for (let i = 0; i < 6; i++) {
+        await site.click('spin-btn');
+        assert.equal(site.elements.get('spin-btn').disabled, true, 'Đang quay thì khóa nút quay');
+        assert.equal(site.elements.get('copy-key-btn').disabled, true, 'Đang quay thì không cho sao chép');
+        site.advance(70 * 18);
+        assert.equal(site.elements.get('spin-btn').disabled, false);
+        assert.equal(site.elements.get('copy-key-btn').disabled, false);
+        const code = site.elements.get('key-value').value;
+        const soMoi = Number(site.store.get('taodepzai_so_quay'));
+        assert.equal(reelDigits(site), String(soMoi).padStart(3, '0'));
+        assert.deepEqual(giaiMaDemo(code), {
+            ten: 'HoiAnPlayer_09', nhiemVu: 'nv4', thoiDiem: Number(site.store.get('completedAtnv4')), soQuay: soMoi
+        });
+        codes.add(code);
+    }
+    assert.ok(codes.size >= 5, 'Quay nhiều lần phải ra nhiều key khác nhau');
+});
+
+test('số quay giữ sau F5, đổi khi làm mới phiên; đóng hộp thoại giữa chừng hủy lượt quay', async () => {
+    const storage = new Map();
+    const site = createPortal(storage);
+    const code = await openKeyDialog(site);
+    const so = storage.get('taodepzai_so_quay');
+
+    const reload = createPortal(storage, 1_030_000);
+    await reload.click('nut-giai-bai');
+    assert.equal(reload.elements.get('key-value').value, code);
+    assert.equal(reelDigits(reload), so.padStart(3, '0'));
+
+    await reload.click('spin-btn');
+    reload.advance(140);
+    await reload.click('back-btn');
+    reload.advance(2000);
+    assert.equal(storage.get('taodepzai_so_quay'), so, 'Hủy giữa chừng thì giữ số cũ');
+    assert.equal(reload.elements.get('spin-btn').disabled, false);
+    assert.equal(reload.elements.get('key-value').value, '');
+
+    await reload.click('nut-reset-thu-cong');
+    assert.equal(storage.has('taodepzai_so_quay'), false);
+});
+
+test('mã v3 bị sửa một ký tự hoặc tự bịa đều bị từ chối', async () => {
+    const site = createPortal();
+    const code = await openKeyDialog(site);
+    const bang = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_';
+    let biTuChoi = 0;
+    for (let vt = 'Free_v3_'.length; vt < code.length; vt++) {
+        const moi = code.slice(0, vt) + bang[(bang.indexOf(code[vt]) + 17) % 64] + code.slice(vt + 1);
+        try { giaiMaDemo(moi); } catch { biTuChoi++; }
+    }
+    assert.equal(biTuChoi, code.length - 'Free_v3_'.length);
+    for (const fake of ['Free_v3_AAAAAAAAAAAAAAAAAAAA', 'Free_v3_' + code.slice(8).split('').reverse().join('')]) {
+        assert.throws(() => giaiMaDemo(fake), /không hợp lệ/);
+    }
 });

@@ -5,6 +5,7 @@ Cài: pip install lupa   (cần thêm Node.js để đối chiếu với index.h
 Chạy: python3 tests/key_system_test.py
 """
 import base64
+import datetime
 import json
 import pathlib
 import random
@@ -18,30 +19,85 @@ from lupa import lua51
 GOC = pathlib.Path(__file__).resolve().parent.parent
 SCRIPT = (GOC / "key-system.lua").read_text(encoding="utf-8")
 MOCK = (GOC / "tests" / "roblox_mock.lua").read_text(encoding="utf-8")
+SCRIPT_V2 = SCRIPT.replace("CHAP_NHAN_KEY_V2   = false", "CHAP_NHAN_KEY_V2   = true")
+assert SCRIPT_V2 != SCRIPT
 URL = "https://mncuadaigmailcom.github.io/aiaiaitao2/script.js"
 NGAY = 24 * 60 * 60
 BAY_GIO = 1790000000  # giây, UTC (giờ "hiện tại" giả lập)
 CO_NODE = shutil.which("node") is not None
 
 
-def tao_ma(ten, nhiem_vu="nv4", thoi_diem_ms=None):
-    """Bản Python của taoMaDemo trong index.html."""
+BI_MAT_V3 = b"taodepzai|v3|HoiAn"
+P31 = 2147483647
+
+
+def _bam(ds, h, co_so, mod):
+    for b in ds:
+        h = (h * co_so + b + 1) % mod
+    return h
+
+
+def _b64(ds):
+    return base64.urlsafe_b64encode(bytes(ds)).decode().rstrip("=")
+
+
+def ngay_thang_utc(ms):
+    try:
+        d = datetime.datetime(1970, 1, 1) + datetime.timedelta(milliseconds=ms)
+        return d.day, d.month
+    except OverflowError:  # quá năm 9999: dùng chu kỳ 400 năm (146097 ngày) của lịch Gregory
+        so_ngay = ms // 86400000
+        chu_ky = (so_ngay - 2932896) // 146097 + 1  # 2932896 = số ngày 1970-01-01 -> 9999-12-31
+        d = datetime.date(1970, 1, 1) + datetime.timedelta(days=so_ngay - chu_ky * 146097)
+        return d.day, d.month
+
+
+def _json(ten, nhiem_vu, thoi_diem_ms):
+    return json.dumps([ten.strip(), nhiem_vu, thoi_diem_ms], ensure_ascii=False,
+                      separators=(",", ":")).encode("utf-8")
+
+
+def ma_v3_tu_byte(noi_dung, so_quay, ngay, thang):
+    """Bản Python của taoMaDemo (v3) trong index.html, nhận thẳng byte nội dung."""
+    v = (so_quay * 32 + ngay) * 16 + thang
+    dau = [v >> 16 & 255, v >> 8 & 255, v & 255]
+    bi = list(BI_MAT_V3)
+    h1 = _bam(bi + dau + list(noi_dung), 5, 131, P31)
+    h2 = _bam(bi + dau + list(noi_dung), 3, 257, 2147483629)
+    than = list(noi_dung) + [h1 >> 8 & 255, h1 & 255, h2 >> 8 & 255, h2 & 255]
+    mat_na = _bam(bi, 7, 131, P31)
+    ra = [(dau[i] + mat_na // 256 ** i) % 256 for i in range(3)]
+    x = _bam(f"taodepzai|v3|HoiAn|{so_quay}|{ngay}|{thang}".encode(), 11, 257, P31) or 1
+    truoc = so_quay % 256
+    for b in than:
+        x = x * 48271 % P31
+        truoc = (b + x // 8388608 + truoc) % 256
+        ra.append(truoc)
+    return "Free_v3_" + _b64(ra)
+
+
+def tao_ma(ten, nhiem_vu="nv4", thoi_diem_ms=None, so_quay=472):
     if thoi_diem_ms is None:
         thoi_diem_ms = (BAY_GIO - 60) * 1000
-    du_lieu = json.dumps([ten.strip(), nhiem_vu, thoi_diem_ms], ensure_ascii=False,
-                         separators=(",", ":")).encode("utf-8")
-    da_che = bytes(b ^ ((i * 73 + 0xA5) & 255) for i, b in enumerate(du_lieu))
-    return "Free_v2_" + base64.urlsafe_b64encode(da_che).decode().rstrip("=")
+    return ma_v3_tu_byte(_json(ten, nhiem_vu, thoi_diem_ms), so_quay, *ngay_thang_utc(thoi_diem_ms))
+
+
+def tao_ma_v2(ten, nhiem_vu="nv4", thoi_diem_ms=None):
+    """Mã v2 cũ (XOR theo vị trí)."""
+    if thoi_diem_ms is None:
+        thoi_diem_ms = (BAY_GIO - 60) * 1000
+    du_lieu = _json(ten, nhiem_vu, thoi_diem_ms)
+    return "Free_v2_" + _b64(b ^ ((i * 73 + 0xA5) & 255) for i, b in enumerate(du_lieu))
 
 
 NODE_TAO_MA = r"""
 const fs = require('fs');
 const html = fs.readFileSync(process.argv[1], 'utf8');
-const src = html.match(/function taoMaDemo\([\s\S]*?\n        }\n/)[0];
-const MA_DEMO_PREFIX = html.match(/const MA_DEMO_PREFIX = '([^']+)'/)[1];
-const taoMaDemo = eval('(' + src + ')');
+const hang = ten => html.match(new RegExp(`const ${ten} = ([^;]+);`))[0];
+const ham = html.slice(html.indexOf('function bamV3('), html.indexOf('function soNgauNhien3('));
+const taoMaDemo = new Function(hang('MA_DEMO_PREFIX') + hang('BI_MAT_V3') + hang('P31') + ham + 'return taoMaDemo;')();
 const cases = JSON.parse(fs.readFileSync(0, 'utf8'));
-console.log(JSON.stringify(cases.map(([ten, id, time]) => taoMaDemo(ten, { id, time }))));
+console.log(JSON.stringify(cases.map(([ten, id, time, so]) => taoMaDemo(ten, { id, time }, so))));
 """
 
 
@@ -64,7 +120,7 @@ def giai_ma_bang_tool_js(cac_ma):
 class Phien:
     """Một lần chạy key-system.lua trong executor giả."""
 
-    def __init__(self, o_dia=None, khong_delfile=False, **tuy_chon):
+    def __init__(self, o_dia=None, khong_delfile=False, script=None, **tuy_chon):
         tuy_chon.setdefault("ten", "Tester")
         tuy_chon.setdefault("gio_may", BAY_GIO)
         self.lua = lua51.LuaRuntime(unpack_returned_tuples=True)
@@ -79,7 +135,7 @@ class Phien:
         nap = self.lua.eval("function(src, env) local f, e = loadstring(src, '=key-system.lua') "
                             "if not f then error(e) end setfenv(f, env) return f end")
         self.nap = nap
-        self.api = nap(SCRIPT, self.env)()
+        self.api = nap(script or SCRIPT, self.env)()
         self.gui = self._tim_gui()
 
     def _tim_gui(self):
@@ -120,7 +176,12 @@ class Phien:
 
     def giai_ma(self, ma):
         t = self.api.GiaiMaKey(ma)
-        return None if t is None else {"ten": t.ten, "nhiemVu": t.nhiemVu, "thoiDiem": t.thoiDiem}
+        if t is None:
+            return None
+        kq = {"ten": t.ten, "nhiemVu": t.nhiemVu, "thoiDiem": t.thoiDiem}
+        if t.soQuay is not None:
+            kq["soQuay"] = t.soQuay
+        return kq
 
     @property
     def trang_thai(self):
@@ -468,17 +529,14 @@ class GiaiMaTest(unittest.TestCase):
 
     def test_key_bi_sua_mot_ky_tu(self):
         ma = tao_ma("Tester")
-        ngau_nhien = random.Random(7)
         bang = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_"
-        for _ in range(60):
-            vt = ngau_nhien.randrange(len("Free_v2_"), len(ma))
-            moi = ma[:vt] + ngau_nhien.choice(bang.replace(ma[vt], "")) + ma[vt + 1:]
-            p = Phien().thu_key(moi)
-            if p.so_lan_chay:
-                # Chỉ chấp nhận nếu vẫn giải ra đúng tên và còn hạn (sửa trúng phần thời gian)
-                thong_tin = p.giai_ma(moi)
-                self.assertEqual(thong_tin["ten"].lower(), "tester")
+        p = Phien()
+        for vt in range(len("Free_v3_"), len(ma)):
+            for doi in (1, 17, 40):
+                moi = ma[:vt] + bang[(bang.index(ma[vt]) + doi) % 64] + ma[vt + 1:]
+                self.assertIsNone(p.giai_ma(moi), f"Sửa ký tự {vt} phải bị mã kiểm tra phát hiện")
         self.assertEqual(Phien().thu_key(ma[:-3]).so_lan_chay, 0, "Thiếu ký tự phải bị từ chối")
+        self.assertEqual(Phien().thu_key(ma + "AAAA").so_lan_chay, 0, "Thừa ký tự phải bị từ chối")
 
     def test_base64_khong_chuan_bi_tu_choi(self):
         bang = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_"
@@ -497,10 +555,9 @@ class GiaiMaTest(unittest.TestCase):
         self.assertGreater(dem, 0)
 
     def test_utf8_sai_bi_tu_choi(self):
-        def che(raw):
-            da_che = bytes(b ^ ((i * 73 + 0xA5) & 255) for i, b in enumerate(raw))
-            return "Free_v2_" + base64.urlsafe_b64encode(da_che).decode().rstrip("=")
-        t = str((BAY_GIO - 60) * 1000).encode()
+        ms = (BAY_GIO - 60) * 1000
+        che = lambda raw: ma_v3_tu_byte(raw, 5, *ngay_thang_utc(ms))  # noqa: E731 (mã kiểm tra hợp lệ)
+        t = str(ms).encode()
         hop_le = che(b'["Tester","nv1",' + t + b']')
         self.assertEqual(Phien().thu_key(hop_le).so_lan_chay, 1)
         for ten_sai in (b"Tes\xc1\xb4er", b"Test\xed\xa0\x80er", b"Tester\xff", b"Tester\xe1\x80", b"\xf5\x80\x80\x80",
@@ -521,29 +578,67 @@ class GiaiMaTest(unittest.TestCase):
         p = Phien()
         for ten in ("Nguyễn Văn A", 'a"b\\c/d', "tab\there", "emoji 🎮🔥", "中文名", "x"):
             with self.subTest(ten=ten):
-                self.assertEqual(p.giai_ma(tao_ma(ten, "nv2", 1790000000123)),
-                                 {"ten": ten, "nhiemVu": "nv2", "thoiDiem": 1790000000})
+                self.assertEqual(p.giai_ma(tao_ma(ten, "nv2", 1790000000123, so_quay=7)),
+                                 {"ten": ten, "nhiemVu": "nv2", "thoiDiem": 1790000000, "soQuay": 7})
 
     def test_xor_bang_bit32_giong_ban_tu_viet(self):
-        p1 = Phien()
-        p2 = Phien(bit32={"bxor": lambda a, b: int(a) ^ int(b)})
-        ma = tao_ma("Tester Nguyễn 🎮")
+        p1 = Phien(script=SCRIPT_V2)
+        p2 = Phien(script=SCRIPT_V2, bit32={"bxor": lambda a, b: int(a) ^ int(b)})
+        ma = tao_ma_v2("Tester Nguyễn 🎮")
+        self.assertIsNotNone(p1.giai_ma(ma))
         self.assertEqual(p1.giai_ma(ma), p2.giai_ma(ma))
-        self.assertEqual(p2.thu_key(tao_ma("Tester")).so_lan_chay, 1)
+        self.assertEqual(p2.thu_key(tao_ma_v2("Tester")).so_lan_chay, 1)
+
+    def test_so_quay_va_ngay_thang(self):
+        p = Phien()
+        ms = (BAY_GIO - 60) * 1000
+        for so in (0, 1, 99, 500, 998, 999):
+            with self.subTest(so=so):
+                self.assertEqual(p.giai_ma(tao_ma("Tester", thoi_diem_ms=ms, so_quay=so))["soQuay"], so)
+        # Cùng tên + thời điểm nhưng số quay khác -> key khác hẳn, đều dùng được
+        cac_ma = {tao_ma("Tester", so_quay=so) for so in range(1000)}
+        self.assertEqual(len(cac_ma), 1000)
+        self.assertEqual(Phien().thu_key(tao_ma("Tester", so_quay=0)).so_lan_chay, 1)
+        self.assertEqual(Phien().thu_key(tao_ma("Tester", so_quay=999)).so_lan_chay, 1)
+        # Ngày/tháng trong đầu mã không khớp thời điểm (dù mã kiểm tra đúng) -> từ chối
+        ngay, thang = ngay_thang_utc(ms)
+        for sai in ((ngay % 28 + 1, thang), (ngay, thang % 12 + 1), (0, thang), (ngay, 13)):
+            with self.subTest(sai=sai):
+                self.assertIsNone(p.giai_ma(ma_v3_tu_byte(_json("Tester", "nv1", ms), 5, *sai)))
+        # Số quay > 999 -> từ chối
+        self.assertIsNone(p.giai_ma(ma_v3_tu_byte(_json("Tester", "nv1", ms), 1000, ngay, thang)))
+
+    def test_ngay_thang_utc_moi_thoi_diem(self):
+        p = Phien()
+        ngau_nhien = random.Random(3)
+        moc = [0, 1, 86399999, 86400000, 951782400000, 951868800000, 4107542399999, 4107542400000,
+               1709164800000, 1709251199999]  # có 29/2 năm nhuận và 1/3/2100 (không nhuận)
+        moc += [ngau_nhien.randint(1, 7_258_118_400_000) for _ in range(300)]
+        for ms in moc:
+            ms = max(ms, 1)
+            self.assertEqual(p.giai_ma(tao_ma("x", "nv1", ms, so_quay=ms % 1000))["thoiDiem"], ms // 1000, ms)
+
+    def test_key_v2_cu_mac_dinh_bi_tu_choi(self):
+        p = Phien().thu_key(tao_ma_v2("Tester"))
+        self.assertEqual(p.so_lan_chay, 0)
+        self.assertIn("cũ không còn dùng được", p.trang_thai)
+        self.assertIn("Free_v3_", p.trang_thai)
+        self.assertEqual(Phien(script=SCRIPT_V2).thu_key(tao_ma_v2("Tester")).so_lan_chay, 1)
+        self.assertEqual(Phien(script=SCRIPT_V2).thu_key(tao_ma("Tester")).so_lan_chay, 1)
 
 
 @unittest.skipUnless(CO_NODE, "Cần Node.js để đối chiếu với index.html")
 class DoiChieuIndexHtmlTest(unittest.TestCase):
     def test_ma_tu_index_html_duoc_chap_nhan(self):
         ten_thu = ["Tester", "tester", "Người chơi 123 🎮", 'Tên "đặc biệt" \\ /', "a"]
-        cases = [[ten, nv, (BAY_GIO - 120) * 1000 + 7] for ten in ten_thu for nv in ("nv1", "nv4")]
+        cases = [[ten, nv, (BAY_GIO - 120) * 1000 + 7, so] for ten in ten_thu for nv, so in (("nv1", 0), ("nv4", 999), ("nv2", 314))]
         cac_ma = tao_ma_bang_index_html(cases)
-        for (ten, nv, t), ma in zip(cases, cac_ma):
+        for (ten, nv, t, so), ma in zip(cases, cac_ma):
             with self.subTest(ten=ten, nv=nv):
-                self.assertEqual(ma, tao_ma(ten, nv, t), "Bản Python phải giống index.html")
-                self.assertTrue(ma.startswith("Free_v2__"))
+                self.assertEqual(ma, tao_ma(ten, nv, t, so), "Bản Python phải giống index.html")
+                self.assertTrue(ma.startswith("Free_v3_"))
                 p = Phien(ten="Tester", ten_hien_thi=ten)
-                self.assertEqual(p.giai_ma(ma), {"ten": ten, "nhiemVu": nv, "thoiDiem": t // 1000})
+                self.assertEqual(p.giai_ma(ma), {"ten": ten, "nhiemVu": nv, "thoiDiem": t // 1000, "soQuay": so})
                 self.assertEqual(p.thu_key(ma).so_lan_chay, 1)
 
     def test_giai_ma_giong_tools_decode_demo(self):
@@ -554,20 +649,25 @@ class DoiChieuIndexHtmlTest(unittest.TestCase):
             ten = "".join(ngau_nhien.choice(ky_tu) for _ in range(ngau_nhien.randint(1, 30))).strip() or "x"
             ma = tao_ma(ten, ngau_nhien.choice(["nv1", "nv2", "nv3", "nv4", "nv5"]),
                         ngau_nhien.choice([ngau_nhien.randint(1, 2_000_000_000_000), 8_640_000_000_000_000,
-                                           8_640_000_000_000_001, 0]))
+                                           8_640_000_000_000_001, 0]), so_quay=ngau_nhien.randint(0, 999))
+            if ngau_nhien.random() < 0.15:
+                ma = tao_ma_v2(ten)
+            elif ngau_nhien.random() < 0.15:  # ngày/tháng trong đầu mã lệch với thời điểm (mã kiểm tra vẫn đúng)
+                ms = ngau_nhien.randint(1, 2_000_000_000_000)
+                ngay, thang = ngay_thang_utc(ms)
+                ma = ma_v3_tu_byte(_json(ten, "nv1", ms), 9, ngay % 28 + 1, thang)
             if ngau_nhien.random() < 0.2:  # chèn byte UTF-8 sai vào tên
                 ten = ten + ngau_nhien.choice(["\udcff", "\ud800"])
                 raw = json.dumps([ten, "nv1", 123], ensure_ascii=False, separators=(",", ":")).encode(
                     "utf-8", "surrogateescape" if "\udcff" in ten else "surrogatepass")
-                da_che = bytes(b ^ ((i * 73 + 0xA5) & 255) for i, b in enumerate(raw))
-                cac_ma.append("Free_v2_" + base64.urlsafe_b64encode(da_che).decode().rstrip("="))
+                cac_ma.append(ma_v3_tu_byte(raw, 42, 1, 1))
                 continue
             if ngau_nhien.random() < 0.4:  # sửa ngẫu nhiên một ký tự
                 vt = ngau_nhien.randrange(9, len(ma))
                 ma = ma[:vt] + ngau_nhien.choice("AbZ9-_") + ma[vt + 1:]
             cac_ma.append(ma)
         ket_qua_js = giai_ma_bang_tool_js(cac_ma)
-        p = Phien()
+        p = Phien(script=SCRIPT_V2)  # bật cả v2 để so sánh hai phiên bản
         so_hop_le = 0
         for ma, js in zip(cac_ma, ket_qua_js):
             lua = p.giai_ma(ma)
@@ -576,8 +676,10 @@ class DoiChieuIndexHtmlTest(unittest.TestCase):
                 self.assertIsNone(lua, ma)
                 continue
             so_hop_le += 1
-            self.assertEqual(lua, {"ten": js["ten"], "nhiemVu": js["nhiemVu"],
-                                   "thoiDiem": js["thoiDiem"] // 1000}, ma)
+            mong_doi = {"ten": js["ten"], "nhiemVu": js["nhiemVu"], "thoiDiem": js["thoiDiem"] // 1000}
+            if "soQuay" in js:
+                mong_doi["soQuay"] = js["soQuay"]
+            self.assertEqual(lua, mong_doi, ma)
         self.assertGreater(so_hop_le, 80)
 
 
