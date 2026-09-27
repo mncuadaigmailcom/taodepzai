@@ -209,3 +209,10 @@ test('F5 khôi phục thành công từng cổng trong phiên và giữ chức n
     await second.click('copy-btn');
     assert.match(second.copies[0], /loadstring\(game:HttpGet/);
 });
+
+test('bốn cổng nằm cùng một hàng và có thể vuốt ngang trên màn hình nhỏ', () => {
+    assert.equal((html.match(/<article class="task-placeholder"/g) || []).length, 4);
+    assert.match(html, /\.task-grid\s*\{[^}]*grid-template-columns:\s*repeat\(4,\s*minmax\(0,\s*1fr\)\)/);
+    assert.match(html, /@media \(max-width: 1000px\)\s*\{\s*\.task-grid\s*\{[^}]*display:\s*flex;[^}]*flex-wrap:\s*nowrap;[^}]*overflow-x:\s*auto;/);
+    assert.match(html, /class="logo-wrapper"/);
+});
