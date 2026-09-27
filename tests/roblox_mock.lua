@@ -113,6 +113,7 @@ return function(tuy_chon)
     local localPlayer = TaoInstance("Player")
     localPlayer.Name = tuy_chon.ten or "Tester"
     localPlayer.DisplayName = tuy_chon.ten_hien_thi or localPlayer.Name
+    localPlayer.UserId = tuy_chon.user_id or 12345
     playerGui.Parent = localPlayer
     local coreGui = TaoInstance("CoreGui"); coreGui.Name = "CoreGui"
     local hui = TaoInstance("Folder"); hui.Name = "HiddenUI"
@@ -148,6 +149,23 @@ return function(tuy_chon)
         return "_G.DA_CHAY_SCRIPT_CHINH = (_G.DA_CHAY_SCRIPT_CHINH or 0) + 1"
     end
 
+    -- Đồng hồ giả: tua nhanh bằng log.tien_gio(giay), hẹn giờ task.delay chạy khi tới lúc
+    local dong_ho = { may = tuy_chon.gio_may or os.time(), chu = tuy_chon.gio_may_chu, hen = {} }
+    local function gio_hen() return dong_ho.chu or dong_ho.may end
+    function log.tien_gio(giay)
+        dong_ho.may = dong_ho.may + giay
+        if dong_ho.chu then dong_ho.chu = dong_ho.chu + giay end
+        while true do
+            local chay
+            for i, h in ipairs(dong_ho.hen) do
+                if h.luc <= gio_hen() then chay = table.remove(dong_ho.hen, i); break end
+            end
+            if not chay then break end
+            chay.f(unpack(chay.args))
+        end
+    end
+    function log.so_hen_gio() return #dong_ho.hen end
+
     local task = {
         spawn = function(f, ...)
             log.spawn = log.spawn + 1
@@ -159,14 +177,18 @@ return function(tuy_chon)
             end
         end,
         wait = function() return 0 end,
-        delay = function(_, f, ...) f(...) end,
+        delay = function(t, f, ...)
+            -- như Roblox: luôn chờ ít nhất 1 khung hình, không chạy ngay trong lần tua hiện tại
+            local cho = math.max(1 / 60, (t or 0) + (tuy_chon.delay_lech or 0))
+            table.insert(dong_ho.hen, { luc = gio_hen() + cho, f = f, args = { ... } })
+        end,
     }
 
     local env = {
         game = game, workspace = {}, Instance = Instance, task = task,
         math = math, tonumber = tonumber,
         os = {
-            time = function() return tuy_chon.gio_may or os.time() end,
+            time = function() return dong_ho.may end,
             date = os.date,
         },
         Color3 = { fromRGB = Mau, new = Mau },
@@ -191,7 +213,7 @@ return function(tuy_chon)
     if tuy_chon.khong_loadstring then env.loadstring = nil end
     if tuy_chon.bit32 then env.bit32 = tuy_chon.bit32 end
     if tuy_chon.gio_may_chu then
-        env.workspace.GetServerTimeNow = function() return tuy_chon.gio_may_chu end
+        env.workspace.GetServerTimeNow = function() return dong_ho.chu end
     end
     -- loadstring của script chính chạy trong cùng env (như executor)
     if env.loadstring then

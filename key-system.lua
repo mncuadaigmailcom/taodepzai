@@ -8,6 +8,9 @@
       2. Key chỉ có hạn 24 giờ kể từ lúc hoàn thành nhiệm vụ cuối cùng
          (giờ lấy theo máy chủ Roblox nếu có, chỉnh đồng hồ máy không gia hạn được).
     Đúng hết -> ẩn (xoá) bảng nhập key rồi chạy script chính.
+      3. Key đúng được lưu vào file (writefile) theo từng tài khoản; lần sau mở script
+         key tự điền sẵn vào ô nhập. Hết 24 giờ key tự bị xoá (khi mở lại script,
+         hoặc ngay lúc hết hạn nếu game vẫn đang chạy).
 
     Test: python3 tests/key_system_test.py
     LƯU Ý: thuật toán tạo key là công khai, người biết đọc code vẫn có thể tự tạo key
@@ -21,6 +24,8 @@ local CAU_HINH = {
     LECH_GIO_CHO_PHEP  = 5 * 60,          -- cho phép giờ máy lệch tối đa 5 phút
     KIEM_TRA_TEN       = true,            -- false = không bắt trùng tên
     CHAP_NHAN_TEN_HIEN_THI = true,        -- chấp nhận cả DisplayName, không chỉ username
+    LUU_KEY            = true,            -- lưu key đúng, tự điền lại, hết hạn tự xoá
+    TEN_FILE_KEY       = "taodepzai_key_", -- + UserId + ".txt" (mỗi tài khoản một file)
     SCRIPT_URL   = "https://mncuadaigmailcom.github.io/aiaiaitao2/script.js",
     LINK_LAY_KEY = "https://mncuadaigmailcom.github.io/taodepzai/", -- để "" nếu muốn ẩn nút
     TIEU_DE      = "taodepzai · Key System",
@@ -279,7 +284,34 @@ local function KiemTraKey(nhap)
         return false, "Key đã hết hạn lúc " .. DinhDangGio(hetHan) .. ". Hãy lấy key mới."
     end
     thongTin.conLai = hetHan - bayGio
+    thongTin.ma = ma
     return true, nil, thongTin
+end
+
+-- ================= Lưu key (file của executor) =================
+local FILE_KEY = CAU_HINH.TEN_FILE_KEY .. tostring(player.UserId) .. ".txt"
+
+local function DocKeyDaLuu()
+    local ok, noiDung = pcall(function()
+        if isfile and not isfile(FILE_KEY) then return nil end
+        return readfile(FILE_KEY)
+    end)
+    if ok and type(noiDung) == "string" then return Trim(noiDung) end
+    return nil
+end
+
+local function LuuKey(ma)
+    if not CAU_HINH.LUU_KEY then return end
+    pcall(function() writefile(FILE_KEY, ma) end)
+end
+
+-- chiKhiLa: chỉ xoá nếu file vẫn đang chứa đúng key đó (không xoá nhầm key mới hơn)
+local function XoaKeyDaLuu(chiKhiLa)
+    pcall(function()
+        if isfile and not isfile(FILE_KEY) then return end
+        if chiKhiLa and DocKeyDaLuu() ~= chiKhiLa then return end
+        if delfile then delfile(FILE_KEY) else writefile(FILE_KEY, "") end
+    end)
 end
 
 -- ================= Chọn nơi đặt GUI =================
@@ -538,6 +570,24 @@ local function ChayScriptChinh()
     end
 end
 
+-- Hẹn giờ: đúng lúc key hết hạn thì xoá file (và xoá khỏi ô nhập nếu bảng còn mở)
+local function HenGioXoaKey(ma, conLai)
+    if not (CAU_HINH.LUU_KEY and task and task.delay) then return end
+    task.delay(math.max(1, conLai + 1), function()
+        local conHan, _, tt = KiemTraKey(ma)
+        if conHan then -- giờ máy chủ lệch chút -> hẹn lại phần còn thiếu
+            return HenGioXoaKey(ma, tt.conLai)
+        end
+        XoaKeyDaLuu(ma)
+        if gui.Parent ~= nil and Trim(oKey.Text) == ma then
+            oKey.Text = ""
+            if not dangXuLy then
+                BaoTrangThai("Key đã lưu hết hạn 24 giờ và đã tự xoá. Hãy lấy key mới.", MAU.VANG)
+            end
+        end
+    end)
+end
+
 local function XacNhan()
     if dangXuLy then return end
     local ok, loi, thongTin = KiemTraKey(oKey.Text)
@@ -545,6 +595,10 @@ local function XacNhan()
         return ThatBai(loi)
     end
     dangXuLy = true
+    if DocKeyDaLuu() ~= thongTin.ma then
+        LuuKey(thongTin.ma)
+        HenGioXoaKey(thongTin.ma, thongTin.conLai)
+    end
     DatNut(false, "Đang tải...")
     BaoTrangThai("✔ Key hợp lệ! Còn " .. DinhDangConLai(thongTin.conLai)
         .. " (hết hạn " .. DinhDangGio(thongTin.hetHan) .. "). Đang tải script...", MAU.XANH)
@@ -575,6 +629,22 @@ nutDong.MouseButton1Click:Connect(function()
     if dangXuLy then return end
     gui:Destroy()
 end)
+
+-- Mở script: điền sẵn key đã lưu nếu còn hạn, hết hạn / sai thì xoá luôn
+if CAU_HINH.LUU_KEY then
+    local daLuu = DocKeyDaLuu()
+    if daLuu and daLuu ~= "" then
+        local conHan, _, tt = KiemTraKey(daLuu)
+        if conHan then
+            oKey.Text = tt.ma
+            BaoTrangThai("Đã điền key đã lưu · còn " .. DinhDangConLai(tt.conLai)
+                .. " (tự xoá lúc " .. DinhDangGio(tt.hetHan) .. "). Bấm Xác nhận key.", MAU.VANG)
+            HenGioXoaKey(tt.ma, tt.conLai)
+        else
+            XoaKeyDaLuu()
+        end
+    end
+end
 
 -- Trả về các hàm kiểm tra (để test; không ảnh hưởng khi chạy bằng loadstring)
 return { GiaiMaKey = GiaiMaKey, KiemTraKey = KiemTraKey }

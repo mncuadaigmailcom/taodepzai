@@ -64,12 +64,18 @@ def giai_ma_bang_tool_js(cac_ma):
 class Phien:
     """Một lần chạy key-system.lua trong executor giả."""
 
-    def __init__(self, **tuy_chon):
+    def __init__(self, o_dia=None, khong_delfile=False, **tuy_chon):
         tuy_chon.setdefault("ten", "Tester")
         tuy_chon.setdefault("gio_may", BAY_GIO)
         self.lua = lua51.LuaRuntime(unpack_returned_tuples=True)
         tao = self.lua.execute(MOCK)
         self.env, self.log = tao(self.lua.table_from(tuy_chon))
+        if o_dia is not None:  # "ổ đĩa" của executor, dùng chung giữa các lần chạy script
+            self.env.isfile = lambda ten: ten in o_dia
+            self.env.readfile = lambda ten: o_dia[ten]
+            self.env.writefile = lambda ten, nd: o_dia.__setitem__(ten, nd)
+            if not khong_delfile:
+                self.env.delfile = lambda ten: o_dia.pop(ten)
         nap = self.lua.eval("function(src, env) local f, e = loadstring(src, '=key-system.lua') "
                             "if not f then error(e) end setfenv(f, env) return f end")
         self.nap = nap
@@ -100,6 +106,13 @@ class Phien:
         self.nhap(key)
         self.bam()
         return self
+
+    @property
+    def o_key(self):
+        return self.phan_tu("OKey").Text
+
+    def tua(self, giay):
+        self.log.tien_gio(giay)
 
     def enter(self, nhan_enter=True):
         o = self.phan_tu("OKey")
@@ -286,6 +299,161 @@ class HanKeyTest(unittest.TestCase):
         self.assertIn("hết hạn", p.trang_thai)
         p = Phien(gio_may=0, gio_may_chu=BAY_GIO + 0.75).thu_key(tao_ma("Tester"))
         self.assertEqual(p.so_lan_chay, 1)
+
+
+FILE = "taodepzai_key_12345.txt"
+
+
+class LuuKeyTest(unittest.TestCase):
+    def test_key_dung_duoc_luu_va_tu_dien_lan_sau(self):
+        o_dia = {}
+        ma = tao_ma("Tester")
+        p = Phien(o_dia=o_dia).thu_key(f"Key: {ma}  ")
+        self.assertEqual(p.so_lan_chay, 1)
+        self.assertEqual(o_dia, {FILE: ma}, "Chỉ lưu đúng phần key, mỗi tài khoản một file")
+
+        p2 = Phien(o_dia=o_dia, gio_may=BAY_GIO + 3600)  # mở lại script sau 1 giờ
+        self.assertEqual(p2.o_key, ma, "Key đã lưu phải tự điền vào ô nhập")
+        self.assertIn("Đã điền key đã lưu", p2.trang_thai)
+        self.assertIn("còn 22 giờ 59 phút", p2.trang_thai)
+        self.assertEqual(p2.so_lan_chay, 0, "Điền sẵn nhưng chưa tự chạy")
+        p2.bam()
+        self.assertEqual(p2.so_lan_chay, 1)
+        self.assertEqual(o_dia, {FILE: ma})
+
+    def test_mo_lai_khi_da_het_han_thi_tu_xoa(self):
+        o_dia = {}
+        ma = tao_ma("Tester", thoi_diem_ms=(BAY_GIO - 60) * 1000)
+        Phien(o_dia=o_dia).thu_key(ma)
+        self.assertIn(FILE, o_dia)
+        p = Phien(o_dia=o_dia, gio_may=BAY_GIO - 60 + NGAY)  # đúng 24 giờ sau
+        self.assertEqual(p.o_key, "", "Key hết hạn không được điền vào ô")
+        self.assertEqual(o_dia, {}, "Key hết hạn phải bị xoá khỏi file")
+        self.assertEqual(p.trang_thai, "")
+
+    def test_het_han_trong_luc_bang_dang_mo(self):
+        o_dia = {}
+        ma = tao_ma("Tester", thoi_diem_ms=(BAY_GIO - NGAY + 600) * 1000)  # còn 10 phút
+        Phien(o_dia=o_dia).thu_key(ma)
+        p = Phien(o_dia=o_dia)
+        self.assertEqual(p.o_key, ma)
+        p.tua(9 * 60)
+        self.assertEqual(p.o_key, ma, "Chưa tới hạn thì chưa xoá")
+        self.assertIn(FILE, o_dia)
+        p.tua(2 * 60)
+        self.assertEqual(p.o_key, "", "Hết 24 giờ phải tự xoá key trong ô")
+        self.assertEqual(o_dia, {})
+        self.assertIn("hết hạn 24 giờ và đã tự xoá", p.trang_thai)
+        p.bam()
+        self.assertEqual(p.so_lan_chay, 0)
+
+    def test_hen_gio_chay_som_khong_xoa_key_con_han(self):
+        # task.delay chạy sớm 5 phút so với giờ máy chủ -> chưa được xoá, phải hẹn lại
+        o_dia = {}
+        ma = tao_ma("Tester", thoi_diem_ms=(BAY_GIO - NGAY + 600) * 1000)  # còn 10 phút
+        Phien(o_dia=o_dia).thu_key(ma)
+        p = Phien(o_dia=o_dia, delay_lech=-300)
+        p.tua(6 * 60)
+        self.assertEqual(p.o_key, ma)
+        self.assertIn(FILE, o_dia)
+        self.assertGreater(p.log.so_hen_gio(), 0, "Phải hẹn lại lần xoá")
+        p.tua(5 * 60)
+        self.assertEqual(p.o_key, "")
+        self.assertEqual(o_dia, {})
+
+    def test_het_han_sau_khi_script_da_chay(self):
+        o_dia = {}
+        ma = tao_ma("Tester", thoi_diem_ms=(BAY_GIO - 60) * 1000)
+        p = Phien(o_dia=o_dia).thu_key(ma)
+        self.assertTrue(p.da_an_gui)
+        p.tua(NGAY - 120)
+        self.assertEqual(o_dia, {FILE: ma})
+        p.tua(120)
+        self.assertEqual(o_dia, {}, "Game vẫn chạy thì tới hạn cũng tự xoá file")
+
+    def test_het_han_khong_xoa_chu_nguoi_dung_dang_go(self):
+        o_dia = {}
+        ma = tao_ma("Tester", thoi_diem_ms=(BAY_GIO - NGAY + 60) * 1000)
+        Phien(o_dia=o_dia).thu_key(ma)
+        p = Phien(o_dia=o_dia)
+        p.nhap("dang go key moi")
+        p.tua(120)
+        self.assertEqual(p.o_key, "dang go key moi")
+        self.assertEqual(o_dia, {})
+
+    def test_key_moi_ghi_de_va_hen_gio_cu_khong_xoa_nham(self):
+        o_dia = {}
+        cu = tao_ma("Tester", "nv1", (BAY_GIO - NGAY + 60) * 1000)   # còn 1 phút
+        moi = tao_ma("Tester", "nv2", (BAY_GIO - 30) * 1000)
+        p = Phien(o_dia=o_dia, spawn_tre=True)
+        p.thu_key(cu)
+        p2 = Phien(o_dia=o_dia).thu_key(moi)
+        self.assertEqual(o_dia, {FILE: moi})
+        p.tua(120)
+        p2.tua(120)
+        self.assertEqual(o_dia, {FILE: moi}, "Hẹn giờ của key cũ không được xoá key mới")
+
+    def test_key_sai_khong_ghi_de_key_da_luu(self):
+        o_dia = {}
+        ma = tao_ma("Tester")
+        Phien(o_dia=o_dia).thu_key(ma)
+        for sai in ("abc", tao_ma("NguoiKhac"), tao_ma("Tester", thoi_diem_ms=(BAY_GIO - 2 * NGAY) * 1000)):
+            Phien(o_dia=o_dia).thu_key(sai)
+        self.assertEqual(o_dia, {FILE: ma})
+
+    def test_file_rac_hoac_bi_sua_thi_xoa(self):
+        for noi_dung in ("rac", "Free_v2__abcdefghijklmn", tao_ma("NguoiKhac"), "   "):
+            with self.subTest(noi_dung=noi_dung):
+                o_dia = {FILE: noi_dung}
+                p = Phien(o_dia=o_dia)
+                self.assertEqual(p.o_key, "")
+                self.assertNotIn(noi_dung.strip() or "x", p.o_key or "")
+                if noi_dung.strip():
+                    self.assertEqual(o_dia, {})
+
+    def test_moi_tai_khoan_mot_file(self):
+        o_dia = {}
+        Phien(o_dia=o_dia, ten="Tester", user_id=1).thu_key(tao_ma("Tester"))
+        Phien(o_dia=o_dia, ten="BanKhac", user_id=2).thu_key(tao_ma("BanKhac"))
+        self.assertEqual(set(o_dia), {"taodepzai_key_1.txt", "taodepzai_key_2.txt"})
+        p = Phien(o_dia=o_dia, ten="BanKhac", user_id=2)
+        self.assertEqual(p.o_key, o_dia["taodepzai_key_2.txt"])
+        self.assertEqual(len(o_dia), 2, "Không xoá key của tài khoản khác")
+
+    def test_executor_khong_ho_tro_file(self):
+        p = Phien().thu_key(tao_ma("Tester"))  # không có writefile/readfile
+        self.assertEqual(p.so_lan_chay, 1)
+        p.tua(2 * NGAY)  # hẹn giờ xoá chạy mà không lỗi
+
+    def test_khong_co_delfile_thi_ghi_rong(self):
+        o_dia = {}
+        ma = tao_ma("Tester", thoi_diem_ms=(BAY_GIO - 60) * 1000)
+        Phien(o_dia=o_dia, khong_delfile=True).thu_key(ma)
+        p = Phien(o_dia=o_dia, khong_delfile=True, gio_may=BAY_GIO + NGAY)
+        self.assertEqual(o_dia, {FILE: ""})
+        self.assertEqual(p.o_key, "")
+
+    def test_gio_may_chu_quyet_dinh_han_key_da_luu(self):
+        o_dia = {}
+        ma = tao_ma("Tester", thoi_diem_ms=(BAY_GIO - 60) * 1000)
+        Phien(o_dia=o_dia).thu_key(ma)
+        # Lùi đồng hồ máy cũng không giữ được key đã quá hạn theo giờ máy chủ
+        p = Phien(o_dia=o_dia, gio_may=BAY_GIO, gio_may_chu=BAY_GIO + 2 * NGAY)
+        self.assertEqual(p.o_key, "")
+        self.assertEqual(o_dia, {})
+
+    def test_tat_luu_key(self):
+        global SCRIPT
+        goc = SCRIPT
+        try:
+            SCRIPT = goc.replace("LUU_KEY            = true", "LUU_KEY            = false")
+            o_dia = {}
+            Phien(o_dia=o_dia).thu_key(tao_ma("Tester"))
+            self.assertEqual(o_dia, {})
+            o_dia[FILE] = tao_ma("Tester")
+            self.assertEqual(Phien(o_dia=o_dia).o_key, "")
+        finally:
+            SCRIPT = goc
 
 
 class GiaiMaTest(unittest.TestCase):
