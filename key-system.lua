@@ -676,7 +676,7 @@ local khung = New("Frame", {
     Name = "Khung",
     AnchorPoint = Vector2.new(0.5, 0.5),
     Position = UDim2.new(0.5, 0, 0.5, 0),
-    Size = UDim2.new(0, 340, 0, 268),
+    Size = UDim2.new(0, 340, 0, 240),
     BackgroundColor3 = MAU.NEN,
     BorderSizePixel = 0,
     Active = true,
@@ -715,6 +715,7 @@ local nhanThietBi = New("TextLabel", {
     BackgroundTransparency = 1,
     Position = UDim2.new(0, 16, 0, 58),
     Size = UDim2.new(1, -32, 0, 24),
+    Visible = false, -- mã mạng lấy ngầm, không hiện trên bảng
     Font = Enum.Font.GothamBold,
     Text = "Mạng (4G / 5G / wifi): đang kiểm tra...",
     TextColor3 = MAU.CHU,
@@ -740,7 +741,7 @@ Bo(nutDong, 8)
 
 local oKey = New("TextBox", {
     Name = "OKey",
-    Position = UDim2.new(0, 16, 0, 94),
+    Position = UDim2.new(0, 16, 0, 66),
     Size = UDim2.new(1, -32, 0, 40),
     BackgroundColor3 = MAU.O,
     BorderSizePixel = 0,
@@ -760,7 +761,7 @@ local coNutLayKey = type(CAU_HINH.LINK_LAY_KEY) == "string" and CAU_HINH.LINK_LA
 
 local nutXacNhan = New("TextButton", {
     Name = "NutXacNhan",
-    Position = UDim2.new(0, 16, 0, 144),
+    Position = UDim2.new(0, 16, 0, 116),
     Size = coNutLayKey and UDim2.new(0.5, -21, 0, 38) or UDim2.new(1, -32, 0, 38),
     BackgroundColor3 = MAU.VANG,
     BorderSizePixel = 0,
@@ -777,7 +778,7 @@ if coNutLayKey then
     nutLayKey = New("TextButton", {
         Name = "NutLayKey",
         AnchorPoint = Vector2.new(1, 0),
-        Position = UDim2.new(1, -16, 0, 144),
+        Position = UDim2.new(1, -16, 0, 116),
         Size = UDim2.new(0.5, -21, 0, 38),
         BackgroundColor3 = MAU.O,
         BorderSizePixel = 0,
@@ -794,7 +795,7 @@ end
 local trangThai = New("TextLabel", {
     Name = "TrangThai",
     BackgroundTransparency = 1,
-    Position = UDim2.new(0, 16, 0, 190),
+    Position = UDim2.new(0, 16, 0, 162),
     Size = UDim2.new(1, -32, 0, 62),
     Font = Enum.Font.Gotham,
     Text = "",

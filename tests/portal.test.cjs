@@ -630,4 +630,6 @@ test('HTML: khung mã thiết bị ẩn sẵn (không có ô nhập ID), trang k
     const body = html.slice(html.indexOf('<body'), html.indexOf('<script'));
     const chu = body.replace(/<!--[\s\S]*?-->/g, '').replace(/<[^>]+>/g, ' ');
     assert.doesNotMatch(chu, /\bIP\b/, 'Không hiện chữ IP / mã thiết bị trên trang');
+    const chuNgoaiKhungLoi = chu.replace(/✕ Không lấy được mạng[\s\S]*?Thử lại\s*\./, '');
+    assert.doesNotMatch(chuNgoaiKhungLoi, /mã mạng|mã thiết bị|mạng bạn đang dùng/i, 'Không nhắc tới mã mạng ngoài khung lỗi');
 });

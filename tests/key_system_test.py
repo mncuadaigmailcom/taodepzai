@@ -747,6 +747,7 @@ class ThietBiTest(unittest.TestCase):
         self.assertEqual(p.api.MaThietBi(), MA_TB, "Lua và Python phải tính ra cùng mã từ cùng IP")
         self.assertRegex(MA_TB, r"^[0-9A-HJKMNP-TV-Z]{4}-[0-9A-HJKMNP-TV-Z]{4}-[0-9A-HJKMNP-TV-Z]{4}$")
         self.assertIn("đã nhận", p.phan_tu("MaThietBi").Text)
+        self.assertIs(p.phan_tu("MaThietBi").Visible, False, "Mã mạng lấy ngầm, dòng trạng thái mạng bị ẩn")
         self.assertNotIn(MA_TB, p.phan_tu("MaThietBi").Text, "Không hiện mã thiết bị trong game")
         self.assertNotIn(IP, p.phan_tu("MaThietBi").Text, "Không hiện IP thật")
         self.assertEqual(list(p.log.ip_get.values()), ["https://api.ipify.org"], "Nguồn đầu được thì dừng")

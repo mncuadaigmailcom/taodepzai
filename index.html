@@ -557,7 +557,7 @@
         <div class="desc-box">
             <strong>Hướng dẫn:</strong> Nhập tên người chơi và hoàn thành <strong>cả 4 nhiệm vụ</strong> (không cần theo thứ tự). Với từng nhiệm vụ, mở liên kết, ở tab mới ít nhất 5 giây rồi quay lại. Mã demo dùng thời điểm hoàn thành nhiệm vụ cuối cùng; phiên tự làm mới sau 3 phút.
         </div>
-        <p class="demo-banner" id="demo-banner">✦ Mã Free_ chỉ là mã demo, không kích hoạt script. Tên, thời gian và mã mạng được mã hoá HMAC-SHA256 trong key. Bốn liên kết hiện là mẫu.</p>
+        <p class="demo-banner" id="demo-banner">✦ Mã Free_ chỉ là mã demo, không kích hoạt script. Tên và thời gian được mã hoá HMAC-SHA256 trong key. Bốn liên kết hiện là mẫu.</p>
 
         <div class="player-box">
             <label class="player-label" for="player-name">
@@ -565,7 +565,7 @@
                 Tên người chơi
             </label>
             <input class="player-input" id="player-name" name="playerName" type="text" maxlength="32" autocomplete="nickname" spellcheck="false" required placeholder="Tên tài khoản Roblox của bạn" aria-describedby="player-help">
-            <p class="player-help" id="player-help">Nhập <strong>đúng tên tài khoản Roblox</strong> (hoặc tên hiển thị) của bạn: script chỉ nhận key có tên trùng với tài khoản đang chơi, và key chỉ dùng được <strong>24 giờ</strong>. Tên được lưu trên trình duyệt và được mã hoá bên trong key. Key cũng tự gắn với <strong>mạng bạn đang dùng</strong> (4G, 5G hoặc wifi), nên hãy chơi Roblox trên cùng mạng đó và tắt VPN.</p>
+            <p class="player-help" id="player-help">Nhập <strong>đúng tên tài khoản Roblox</strong> (hoặc tên hiển thị) của bạn: script chỉ nhận key có tên trùng với tài khoản đang chơi, và key chỉ dùng được <strong>24 giờ</strong>. Tên được lưu trên trình duyệt và được mã hoá bên trong key.</p>
             <!-- Mã mạng (IP 4G / 5G / wifi) được lấy ngầm và mã hoá vào key; khung này chỉ hiện khi không lấy được mạng. -->
             <div class="device-box" id="device-box" hidden>
                 <div class="device-row">
@@ -654,11 +654,11 @@
                     </div>
                     <button id="spin-btn" type="button">🎰 Quay số mới</button>
                 </div>
-                <p class="spin-mix" id="spin-mix">🔒 Key kết hợp <b>số quay</b> + thời điểm hoàn thành + tên + <b>mã mạng</b>, mã hoá HMAC-SHA256 với nonce ngẫu nhiên. Ngày giờ hết hạn không hiển thị và không đọc được từ key.</p>
+                <p class="spin-mix" id="spin-mix">🔒 Key kết hợp <b>số quay</b> + thời điểm hoàn thành + tên, mã hoá HMAC-SHA256 với nonce ngẫu nhiên. Ngày giờ hết hạn không hiển thị và không đọc được từ key.</p>
             </div>
             <label class="field-label" for="key-value">MÃ DEMO (KHÔNG PHẢI KEY KÍCH HOẠT)</label>
             <textarea class="key-value" id="key-value" readonly spellcheck="false"></textarea>
-            <p class="demo-alert" id="demo-alert">⚠ Mã Free_ không kích hoạt script. Key được mã hoá: nhìn key không biết được tên, ngày giờ hay mã mạng, và key chỉ dùng được trên đúng mạng (4G / 5G / wifi) lúc lấy key.</p>
+            <p class="demo-alert" id="demo-alert">⚠ Mã Free_ không kích hoạt script. Key được mã hoá: nhìn key không biết được tên hay ngày giờ.</p>
             <div class="action-buttons">
                 <button id="back-btn" type="button">
                     <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M19 12H5m7 7-7-7 7-7"/></svg>
@@ -889,7 +889,7 @@
             kiemTraMoKhoa();
         });
         if (!DANG_LA_BAN_MAU) {
-            document.getElementById('demo-banner').textContent = '✦ Mã Free_ chỉ là mã demo, không kích hoạt script. Tên, thời gian và mã mạng được mã hoá HMAC-SHA256 trong key.';
+            document.getElementById('demo-banner').textContent = '✦ Mã Free_ chỉ là mã demo, không kích hoạt script. Tên và thời gian được mã hoá HMAC-SHA256 trong key.';
         }
         NHIEM_VU.forEach(nv => {
             const lienKet = document.getElementById(`link-${nv.id}`);
@@ -973,7 +973,7 @@
                 capNhatMa();
                 hienThiTenNguoiChoi();
             }
-            if (baoKetQua) notify(thanThietBi ? '✓ Đã kết nối mạng.' : 'Không lấy được mạng. Kiểm tra 4G / 5G / wifi rồi thử lại.',
+            if (baoKetQua) notify(thanThietBi ? '✓ Đã kết nối.' : 'Không kết nối được. Kiểm tra 4G / 5G / wifi rồi thử lại.',
                 thanThietBi ? 'success' : 'error');
         }
 

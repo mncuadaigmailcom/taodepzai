@@ -8,7 +8,7 @@ Trang HTML tĩnh tại `index.html`. Mở tệp trong trình duyệt hoặc ch�
 
 - **Trang web:** khi mở trang (và khi quay lại trang), trang gọi lần lượt `https://api.ipify.org`, `https://ipv4.icanhazip.com`, `https://v4.ident.me` (chỉ IPv4) để lấy IP công khai.
 - **Tạo mã:** IP được chuẩn hoá rồi băm SHA-256 (`"taodepzai|thiet-bi|ip:" + ip`) thành mã mạng và mã hoá vào key.
-  - **Không có ô ID và không hiện mã hay IP**, cả trên web lẫn trong game (game chỉ ghi “Mạng: ✓ đã nhận”).
+  - **Không có ô ID và không hiện mã hay IP**, cả trên web lẫn trong game (dòng trạng thái mạng trong game cũng bị ẩn).
   - Chỉ khi không lấy được mạng, trang mới hiện khung báo lỗi kèm nút “🔄 Thử lại”.
 - **Script Roblox:** tự lấy IP từ cùng các nguồn bằng `game:HttpGet` rồi so khớp. Nếu không khớp, script lấy lại IP một lần (phòng khi vừa đổi mạng) rồi mới từ chối.
 - **Vì vậy phải lấy key và chơi Roblox trên cùng mạng** (cùng wifi hoặc cùng 4G, tắt VPN / iCloud Private Relay). Đổi mạng thì cần lấy key mới.
