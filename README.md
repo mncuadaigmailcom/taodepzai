@@ -13,6 +13,6 @@ Tìm khối `// CHỈNH CẤU HÌNH TẠI ĐÂY` ở cuối `index.html`:
 
 ## Cách hoạt động
 
-Bốn cổng nằm **trên cùng một hàng ngang**; trên màn hình nhỏ, vuốt hàng cổng sang ngang để xem đủ bốn. Bấm bất kỳ một cổng, ở tab liên kết ít nhất 5 giây rồi quay lại để lấy **cùng một key**. Mỗi cổng có trạng thái, lượt chờ và lỗi thử lại riêng; hoàn thành một cổng không yêu cầu làm ba cổng còn lại. Phiên chung kéo dài 3 phút từ lần bấm cổng đầu tiên, sau đó tự reset cả bốn cổng. Có nút reset thủ công, lưu trạng thái sau F5, đếm ngược, thông báo, hiệu ứng 3D, sao chép key và sao chép script cũ.
+Bốn nhiệm vụ được xếp **thành một cột từ trên xuống dưới** trên cả máy tính và điện thoại. Bấm bất kỳ một nhiệm vụ, ở tab liên kết ít nhất 5 giây rồi quay lại để lấy **cùng một key**. Mỗi cổng có trạng thái, lượt chờ và lỗi thử lại riêng; hoàn thành một cổng không yêu cầu làm ba cổng còn lại. Phiên chung kéo dài 3 phút từ lần bấm cổng đầu tiên, sau đó tự reset cả bốn cổng. Có nút reset thủ công, lưu trạng thái sau F5, đếm ngược, thông báo, hiệu ứng 3D, sao chép key và sao chép script cũ.
 
 **Lưu ý:** Đây chỉ là kiểm tra thời gian chuyển tab ở trình duyệt, không xác thực trang đích đã tải hay người dùng thực sự xem nội dung. Key lưu trong HTML/JavaScript có thể bị xem trước khi mở khóa; nếu key phải giữ bí mật hoặc việc hoàn thành nhiệm vụ phải được xác minh, cần một dịch vụ phía máy chủ và cơ chế xác thực do các trang đích hỗ trợ. Không đưa key bí mật thật vào kho mã công khai.

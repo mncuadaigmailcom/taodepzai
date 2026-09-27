@@ -210,9 +210,12 @@ test('F5 khôi phục thành công từng cổng trong phiên và giữ chức n
     assert.match(second.copies[0], /loadstring\(game:HttpGet/);
 });
 
-test('bốn cổng nằm cùng một hàng và có thể vuốt ngang trên màn hình nhỏ', () => {
+test('bốn nhiệm vụ xếp thành một cột từ trên xuống dưới ở mọi màn hình', () => {
+    const css = html.split('<style>')[1].split('</style>')[0];
     assert.equal((html.match(/<article class="task-placeholder"/g) || []).length, 4);
-    assert.match(html, /\.task-grid\s*\{[^}]*grid-template-columns:\s*repeat\(4,\s*minmax\(0,\s*1fr\)\)/);
-    assert.match(html, /@media \(max-width: 1000px\)\s*\{\s*\.task-grid\s*\{[^}]*display:\s*flex;[^}]*flex-wrap:\s*nowrap;[^}]*overflow-x:\s*auto;/);
+    assert.match(css, /\.main-container\s*\{[^}]*max-width:\s*460px;/);
+    assert.match(css, /\.task-grid\s*\{[^}]*display:\s*grid;[^}]*grid-template-columns:\s*minmax\(0,\s*1fr\);/);
+    assert.doesNotMatch(css, /grid-template-columns:\s*repeat\(4|scroll-snap-type:|overflow-x:\s*auto/);
+    assert.doesNotMatch(html, /scroll-hint/);
     assert.match(html, /class="logo-wrapper"/);
 });
