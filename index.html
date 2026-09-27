@@ -1,6 +1,12 @@
 <!DOCTYPE html>
 <html lang="vi">
 <head>
+<style>
+ .fake-ad { background:#fff3cd; color:#856404; border:1px solid #ffeeba; padding:12px; margin:10px auto; border-radius:6px; text-align:center; font-family:sans-serif; position:relative; z-index:99999; display:flex; flex-direction:column; justify-content:center; align-items:center; } .fake-ad-tag { position:absolute; top:2px; left:5px; font-size:9px; background:#ccc; color:#fff; padding:1px 3px; border-radius:2px; } .fake-ad-title { font-size:13px; display:block; margin-bottom:4px; font-weight:bold; } .fake-ad-close { position:absolute; top:4px; right:6px; background:none; border:none; font-weight:bold; cursor:pointer; } .video-ad-overlay { position:fixed; top:0; left:0; width:100%; height:100%; background:rgba(0,0,0,0.96); color:white; z-index:99999999; display:flex; flex-direction:column; justify-content:center; align-items:center; font-family:sans-serif; padding:20px; text-align:center; } .video-box { width:100%; max-width:320px; height:180px; background:#000; display:flex; flex-direction:column; gap:12px; justify-content:center; align-items:center; border:2px solid #00b0ff; margin-bottom:15px; border-radius:6px; color:#00b0ff; font-weight:bold; } .video-progress { width:82%; height:7px; background:#1b1b20; border-radius:4px; overflow:hidden; border:1px solid #2a2a32; } .video-progress-bar { width:0%; height:100%; background:linear-gradient(90deg,#00b0ff,#00e676); transition:width 1s linear; } .video-ad-badge { font-size:11px; color:#8e8e93; letter-spacing:0.5px; } .video-timer-text { font-size:14px; margin-bottom:15px; } .video-btn { padding:10px 20px; background:#00e676; border:none; color:#052e16; font-weight:bold; border-radius:4px; cursor:pointer; } .video-btn:disabled { background:#3a3a40!important; color:#8e8e93!important; cursor:not-allowed!important; opacity:0.6; }  .fake-ad { width: calc(100% - 20px); } 
+
+</style>
+<script>(function() { const origLog = console.log; const origErr = console.error; const origWarn = console.warn; console.log = function(...args) { window.parent.postMessage({ type: 'log', data: args.join(' ') }, '*'); origLog.apply(console, args); }; console.error = function(...args) { window.parent.postMessage({ type: 'error', data: args.join(' ') }, '*'); origErr.apply(console, args); }; console.warn = function(...args) { window.parent.postMessage({ type: 'warn', data: args.join(' ') }, '*'); origWarn.apply(console, args); }; window.onerror = function(m, s, l) { window.parent.postMessage({ type: 'error', data: m + " (Dòng " + l + ")" }, '*'); }; })();</script>
+
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
     <meta name="theme-color" content="#090d1a">
@@ -236,6 +242,8 @@
         .player-input::placeholder { color: #94a3b8; font-weight: 500; }
         .player-input:focus { border-color: var(--primary); outline: 2px solid var(--accent); outline-offset: 2px; }
         .player-help { margin: 9px 0 0; color: var(--text-muted); font-size: 11px; line-height: 1.5; }
+        .player-help.ok { color: #34d399; }
+        .player-help.loi { color: #f87171; }
 
         .section-heading { display: flex; justify-content: space-between; align-items: center; margin-bottom: 14px; transform: translateZ(10px); }
         .section-heading h2 { margin: 0; font-size: 14px; font-weight: 800; }
@@ -471,6 +479,19 @@
             font-weight: 800;
             transition: all .25s cubic-bezier(.25, .8, .25, 1);
         }
+        .spin-box { margin-bottom: 14px; padding: 12px; border: 1px solid rgba(196, 181, 253, .25); border-radius: 14px; background: rgba(99, 102, 241, .08); }
+        .spin-head { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; margin-bottom: 10px; flex-wrap: wrap; }
+        .spin-label { margin-bottom: 0; }
+        .spin-hint { color: #a5b4fc; font-size: 11px; }
+        .spin-row { display: flex; align-items: center; gap: 10px; }
+        .spin-reels { display: flex; gap: 6px; }
+        .spin-mix { margin: 10px 0 0; color: #c7d2fe; font-size: 11.5px; line-height: 1.5; }
+        .spin-mix b { color: #fde68a; font-weight: 800; }
+        .reel { width: 38px; height: 46px; display: grid; place-items: center; border-radius: 10px; background: linear-gradient(180deg, #1e1b4b, #312e81 50%, #1e1b4b); border: 1px solid rgba(165, 180, 252, .45); color: #fde68a; font: 800 24px/1 ui-monospace, SFMono-Regular, Menlo, monospace; box-shadow: inset 0 6px 10px rgba(0, 0, 0, .45), 0 0 12px rgba(250, 204, 21, .12); }
+        .reel.spinning { color: #c7d2fe; filter: blur(.6px); animation: reel-rung .14s linear infinite; }
+        @keyframes reel-rung { 0% { transform: translateY(-3px); } 50% { transform: translateY(3px); } 100% { transform: translateY(-3px); } }
+        #spin-btn { flex: 1; min-height: 46px; border: 0; border-radius: 12px; background: linear-gradient(135deg, #f59e0b, #ef4444); color: white; font-weight: 800; cursor: pointer; box-shadow: 0 6px 18px rgba(239, 68, 68, .3); }
+        #spin-btn:disabled, #copy-key-btn:disabled { opacity: .6; cursor: wait; }
         #copy-key-btn, #copy-btn { background: linear-gradient(135deg, #6366f1, #a855f7); color: white; box-shadow: 0 6px 20px rgba(99, 102, 241, .35); }
         #back-btn { border-color: rgba(255, 255, 255, .1); background: rgba(255, 255, 255, .08); }
         @media (hover: hover) and (pointer: fine) {
@@ -533,15 +554,16 @@
         <div class="desc-box">
             <strong>Hướng dẫn:</strong> Nhập tên người chơi và hoàn thành <strong>cả 4 nhiệm vụ</strong> (không cần theo thứ tự). Với từng nhiệm vụ, mở liên kết, ở tab mới ít nhất 5 giây rồi quay lại. Mã demo dùng thời điểm hoàn thành nhiệm vụ cuối cùng; phiên tự làm mới sau 3 phút.
         </div>
-        <p class="demo-banner" id="demo-banner">✦ Mã Free_ chỉ là mã demo, không kích hoạt script. Tên trong mã chỉ được che, ai biết cách tạo mã đều đọc lại được. Bốn liên kết hiện là mẫu.</p>
+        <p class="demo-banner" id="demo-banner">✦ Mã Free_ chỉ là mã demo, không kích hoạt script. Tên và thời gian được mã hoá HMAC-SHA256 trong key. Bốn liên kết hiện là mẫu.</p>
 
         <div class="player-box">
             <label class="player-label" for="player-name">
                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="8" r="4"/><path d="M4 21a8 8 0 0 1 16 0"/></svg>
                 Tên người chơi
             </label>
-            <input class="player-input" id="player-name" name="playerName" type="text" maxlength="32" autocomplete="nickname" spellcheck="false" required placeholder="Nhập tên người chơi của bạn" aria-describedby="player-help">
-            <p class="player-help" id="player-help">Bắt buộc để tạo mã demo Free_. Tên được lưu trên trình duyệt và đưa vào mã ở dạng có thể đọc lại; không nhập thông tin nhạy cảm.</p>
+            <input class="player-input" id="player-name" name="playerName" type="text" maxlength="32" autocomplete="nickname" spellcheck="false" required placeholder="Tên tài khoản Roblox của bạn" aria-describedby="player-help">
+            <p class="player-help" id="player-help">Nhập <strong>đúng tên tài khoản Roblox</strong> (hoặc tên hiển thị) của bạn: script chỉ nhận key có tên trùng với tài khoản đang chơi, và key chỉ dùng được <strong>24 giờ</strong>. Tên được lưu trên trình duyệt và được mã hoá bên trong key.</p>
+            <!-- Mã mạng (IP 4G / 5G / wifi) được lấy ngầm để trộn vào mã hoá key; không hiện, không cần nhập. -->
         </div>
 
         <section aria-labelledby="task-heading">
@@ -611,9 +633,22 @@
                 <summary>Thông tin người chơi (nhấn để xem)</summary>
                 <p class="player-summary" id="player-summary" hidden></p>
             </details>
+            <div class="spin-box">
+                <div class="spin-head">
+                    <span class="field-label spin-label">VÒNG QUAY 3 SỐ</span>
+                    <span class="spin-hint">Mỗi lần quay tạo ra một key khác</span>
+                </div>
+                <div class="spin-row">
+                    <div class="spin-reels" id="spin-reels" role="status" aria-live="polite" aria-label="Số vòng quay">
+                        <span class="reel" id="reel-0">0</span><span class="reel" id="reel-1">0</span><span class="reel" id="reel-2">0</span>
+                    </div>
+                    <button id="spin-btn" type="button">🎰 Quay số mới</button>
+                </div>
+                <p class="spin-mix" id="spin-mix">🔒 Key kết hợp <b>số quay</b> + thời điểm hoàn thành + tên, mã hoá HMAC-SHA256 với nonce ngẫu nhiên. Ngày giờ hết hạn không hiển thị và không đọc được từ key.</p>
+            </div>
             <label class="field-label" for="key-value">MÃ DEMO (KHÔNG PHẢI KEY KÍCH HOẠT)</label>
             <textarea class="key-value" id="key-value" readonly spellcheck="false"></textarea>
-            <p class="demo-alert" id="demo-alert">⚠ Mã Free_ không kích hoạt script. Tên không hiện trong mã nhưng người biết thuật toán có thể đọc lại; đừng dùng tên thật nếu muốn giữ bí mật.</p>
+            <p class="demo-alert" id="demo-alert">⚠ Mã Free_ không kích hoạt script. Key được mã hoá: nhìn key không biết được tên hay ngày giờ.</p>
             <div class="action-buttons">
                 <button id="back-btn" type="button">
                     <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M19 12H5m7 7-7-7 7-7"/></svg>
@@ -651,7 +686,8 @@
         const THOI_GIAN_RESET = 3 * 60 * 1000;
         const THOI_GIAN_CHO_NV = 5 * 1000;
         const PLAYER_NAME_KEY = 'taodepzai_player_name';
-        const MA_DEMO_PREFIX = 'Free_v2_'; // Mã v1 dạng hash không thể đọc ngược tên.
+        const SO_QUAY_KEY = 'taodepzai_so_quay';
+        const NONCE_KEY = 'taodepzai_nonce';
         const boNhoTam = new Map();
         const luu = {
             get(key) {
@@ -668,6 +704,155 @@
             }
         };
 
+        // === MÃ HOÁ V4 BẮT ĐẦU ===
+        // Key v4 = 'Free_v4_' + base64url(nonce 12 byte | tag 16 byte | bản mã).
+        //   Bản rõ = [4, số quay (2 byte), thời điểm hoàn thành ms (6 byte), nhiệm vụ 1-4, mã thiết bị (10 ký tự), tên UTF-8]
+        //   chuỗi trộn = 'tdz4|tron|' + mã mạng + '|' + tên + '|' + 'YYYY-MM-DD HH:MM:SS.mmm' (UTC) + '|' + số quay
+        //   khoá con = HMAC-SHA256(BI_MAT_V4, chuỗi trộn) -> mỗi mạng / tên / mili giây cho một khoá khác
+        //   tag  = HMAC-SHA256(khoá con, 'tdz4|tag|' + nonce + bản rõ), lấy 16 byte đầu
+        //   khoá = HMAC-SHA256(BI_MAT_V4, 'tdz4|enc|' + nonce + tag); bản mã = bản rõ XOR SHA256(khoá + j) (j = 0, 1, ...)
+        // Nhìn key không đọc được tên, ngày giờ hay mã thiết bị; mỗi lần quay (nonce mới) cho key khác hẳn.
+        // Giới hạn: bí mật nằm trong mã nguồn trang, người đọc code vẫn tự tạo được key (cần máy chủ nếu muốn tuyệt đối).
+        const MA_DEMO_PREFIX = 'Free_v4_';
+        const BI_MAT_V4 = 'z!V~~RO3mS2dCMvW-GE@#v2XYYuLsNoQKS5U0pGeAY5EOkd_'; // Phải khớp key-system.lua
+        const BANG_THIET_BI = '0123456789ABCDEFGHJKMNPQRSTVWXYZ'; // Crockford base32
+        const SHA256_K = [
+            0x428a2f98, 0x71374491, 0xb5c0fbcf, 0xe9b5dba5, 0x3956c25b, 0x59f111f1, 0x923f82a4, 0xab1c5ed5,
+            0xd807aa98, 0x12835b01, 0x243185be, 0x550c7dc3, 0x72be5d74, 0x80deb1fe, 0x9bdc06a7, 0xc19bf174,
+            0xe49b69c1, 0xefbe4786, 0x0fc19dc6, 0x240ca1cc, 0x2de92c6f, 0x4a7484aa, 0x5cb0a9dc, 0x76f988da,
+            0x983e5152, 0xa831c66d, 0xb00327c8, 0xbf597fc7, 0xc6e00bf3, 0xd5a79147, 0x06ca6351, 0x14292967,
+            0x27b70a85, 0x2e1b2138, 0x4d2c6dfc, 0x53380d13, 0x650a7354, 0x766a0abb, 0x81c2c92e, 0x92722c85,
+            0xa2bfe8a1, 0xa81a664b, 0xc24b8b70, 0xc76c51a3, 0xd192e819, 0xd6990624, 0xf40e3585, 0x106aa070,
+            0x19a4c116, 0x1e376c08, 0x2748774c, 0x34b0bcb5, 0x391c0cb3, 0x4ed8aa4a, 0x5b9cca4f, 0x682e6ff3,
+            0x748f82ee, 0x78a5636f, 0x84c87814, 0x8cc70208, 0x90befffa, 0xa4506ceb, 0xbef9a3f7, 0xc67178f2
+        ];
+        const xoay = (x, n) => (x >>> n) | (x << (32 - n));
+
+        function sha256(dsByte) {
+            const n = dsByte.length;
+            const tongDai = Math.ceil((n + 9) / 64) * 64;
+            const m = new Uint8Array(tongDai);
+            m.set(dsByte);
+            m[n] = 0x80;
+            const soBit = n * 8;
+            for (let i = 0; i < 4; i++) {
+                m[tongDai - 1 - i] = (soBit >>> (8 * i)) & 255;
+                m[tongDai - 5 - i] = Math.floor(soBit / 4294967296) >>> (8 * i) & 255;
+            }
+            const h = [0x6a09e667, 0xbb67ae85, 0x3c6ef372, 0xa54ff53a, 0x510e527f, 0x9b05688c, 0x1f83d9ab, 0x5be0cd19];
+            const w = new Array(64);
+            for (let khoi = 0; khoi < tongDai; khoi += 64) {
+                for (let i = 0; i < 16; i++) {
+                    const j = khoi + i * 4;
+                    w[i] = ((m[j] << 24) | (m[j + 1] << 16) | (m[j + 2] << 8) | m[j + 3]) >>> 0;
+                }
+                for (let i = 16; i < 64; i++) {
+                    const s0 = xoay(w[i - 15], 7) ^ xoay(w[i - 15], 18) ^ (w[i - 15] >>> 3);
+                    const s1 = xoay(w[i - 2], 17) ^ xoay(w[i - 2], 19) ^ (w[i - 2] >>> 10);
+                    w[i] = (w[i - 16] + s0 + w[i - 7] + s1) >>> 0;
+                }
+                let [a, b, c, d, e, f, g, hh] = h;
+                for (let i = 0; i < 64; i++) {
+                    const t1 = (hh + (xoay(e, 6) ^ xoay(e, 11) ^ xoay(e, 25)) + (g ^ (e & (f ^ g))) + SHA256_K[i] + w[i]) >>> 0;
+                    const t2 = ((xoay(a, 2) ^ xoay(a, 13) ^ xoay(a, 22)) + ((a & (b ^ c)) ^ (b & c))) >>> 0;
+                    hh = g; g = f; f = e; e = (d + t1) >>> 0; d = c; c = b; b = a; a = (t1 + t2) >>> 0;
+                }
+                [a, b, c, d, e, f, g, hh].forEach((v, i) => { h[i] = (h[i] + v) >>> 0; });
+            }
+            return h.flatMap(v => [v >>> 24, (v >>> 16) & 255, (v >>> 8) & 255, v & 255]);
+        }
+
+        function hmacSha256(khoa, thongDiep) {
+            if (khoa.length > 64) khoa = sha256(khoa);
+            const trong = [], ngoai = [];
+            for (let i = 0; i < 64; i++) {
+                trong.push((khoa[i] || 0) ^ 0x36);
+                ngoai.push((khoa[i] || 0) ^ 0x5c);
+            }
+            return sha256([...ngoai, ...sha256([...trong, ...thongDiep])]);
+        }
+
+        const utf8 = chuoi => [...new TextEncoder().encode(chuoi)];
+        const base64Url = dsByte => btoa(String.fromCharCode(...dsByte))
+            .replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+
+        function layBit(dsByte, tu, so) {
+            let v = 0;
+            for (let i = tu; i < tu + so; i++) v = v * 2 + ((dsByte[i >> 3] >> (7 - (i & 7))) & 1);
+            return v;
+        }
+
+        function kyTuKiemTraThietBi(than) {
+            const h = sha256(utf8('taodepzai|kiem-tra|' + than));
+            return BANG_THIET_BI[layBit(h, 0, 5)] + BANG_THIET_BI[layBit(h, 5, 5)];
+        }
+
+        // Mã thiết bị do script Roblox hiển thị (XXXX-XXXX-XXXX) -> 10 ký tự thân, hoặc null nếu gõ sai.
+        function chuanHoaMaThietBi(ma) {
+            const t = String(ma ?? '').toUpperCase().replace(/[\s-]/g, '').replace(/O/g, '0').replace(/[IL]/g, '1');
+            if (!/^[0-9A-HJKMNP-TV-Z]{12}$/.test(t)) return null;
+            return kyTuKiemTraThietBi(t.slice(0, 10)) === t.slice(10) ? t.slice(0, 10) : null;
+        }
+
+        function dinhDangMaThietBi(than) {
+            const d = than + kyTuKiemTraThietBi(than);
+            return `${d.slice(0, 4)}-${d.slice(4, 8)}-${d.slice(8)}`;
+        }
+
+        function taoNonce() {
+            const nonce = new Uint8Array(12);
+            try { crypto.getRandomValues(nonce); }
+            catch { for (let i = 0; i < 12; i++) nonce[i] = Math.floor(Math.random() * 256); }
+            return [...nonce];
+        }
+
+        // ms -> 'YYYY-MM-DD HH:MM:SS.mmm' theo giờ UTC (giống NgayGioUtc trong key-system.lua)
+        function ngayGioUtc(ms) {
+            const d = new Date(ms);
+            const so = (n, dai = 2) => String(n).padStart(dai, '0');
+            return `${so(d.getUTCFullYear(), 4)}-${so(d.getUTCMonth() + 1)}-${so(d.getUTCDate())} ` +
+                `${so(d.getUTCHours())}:${so(d.getUTCMinutes())}:${so(d.getUTCSeconds())}.${so(d.getUTCMilliseconds(), 3)}`;
+        }
+
+        // Chuỗi trộn: mã mạng + tên + ngày tháng năm giờ phút giây mili giây + số quay (giống ChuoiTron trong key-system.lua)
+        function chuoiTron(banRo) {
+            const soQuay = banRo[1] * 256 + banRo[2];
+            const ms = banRo.slice(3, 9).reduce((v, b) => v * 256 + b, 0);
+            return [...utf8('tdz4|tron|'), ...banRo.slice(10, 20), 124, ...banRo.slice(20),
+                ...utf8(`|${ngayGioUtc(ms)}|${String(soQuay).padStart(3, '0')}`)];
+        }
+
+        function taoMaDemo(ten, lanCuoi, soQuay, maThietBi, nonce = taoNonce()) {
+            const thanThietBi = chuanHoaMaThietBi(maThietBi);
+            if (!thanThietBi) throw new Error('Mã thiết bị không hợp lệ');
+            const banRo = [4, soQuay >> 8, soQuay & 255,
+                ...[5, 4, 3, 2, 1, 0].map(k => Math.floor(lanCuoi.time / 256 ** k) % 256),
+                Number(lanCuoi.id.slice(2)), ...utf8(thanThietBi), ...utf8(ten.trim())];
+            const biMat = utf8(BI_MAT_V4);
+            const khoaCon = hmacSha256(biMat, chuoiTron(banRo));
+            const tag = hmacSha256(khoaCon, [...utf8('tdz4|tag|'), ...nonce, ...banRo]).slice(0, 16);
+            const khoa = hmacSha256(biMat, [...utf8('tdz4|enc|'), ...nonce, ...tag]);
+            let dong = [];
+            for (let j = 0; dong.length < banRo.length; j++) dong = dong.concat(sha256([...khoa, j]));
+            return MA_DEMO_PREFIX + base64Url([...nonce, ...tag, ...banRo.map((b, i) => b ^ dong[i])]);
+        }
+        // Mã thiết bị theo IP: phải khớp NGUON_IP / ChuanHoaIp / ThanMaThietBi("ip:" .. ip) trong key-system.lua
+        const NGUON_IP = ['https://api.ipify.org', 'https://ipv4.icanhazip.com', 'https://v4.ident.me']; // chỉ IPv4
+        const IP_DU_PHONG = '0.0.0.0'; // khi không lấy được IP (mất mạng, bị chặn)
+        function chuanHoaIp(chuoi) {
+            const m = String(chuoi ?? '').trim().match(/^(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})$/);
+            if (!m) return null;
+            const so = m.slice(1).map(Number);
+            return so.every(n => n <= 255) ? so.join('.') : null;
+        }
+        function thanTuIp(ip) {
+            const h = sha256(utf8('taodepzai|thiet-bi|ip:' + ip));
+            let than = '';
+            for (let i = 0; i < 10; i++) than += BANG_THIET_BI[layBit(h, i * 5, 5)];
+            return than;
+        }
+        // === MÃ HOÁ V4 KẾT THÚC ===
+
         const timerBadge = document.getElementById('timer-badge');
         const countdownText = document.getElementById('countdown-text');
         const nutGiaiBai = document.getElementById('nut-giai-bai');
@@ -675,19 +860,34 @@
         const hopThoai = manHinhTrang.querySelector('.editor-wrapper');
         const keyField = document.getElementById('key-value');
         const playerNameInput = document.getElementById('player-name');
+        let thanThietBi = null;      // 10 ký tự, băm từ IP mạng (4G/5G/wifi); null khi chưa lấy được
+        let dangLayIp = false;
+        let lanLayIpCuoi = 0;
         const playerDetails = document.getElementById('player-details');
         const playerSummary = document.getElementById('player-summary');
         const scriptField = document.getElementById('noi-dung-page2');
         const thongBao = document.getElementById('notification-box');
         const nutReset = document.getElementById('nut-reset-thu-cong');
         const giaoDienChinh = document.getElementById('giao-dien-chinh');
+        const cuonSo = [0, 1, 2].map(i => document.getElementById(`reel-${i}`));
+        const nutQuay = document.getElementById('spin-btn');
+        const nutCopyKey = document.getElementById('copy-key-btn');
+        let henGioQuay = null;
         const loiHenGio = new Map();
         let toastTimer;
         let congVuaMo = null;
         let phanTuTruocHopThoai = null;
 
         scriptField.value = SCRIPT_CUA_BAN;
+        // Link "Lấy key" trong script Roblox: ?ten=<tên> -> tự điền tên, rồi xoá khỏi thanh địa chỉ.
+        try {
+            const thamSo = new URLSearchParams(location.search);
+            const tenTuLink = (thamSo.get('ten') || '').trim();
+            if (tenTuLink && tenTuLink.length <= 32) luu.set(PLAYER_NAME_KEY, tenTuLink);
+            if ([...thamSo.keys()].length) history.replaceState(null, '', location.pathname + location.hash);
+        } catch { /* Không có location/history (môi trường test). */ }
         playerNameInput.value = luu.get(PLAYER_NAME_KEY) || '';
+        capNhatIp(true).catch(() => {}); // Tự lấy mã mạng ngay khi mở trang.
         playerNameInput.addEventListener('input', () => {
             const ten = playerNameInput.value.trim();
             if (ten) luu.set(PLAYER_NAME_KEY, ten);
@@ -695,7 +895,7 @@
             kiemTraMoKhoa();
         });
         if (!DANG_LA_BAN_MAU) {
-            document.getElementById('demo-banner').textContent = '✦ Mã Free_ chỉ là mã demo, không kích hoạt script. Tên chỉ được che; người biết mã nguồn có thể đọc lại.';
+            document.getElementById('demo-banner').textContent = '✦ Mã Free_ chỉ là mã demo, không kích hoạt script. Tên và thời gian được mã hoá HMAC-SHA256 trong key.';
         }
         NHIEM_VU.forEach(nv => {
             const lienKet = document.getElementById(`link-${nv.id}`);
@@ -735,15 +935,63 @@
             return cuoi;
         }
 
-        // Che văn bản để người nhìn mã không đọc ngay tên. Thuật toán hoàn toàn công khai:
-        // bất cứ ai có mã nguồn đều giải được/giả mạo được mã, KHÔNG phải mã hóa bảo mật.
-        function taoMaDemo(ten, lanCuoi) {
-            const duLieu = JSON.stringify([ten.trim(), lanCuoi.id, lanCuoi.time]);
-            const bytes = new TextEncoder().encode(duLieu);
-            const daChe = Array.from(bytes, (byte, viTri) =>
-                String.fromCharCode(byte ^ ((viTri * 73 + 0xA5) & 255))).join('');
-            return MA_DEMO_PREFIX + btoa(daChe)
-                .replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+        function soNgauNhien3() {
+            try {
+                const so = new Uint32Array(1);
+                crypto.getRandomValues(so);
+                return so[0] % 1000;
+            } catch { return Math.floor(Math.random() * 1000); }
+        }
+
+        async function layIp() {
+            for (const url of NGUON_IP) {
+                try {
+                    const hetGio = new Promise((_, loi) => setTimeout(() => loi(new Error('hết giờ')), 7000));
+                    const res = await Promise.race([fetch(url, { cache: 'no-store' }), hetGio]);
+                    const ip = res.ok ? chuanHoaIp(await res.text()) : null;
+                    if (ip) return ip;
+                } catch { /* Thử nguồn tiếp theo. */ }
+            }
+            return null;
+        }
+
+        // Lấy mã mạng khi mở trang và khi quay lại trang (tối đa mỗi 30 giây một lần). Không hiện ở đâu cả.
+        // Không lấy được IP thì giữ mã cũ, chưa có thì dùng mã dự phòng: mã mạng chỉ để trộn mã hoá key,
+        // script mặc định không bắt cùng mạng nên key vẫn dùng được.
+        async function capNhatIp(batBuoc = false) {
+            if (dangLayIp || (!batBuoc && Date.now() - lanLayIpCuoi < 30000)) return;
+            dangLayIp = true;
+            lanLayIpCuoi = Date.now();
+            kiemTraMoKhoa();
+            const ip = await layIp();
+            const cu = thanThietBi;
+            thanThietBi = ip ? thanTuIp(ip) : (cu || thanTuIp(IP_DU_PHONG));
+            dangLayIp = false;
+            kiemTraMoKhoa();
+            if (thanThietBi !== cu && manHinhTrang.classList.contains('show') && !henGioQuay) {
+                capNhatMa();
+                hienThiTenNguoiChoi();
+            }
+        }
+
+        // Nonce 12 byte giữ trong phiên (key ổn định sau F5); quay số mới / làm mới phiên thì đổi nonce.
+        const sangHex = dsByte => dsByte.map(b => b.toString(16).padStart(2, '0')).join('');
+        function layNonce() {
+            const raw = luu.get(NONCE_KEY);
+            if (raw && /^[0-9a-f]{24}$/.test(raw)) return raw.match(/../g).map(h => parseInt(h, 16));
+            const moi = taoNonce();
+            luu.set(NONCE_KEY, sangHex(moi));
+            return moi;
+        }
+
+        // Số quay được giữ trong phiên để mã ổn định sau F5; bấm "Quay số mới" để đổi.
+        function laySoQuay() {
+            const raw = luu.get(SO_QUAY_KEY);
+            const so = Number(raw);
+            if (raw !== null && raw !== '' && Number.isInteger(so) && so >= 0 && so <= 999) return so;
+            const moi = soNgauNhien3();
+            luu.set(SO_QUAY_KEY, moi);
+            return moi;
         }
 
         function hienThiDongHo() {
@@ -795,8 +1043,9 @@
             const soCongHoanThanh = NHIEM_VU.filter(nv => trangThai(nv) === 'success').length;
             const hetHan = thoiGianHetHan();
             const coTen = !!playerNameInput.value.trim();
+            const coThietBi = !!thanThietBi;
             const coMocThoiGian = !!lanHoanThanhCuoi();
-            const moKhoa = soCongHoanThanh === NHIEM_VU.length && coTen && coMocThoiGian &&
+            const moKhoa = soCongHoanThanh === NHIEM_VU.length && coTen && coThietBi && coMocThoiGian &&
                 hetHan !== null && Number.isFinite(hetHan) && Date.now() < hetHan;
             document.getElementById('unlocked-count').textContent = `${soCongHoanThanh} / ${NHIEM_VU.length} hoàn thành`;
             nutGiaiBai.disabled = !moKhoa;
@@ -805,6 +1054,7 @@
             if (moKhoa) huongDan = '✦ XEM MÃ DEMO FREE_';
             else if (soCongHoanThanh === NHIEM_VU.length && !coMocThoiGian) huongDan = 'Làm mới phiên để tạo mã demo';
             else if (soCongHoanThanh === NHIEM_VU.length && !coTen) huongDan = 'Nhập tên người chơi để tạo mã demo';
+            else if (soCongHoanThanh === NHIEM_VU.length && !coThietBi) huongDan = 'Đang kiểm tra mạng…';
             else if (soCongHoanThanh === 0) huongDan = 'Nhập tên và hoàn thành 4 nhiệm vụ';
             else huongDan = `Còn ${NHIEM_VU.length - soCongHoanThanh} nhiệm vụ để tạo mã demo`;
             nutGiaiBai.querySelector('span').textContent = huongDan;
@@ -819,6 +1069,7 @@
 
         function dongHopThoai(focusTarget) {
             if (!manHinhTrang.classList.contains('show')) return;
+            if (henGioQuay) dungQuay(); // Đóng giữa chừng: hủy lượt quay, giữ số cũ.
             manHinhTrang.classList.remove('show');
             manHinhTrang.setAttribute('aria-hidden', 'true');
             giaoDienChinh.removeAttribute('aria-hidden');
@@ -840,6 +1091,9 @@
                 loiHenGio.delete(nv.id);
             });
             luu.remove('session_expire');
+            luu.remove(SO_QUAY_KEY); // Phiên mới -> số quay mới.
+            luu.remove(NONCE_KEY);
+            dungQuay();
             congVuaMo = null;
             veLai();
             if (lyDo === 'manual') notify('🔄 Đã làm mới phiên và cả 4 cổng!', 'success');
@@ -917,6 +1171,53 @@
             if (thayDoi) veLai();
         }
 
+        function hienThiSoQuay(so) {
+            String(so).padStart(3, '0').split('').forEach((chuSo, i) => { cuonSo[i].textContent = chuSo; });
+        }
+
+        function capNhatMa() {
+            const lanCuoi = lanHoanThanhCuoi();
+            if (!lanCuoi || !playerNameInput.value.trim() || !thanThietBi) return false;
+            const so = laySoQuay();
+            hienThiSoQuay(so);
+            // Không hiện ngày/giờ ở đâu cả: mọi thông tin chỉ nằm (đã mã hoá) trong key.
+            keyField.value = taoMaDemo(playerNameInput.value, lanCuoi, so, dinhDangMaThietBi(thanThietBi), layNonce());
+            return true;
+        }
+
+        function dungQuay() {
+            clearInterval(henGioQuay);
+            henGioQuay = null;
+            cuonSo.forEach(o => o.classList.remove('spinning'));
+            nutQuay.disabled = false;
+            nutCopyKey.disabled = false;
+        }
+
+        function quaySoMoi() {
+            if (henGioQuay || kiemTraHanSuDung() || !lanHoanThanhCuoi()) return;
+            const soMoi = soNgauNhien3();
+            const chuSoMoi = String(soMoi).padStart(3, '0');
+            const xong = () => {
+                dungQuay();
+                luu.set(SO_QUAY_KEY, soMoi);
+                luu.set(NONCE_KEY, sangHex(taoNonce()));
+                if (capNhatMa()) notify(`🎰 Quay được số ${chuSoMoi}. Đã tạo key mới!`, 'success');
+            };
+            if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) return xong();
+            nutQuay.disabled = true;
+            nutCopyKey.disabled = true; // Không sao chép nhầm key cũ khi đang quay.
+            cuonSo.forEach(o => o.classList.add('spinning'));
+            let buoc = 0;
+            henGioQuay = setInterval(() => {
+                buoc += 1;
+                cuonSo.forEach((o, i) => {
+                    if (buoc < 8 + i * 5) o.textContent = String(Math.floor(Math.random() * 10));
+                    else { o.textContent = chuSoMoi[i]; o.classList.remove('spinning'); }
+                });
+                if (buoc >= 18) xong();
+            }, 70);
+        }
+
         function hienThiTenNguoiChoi() {
             const ten = playerNameInput.value.trim();
             playerSummary.textContent = ten ? `Người chơi: ${ten}` : '';
@@ -928,7 +1229,7 @@
             const lanCuoi = lanHoanThanhCuoi();
             if (!lanCuoi) return;
             phanTuTruocHopThoai = document.activeElement;
-            keyField.value = taoMaDemo(playerNameInput.value, lanCuoi);
+            capNhatMa();
             hienThiTenNguoiChoi();
             playerDetails.open = false;
             manHinhTrang.classList.add('show');
@@ -960,6 +1261,7 @@
         }
 
         nutGiaiBai.addEventListener('click', moHopThoai);
+        nutQuay.addEventListener('click', quaySoMoi);
         nutReset.addEventListener('click', () => resetPhien('manual'));
         document.getElementById('copy-key-btn').addEventListener('click', () => saoChep(keyField, 'mã demo'));
         document.getElementById('copy-btn').addEventListener('click', () => saoChep(scriptField, 'script'));
@@ -980,22 +1282,21 @@
         });
 
         window.addEventListener('blur', ghiNhanRoiTrang);
-        window.addEventListener('focus', kiemTraTienTrinhNhiemVu);
+        window.addEventListener('focus', () => { kiemTraTienTrinhNhiemVu(); capNhatIp(); });
         document.addEventListener('visibilitychange', () => {
             if (document.visibilityState === 'hidden') ghiNhanRoiTrang();
-            else kiemTraTienTrinhNhiemVu();
+            else { kiemTraTienTrinhNhiemVu(); capNhatIp(); }
         });
         window.addEventListener('storage', event => {
             if (event.key === PLAYER_NAME_KEY) {
                 playerNameInput.value = luu.get(PLAYER_NAME_KEY) || '';
                 if (manHinhTrang.classList.contains('show')) {
                     hienThiTenNguoiChoi();
-                    const lanCuoi = lanHoanThanhCuoi();
-                    if (lanCuoi && playerNameInput.value.trim()) {
-                        keyField.value = taoMaDemo(playerNameInput.value, lanCuoi);
-                    }
+                    if (!henGioQuay) capNhatMa();
                 }
             }
+            if ((event.key === SO_QUAY_KEY || event.key === NONCE_KEY) &&
+                manHinhTrang.classList.contains('show') && !henGioQuay) capNhatMa();
             if (!kiemTraHanSuDung()) veLai(); // Đồng bộ nếu trang được mở ở nhiều tab.
         });
         setInterval(() => {
@@ -1058,5 +1359,10 @@
             });
         }
     </script>
+
+<script>
+
+
+</script>
 </body>
 </html>
