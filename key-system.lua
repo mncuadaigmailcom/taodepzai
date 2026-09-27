@@ -1,30 +1,31 @@
 --[[
-    taodepzai · KEY SYSTEM (v2)
-    Key Free_v3_... do trang https://mncuadaigmailcom.github.io/taodepzai/ tạo ra gồm
-    vòng quay 3 số + ngày/tháng + giây/mili-giây + [tên người chơi, nhiệm vụ cuối, thời điểm]
-    + mã kiểm tra 32 bit, được xáo bằng dòng khoá sinh từ (số quay, ngày, tháng, giây,
-    mili-giây) và trộn thêm từng byte của tên.
-    Script này giải mã key (cùng thuật toán với taoMaDemo trong index.html) rồi kiểm tra:
-      0. Mã kiểm tra khớp -> key không bị sửa / tự bịa.
-      1. Tên trong key phải trùng tên tài khoản Roblox (hoặc tên hiển thị) của bạn
-         -> key của người khác không dùng được.
-      2. Key chỉ có hạn 24 giờ kể từ lúc hoàn thành nhiệm vụ cuối cùng
+    taodepzai · KEY SYSTEM (v4)
+    Key Free_v4_... do trang https://mncuadaigmailcom.github.io/taodepzai/ tạo ra gồm
+    [số vòng quay 3 số, thời điểm hoàn thành (ms), nhiệm vụ cuối, MÃ THIẾT BỊ, tên người chơi],
+    được mã hoá bằng HMAC-SHA256 (nonce ngẫu nhiên 96 bit + tag 128 bit). Nhìn key không đọc được
+    tên, ngày giờ hay mã thiết bị; sửa 1 ký tự là key hỏng.
+    Script giải mã key (cùng thuật toán với taoMaDemo trong index.html) rồi kiểm tra:
+      0. Tag khớp -> key không bị sửa / tự bịa.
+      1. Tên trong key phải trùng tên tài khoản Roblox (hoặc tên hiển thị) của bạn.
+      2. Mã thiết bị trong key phải trùng mã của máy đang chạy (bảng key hiện mã này,
+         nút "Lấy key" mở trang web với mã điền sẵn) -> gửi key cho máy khác không dùng được.
+      3. Key chỉ có hạn 24 giờ kể từ lúc hoàn thành nhiệm vụ cuối cùng
          (giờ lấy theo máy chủ Roblox nếu có, chỉnh đồng hồ máy không gia hạn được).
     Đúng hết -> ẩn (xoá) bảng nhập key rồi chạy script chính.
-      3. Key đúng được lưu vào file (writefile) theo từng tài khoản; lần sau mở script
-         key tự điền sẵn vào ô nhập. Hết 24 giờ key tự bị xoá (khi mở lại script,
-         hoặc ngay lúc hết hạn nếu game vẫn đang chạy).
+      4. Key đúng được lưu vào file (writefile) theo từng tài khoản; lần sau mở script
+         key tự điền sẵn vào ô nhập. Hết 24 giờ key tự bị xoá.
 
-    Test: python3 tests/key_system_test.py
-    LƯU Ý: thuật toán tạo key là công khai, người biết đọc code vẫn có thể tự tạo key
-    cho tên của chính họ. Chặn được việc dùng lại key của người khác / key cũ,
-    nhưng không phải bảo mật tuyệt đối (muốn vậy cần máy chủ cấp key có chữ ký).
+    Test: python3 tests/key_system_test.py  (và tests/luau_test.py với Luau thật)
+    LƯU Ý: bí mật mã hoá nằm trong mã nguồn trang web, người đọc được code vẫn có thể tự tạo key.
+    Chặn được việc xem hạn key, dùng lại key của người khác / máy khác / key cũ, nhưng không phải
+    bảo mật tuyệt đối (muốn vậy cần máy chủ cấp key giữ bí mật riêng).
 ]]
 
 local CAU_HINH = {
-    KEY_PREFIX         = "Free_v3_",      -- vòng quay 3 số + ngày/tháng + giây/mili-giây + tên
-    CHAP_NHAN_KEY_V2   = true,            -- nhận cả key Free_v2_ (trang web bản cũ đang chạy);
-                                          -- đặt false sau khi trang web đã lên bản Free_v3_
+    KEY_PREFIX         = "Free_v4_",      -- mã hoá HMAC-SHA256: số quay + thời điểm + tên + mã thiết bị
+    CHAP_NHAN_KEY_V2   = true,            -- nhận cả key Free_v2_ (trang web bản cũ đang chạy, KHÔNG có
+                                          -- mã thiết bị); đặt false sau khi trang web đã lên bản Free_v4_
+    KIEM_TRA_THIET_BI  = true,            -- key v4 phải được tạo bằng mã thiết bị của máy này
     HAN_KEY_GIAY       = 24 * 60 * 60,    -- key có hạn 1 ngày
     LECH_GIO_CHO_PHEP  = 5 * 60,          -- cho phép giờ máy lệch tối đa 5 phút
     KIEM_TRA_TEN       = true,            -- false = không bắt trùng tên
@@ -198,7 +199,7 @@ local function DocMangJson(s)
 end
 
 -- ================= Giải mã key =================
--- Kiểm tra phần [tên, nhiệm vụ, thời điểm ms] chung cho v2 và v3
+-- Kiểm tra phần [tên, nhiệm vụ, thời điểm ms] của key v2
 local function KiemTraNoiDung(json)
     if not Utf8HopLe(json) then return nil end
     local ten, nhiemVu, thoiDiemMs = DocMangJson(json)
@@ -226,13 +227,117 @@ local function GiaiMaV2(noiDung)
     return { ten = ten, nhiemVu = nhiemVu, thoiDiem = math.floor(thoiDiemMs / 1000), phienBan = 2 }
 end
 
--- v3: phải khớp BI_MAT_V3 / bamV3 / taoMaDemo trong index.html
-local BI_MAT_V3 = "taodepzai|v3|HoiAn"
-local P31 = 2147483647 -- 2^31 - 1: x * 48271 < 2^47 nên số thực double tính chính xác
+-- ================= Phép toán bit =================
+-- Roblox (Luau) luôn có bit32. Không có (Lua 5.1 thuần) thì tự tính bằng bảng tra từng byte.
+local BXor, BAnd, RShift, RRotate
+if type(bit32) == "table" and bit32.bxor and bit32.band and bit32.rshift and bit32.rrotate then
+    BXor, BAnd, RShift, RRotate = bit32.bxor, bit32.band, bit32.rshift, bit32.rrotate
+else
+    local XOR_BYTE, AND_BYTE = {}, {}
+    for a = 0, 255 do
+        for b = 0, 255 do
+            local x, y, gia, kqXor, kqAnd = a, b, 1, 0, 0
+            for _ = 1, 8 do
+                local bx, by = x % 2, y % 2
+                if bx ~= by then kqXor = kqXor + gia end
+                if bx == 1 and by == 1 then kqAnd = kqAnd + gia end
+                x, y, gia = (x - bx) / 2, (y - by) / 2, gia * 2
+            end
+            XOR_BYTE[a * 256 + b] = kqXor
+            AND_BYTE[a * 256 + b] = kqAnd
+        end
+    end
+    local function TheoByte(bang, a, b)
+        local kq, he = 0, 1
+        for _ = 1, 4 do
+            local x, y = a % 256, b % 256
+            kq = kq + bang[x * 256 + y] * he
+            a, b, he = (a - x) / 256, (b - y) / 256, he * 256
+        end
+        return kq
+    end
+    BXor = function(a, b) return TheoByte(XOR_BYTE, a, b) end
+    BAnd = function(a, b) return TheoByte(AND_BYTE, a, b) end
+    RShift = function(a, n) return math.floor(a / 2 ^ n) end
+    RRotate = function(a, n)
+        local thap = a % 2 ^ n
+        return (a - thap) / 2 ^ n + thap * 2 ^ (32 - n)
+    end
+end
 
-local function BamV3(dsByte, h, coSo, mod)
-    for i = 1, #dsByte do h = (h * coSo + dsByte[i] + 1) % mod end
-    return h
+-- ================= SHA-256 / HMAC-SHA256 (trên mảng byte) =================
+local K256 = {
+    0x428a2f98, 0x71374491, 0xb5c0fbcf, 0xe9b5dba5, 0x3956c25b, 0x59f111f1, 0x923f82a4, 0xab1c5ed5,
+    0xd807aa98, 0x12835b01, 0x243185be, 0x550c7dc3, 0x72be5d74, 0x80deb1fe, 0x9bdc06a7, 0xc19bf174,
+    0xe49b69c1, 0xefbe4786, 0x0fc19dc6, 0x240ca1cc, 0x2de92c6f, 0x4a7484aa, 0x5cb0a9dc, 0x76f988da,
+    0x983e5152, 0xa831c66d, 0xb00327c8, 0xbf597fc7, 0xc6e00bf3, 0xd5a79147, 0x06ca6351, 0x14292967,
+    0x27b70a85, 0x2e1b2138, 0x4d2c6dfc, 0x53380d13, 0x650a7354, 0x766a0abb, 0x81c2c92e, 0x92722c85,
+    0xa2bfe8a1, 0xa81a664b, 0xc24b8b70, 0xc76c51a3, 0xd192e819, 0xd6990624, 0xf40e3585, 0x106aa070,
+    0x19a4c116, 0x1e376c08, 0x2748774c, 0x34b0bcb5, 0x391c0cb3, 0x4ed8aa4a, 0x5b9cca4f, 0x682e6ff3,
+    0x748f82ee, 0x78a5636f, 0x84c87814, 0x8cc70208, 0x90befffa, 0xa4506ceb, 0xbef9a3f7, 0xc67178f2,
+}
+local H256 = { 0x6a09e667, 0xbb67ae85, 0x3c6ef372, 0xa54ff53a, 0x510e527f, 0x9b05688c, 0x1f83d9ab, 0x5be0cd19 }
+local M32 = 4294967296
+
+local function Sha256(dsByte)
+    local n = #dsByte
+    local m = {}
+    for i = 1, n do m[i] = dsByte[i] end
+    m[n + 1] = 0x80
+    local tongDai = math.ceil((n + 9) / 64) * 64
+    for i = n + 2, tongDai do m[i] = 0 end
+    local soBit = n * 8
+    for i = 0, 7 do
+        m[tongDai - i] = soBit % 256
+        soBit = math.floor(soBit / 256)
+    end
+    local h1, h2, h3, h4, h5, h6, h7, h8 = H256[1], H256[2], H256[3], H256[4], H256[5], H256[6], H256[7], H256[8]
+    local w = {}
+    for khoi = 0, tongDai - 1, 64 do
+        for i = 0, 15 do
+            local j = khoi + i * 4
+            w[i] = ((m[j + 1] * 256 + m[j + 2]) * 256 + m[j + 3]) * 256 + m[j + 4]
+        end
+        for i = 16, 63 do
+            local x, y = w[i - 15], w[i - 2]
+            local s0 = BXor(BXor(RRotate(x, 7), RRotate(x, 18)), RShift(x, 3))
+            local s1 = BXor(BXor(RRotate(y, 17), RRotate(y, 19)), RShift(y, 10))
+            w[i] = (w[i - 16] + s0 + w[i - 7] + s1) % M32
+        end
+        local a, b, c, d, e, f, g, h = h1, h2, h3, h4, h5, h6, h7, h8
+        for i = 0, 63 do
+            local S1 = BXor(BXor(RRotate(e, 6), RRotate(e, 11)), RRotate(e, 25))
+            local ch = BXor(g, BAnd(e, BXor(f, g)))
+            local t1 = (h + S1 + ch + K256[i + 1] + w[i]) % M32
+            local S0 = BXor(BXor(RRotate(a, 2), RRotate(a, 13)), RRotate(a, 22))
+            local maj = BXor(BAnd(a, BXor(b, c)), BAnd(b, c))
+            h, g, f, e, d, c, b, a = g, f, e, (d + t1) % M32, c, b, a, (t1 + S0 + maj) % M32
+        end
+        h1, h2, h3, h4 = (h1 + a) % M32, (h2 + b) % M32, (h3 + c) % M32, (h4 + d) % M32
+        h5, h6, h7, h8 = (h5 + e) % M32, (h6 + f) % M32, (h7 + g) % M32, (h8 + h) % M32
+    end
+    local ra = {}
+    for _, v in ipairs({ h1, h2, h3, h4, h5, h6, h7, h8 }) do
+        ra[#ra + 1] = math.floor(v / 16777216)
+        ra[#ra + 1] = math.floor(v / 65536) % 256
+        ra[#ra + 1] = math.floor(v / 256) % 256
+        ra[#ra + 1] = v % 256
+    end
+    return ra
+end
+
+local function HmacSha256(khoa, thongDiep)
+    if #khoa > 64 then khoa = Sha256(khoa) end
+    local trong, ngoai = {}, {}
+    for i = 1, 64 do
+        local b = khoa[i] or 0
+        trong[i] = BXor(b, 0x36)
+        ngoai[i] = BXor(b, 0x5C)
+    end
+    for i = 1, #thongDiep do trong[64 + i] = thongDiep[i] end
+    local bamTrong = Sha256(trong)
+    for i = 1, 32 do ngoai[64 + i] = bamTrong[i] end
+    return Sha256(ngoai)
 end
 
 local function ByteCua(chuoi)
@@ -241,90 +346,115 @@ local function ByteCua(chuoi)
     return t
 end
 
--- Ngày/tháng UTC từ mili-giây (thuật toán civil_from_days, không phụ thuộc os.date)
-local function NgayThangUTC(ms)
-    local z = math.floor(ms / 86400000) + 719468
-    local era = math.floor(z / 146097)
-    local doe = z - era * 146097
-    local yoe = math.floor((doe - math.floor(doe / 1460) + math.floor(doe / 36524) - math.floor(doe / 146096)) / 365)
-    local doy = doe - (365 * yoe + math.floor(yoe / 4) - math.floor(yoe / 100))
-    local mp = math.floor((5 * doy + 2) / 153)
-    local ngay = doy - math.floor((153 * mp + 2) / 5) + 1
-    local thang = mp < 10 and mp + 3 or mp - 9
-    return ngay, thang
+local function Noi(...)
+    local kq = {}
+    for _, ds in ipairs({ ... }) do
+        for i = 1, #ds do kq[#kq + 1] = ds[i] end
+    end
+    return kq
 end
 
-local function GiaiMaV3(noiDung)
+-- Lấy `so` bit (bit cao trước) bắt đầu từ bit thứ `tu` (tính từ 0) của mảng byte
+local function LayBit(dsByte, tu, so)
+    local v = 0
+    for i = tu, tu + so - 1 do
+        v = v * 2 + math.floor(dsByte[math.floor(i / 8) + 1] / 2 ^ (7 - i % 8)) % 2
+    end
+    return v
+end
+
+-- ================= Mã thiết bị =================
+-- Mã gốc của máy (ClientId Roblox / HWID executor) -> băm SHA-256 -> 10 ký tự + 2 ký tự kiểm tra.
+-- Phải khớp chuanHoaMaThietBi / maKiemTraThietBi trong index.html.
+local BANG_THIET_BI = "0123456789ABCDEFGHJKMNPQRSTVWXYZ" -- Crockford base32 (không có I, L, O, U)
+
+local function KyTuThietBi(v) return BANG_THIET_BI:sub(v + 1, v + 1) end
+
+local function ThanMaThietBi(maGoc)
+    local bam = Sha256(ByteCua("taodepzai|thiet-bi|" .. maGoc))
+    local kyTu = {}
+    for i = 0, 9 do kyTu[#kyTu + 1] = KyTuThietBi(LayBit(bam, i * 5, 5)) end
+    return table.concat(kyTu)
+end
+
+local function KiemTraThietBi(than)
+    local bam = Sha256(ByteCua("taodepzai|kiem-tra|" .. than))
+    return KyTuThietBi(LayBit(bam, 0, 5)) .. KyTuThietBi(LayBit(bam, 5, 5))
+end
+
+local function DinhDangThietBi(than)
+    local d = than .. KiemTraThietBi(than)
+    return d:sub(1, 4) .. "-" .. d:sub(5, 8) .. "-" .. d:sub(9, 12)
+end
+
+local function LayMaGocThietBi()
+    local ok, id = pcall(function() return game:GetService("RbxAnalyticsService"):GetClientId() end)
+    if ok and type(id) == "string" and id ~= "" then return "client:" .. id end
+    ok, id = pcall(function() return gethwid() end)
+    if ok and type(id) == "string" and id ~= "" then return "hwid:" .. id end
+    return "user:" .. tostring(player.UserId)
+end
+
+local THAN_THIET_BI = ThanMaThietBi(LayMaGocThietBi())
+local MA_THIET_BI = DinhDangThietBi(THAN_THIET_BI) -- dạng XXXX-XXXX-XXXX, hiện trong bảng key
+
+-- ================= Key v4 =================
+-- Free_v4_ + base64url( nonce 12 byte | tag 16 byte | bản mã )
+--   bản rõ P = [4, số quay (2 byte), thời điểm ms (6 byte), nhiệm vụ 1-4, mã thiết bị (10 ký tự), tên UTF-8]
+--   tag   = HMAC-SHA256(BI_MAT, "tdz4|tag|" .. nonce .. P) lấy 16 byte đầu
+--   khoá  = HMAC-SHA256(BI_MAT, "tdz4|enc|" .. nonce .. tag)
+--   bản mã = P XOR (SHA256(khoá .. 0) .. SHA256(khoá .. 1) .. ...)
+-- Phải khớp BI_MAT_V4 / taoMaDemo trong index.html và tools/decode-demo.cjs.
+local BI_MAT_V4 = ByteCua("z!V~~RO3mS2dCMvW-GE@#v2XYYuLsNoQKS5U0pGeAY5EOkd_")
+local NHAN_TAG, NHAN_KHOA = ByteCua("tdz4|tag|"), ByteCua("tdz4|enc|")
+local DAI_CO_DINH_V4 = 12 + 16 + 20
+
+local function GiaiMaV4(noiDung)
     local raw = GiaiBase64Url(noiDung)
-    if not raw or #raw < 5 + 4 + 8 then return nil end
-    local biMat = ByteCua(BI_MAT_V3)
+    if not raw or #raw < DAI_CO_DINH_V4 + 1 or #raw > DAI_CO_DINH_V4 + 128 then return nil end
+    local nonce, tag, banMa = {}, {}, {}
+    for i = 1, 12 do nonce[i] = raw[i] end
+    for i = 1, 16 do tag[i] = raw[12 + i] end
+    for i = 29, #raw do banMa[#banMa + 1] = raw[i] end
 
-    -- Đầu mã 5 byte: số quay, ngày, tháng, giây, mili-giây (xích từng byte)
-    local y = BamV3(biMat, 7, 131, P31)
-    if y == 0 then y = 1 end
-    local dau, giaTriDau = {}, 0
-    for i = 1, 5 do
-        y = (y * 48271) % P31
-        local b = (raw[i] - math.floor(y / 8388608) - (i > 1 and raw[i - 1] or 0)) % 256
-        dau[i] = b
-        giaTriDau = giaTriDau * 256 + b
-    end
-    local mili = giaTriDau % 1024
-    local giay = math.floor(giaTriDau / 1024) % 64
-    local thang = math.floor(giaTriDau / 65536) % 16
-    local ngay = math.floor(giaTriDau / 1048576) % 32
-    local soQuay = math.floor(giaTriDau / 33554432)
-    if soQuay > 999 or ngay < 1 or ngay > 31 or thang < 1 or thang > 12 or giay > 59 or mili > 999 then
-        return nil
+    local khoa = HmacSha256(BI_MAT_V4, Noi(NHAN_KHOA, nonce, tag))
+    local p, dong = {}, nil
+    for i = 1, #banMa do
+        local viTri = (i - 1) % 32
+        if viTri == 0 then dong = Sha256(Noi(khoa, { (i - 1) / 32 })) end
+        p[i] = BXor(banMa[i], dong[viTri + 1])
     end
 
-    -- Dòng khoá từ (bí mật, số quay, ngày, tháng, giây, mili-giây); byte của tên trộn tiếp vào khoá
-    local x = BamV3(ByteCua(BI_MAT_V3 .. "|" .. soQuay .. "|" .. ngay .. "|" .. thang
-        .. "|" .. giay .. "|" .. mili), 11, 257, P31)
-    if x == 0 then x = 1 end
-    local truoc, byteTruoc = soQuay % 256, 0
-    local than = {}
-    for i = 6, #raw do
-        x = (x * 48271 + byteTruoc) % P31
-        if x == 0 then x = 1 end
-        byteTruoc = (raw[i] - math.floor(x / 8388608) - truoc) % 256
-        than[#than + 1] = byteTruoc
-        truoc = raw[i]
+    -- Tag 128 bit phải khớp -> sửa 1 ký tự hay tự bịa key đều bị phát hiện
+    local tagThat = HmacSha256(BI_MAT_V4, Noi(NHAN_TAG, nonce, p))
+    local khac = 0
+    for i = 1, 16 do
+        if tagThat[i] ~= tag[i] then khac = khac + 1 end
     end
+    if khac ~= 0 or p[1] ~= 4 then return nil end
 
-    -- Mã kiểm tra 32 bit (2 hàm băm độc lập) phải khớp -> không sửa / bịa được key
-    local soNoiDung = #than - 4
-    local tatCa = {}
-    for i = 1, #biMat do tatCa[#tatCa + 1] = biMat[i] end
-    for i = 1, 5 do tatCa[#tatCa + 1] = dau[i] end
-    for i = 1, soNoiDung do tatCa[#tatCa + 1] = than[i] end
-    local h1 = BamV3(tatCa, 5, 131, P31)
-    local h2 = BamV3(tatCa, 3, 257, 2147483629)
-    if than[soNoiDung + 1] ~= math.floor(h1 / 256) % 256 or than[soNoiDung + 2] ~= h1 % 256
-        or than[soNoiDung + 3] ~= math.floor(h2 / 256) % 256 or than[soNoiDung + 4] ~= h2 % 256 then
-        return nil
-    end
-
-    local ten, nhiemVu, thoiDiemMs = KiemTraNoiDung(ByteSangChuoi(than, 1, soNoiDung))
-    if not ten then return nil end
-    -- Ngày, tháng, giây, mili-giây ở đầu mã phải khớp đúng thời điểm bên trong
-    local ngayThat, thangThat = NgayThangUTC(thoiDiemMs)
-    if ngayThat ~= ngay or thangThat ~= thang or math.floor(thoiDiemMs / 1000) % 60 ~= giay
-        or thoiDiemMs % 1000 ~= mili then
-        return nil
-    end
-    return { ten = ten, nhiemVu = nhiemVu, thoiDiem = math.floor(thoiDiemMs / 1000), soQuay = soQuay, phienBan = 3 }
+    local soQuay = p[2] * 256 + p[3]
+    local thoiDiemMs = 0
+    for i = 4, 9 do thoiDiemMs = thoiDiemMs * 256 + p[i] end
+    local nv = p[10]
+    local thietBi = ByteSangChuoi(p, 11, 20)
+    local ten = ByteSangChuoi(p, 21, #p)
+    if soQuay > 999 or thoiDiemMs <= 0 or thoiDiemMs > 8.64e15 or nv < 1 or nv > 4 then return nil end
+    if thietBi:find("[^0-9A-HJKMNP-TV-Z]") then return nil end
+    if ten == "" or not Utf8HopLe(ten) or ten ~= Trim(ten) or DoDaiJs(ten) > 32 then return nil end
+    return {
+        ten = ten, nhiemVu = "nv" .. nv, thoiDiem = math.floor(thoiDiemMs / 1000),
+        soQuay = soQuay, thietBi = thietBi, phienBan = 4,
+    }
 end
 
--- Trả về { ten, nhiemVu, thoiDiem (giây, UTC), soQuay?, phienBan } hoặc nil
+-- Trả về { ten, nhiemVu, thoiDiem (giây, UTC), soQuay?, thietBi?, phienBan } hoặc nil
 local function GiaiMaKey(ma)
     if type(ma) ~= "string" then return nil end
     local phienBan, noiDung = ma:match("^Free_v(%d)_(.*)$")
     if not noiDung or #noiDung < 8 or #noiDung > 700 or noiDung:find("[^%w_%-]") then return nil end
-    if phienBan == "3" and CAU_HINH.KEY_PREFIX == "Free_v3_" then return GiaiMaV3(noiDung) end
-    if phienBan == "2" and (CAU_HINH.CHAP_NHAN_KEY_V2 or CAU_HINH.KEY_PREFIX == "Free_v2_") then
-        return GiaiMaV2(noiDung)
-    end
+    if phienBan == "4" then return GiaiMaV4(noiDung) end
+    if phienBan == "2" and CAU_HINH.CHAP_NHAN_KEY_V2 then return GiaiMaV2(noiDung) end
     return nil
 end
 
@@ -396,6 +526,10 @@ local function KiemTraKey(nhap)
         end
         return false, "Key này không phải của tài khoản " .. player.Name
             .. ". Trên web hãy nhập đúng tên \"" .. player.Name .. "\"" .. tenHienThi .. " rồi lấy key mới."
+    end
+    if CAU_HINH.KIEM_TRA_THIET_BI and thongTin.phienBan >= 4 and thongTin.thietBi ~= THAN_THIET_BI then
+        return false, "Key này được tạo cho thiết bị khác. Mã thiết bị của bạn là " .. MA_THIET_BI
+            .. ": nhập mã này trên web (hoặc bấm \"Lấy key\") rồi lấy key mới."
     end
     local bayGio = BayGio()
     if thongTin.thoiDiem - bayGio > CAU_HINH.LECH_GIO_CHO_PHEP then
@@ -505,7 +639,7 @@ local khung = New("Frame", {
     Name = "Khung",
     AnchorPoint = Vector2.new(0.5, 0.5),
     Position = UDim2.new(0.5, 0, 0.5, 0),
-    Size = UDim2.new(0, 340, 0, 236),
+    Size = UDim2.new(0, 340, 0, 268),
     BackgroundColor3 = MAU.NEN,
     BorderSizePixel = 0,
     Active = true,
@@ -539,6 +673,34 @@ New("TextLabel", {
     TextXAlignment = Enum.TextXAlignment.Left,
 }, khung)
 
+New("TextLabel", {
+    Name = "MaThietBi",
+    BackgroundTransparency = 1,
+    Position = UDim2.new(0, 16, 0, 58),
+    Size = UDim2.new(1, -120, 0, 24),
+    Font = Enum.Font.GothamBold,
+    Text = "Mã thiết bị: " .. MA_THIET_BI,
+    TextColor3 = MAU.CHU,
+    TextSize = 13,
+    TextXAlignment = Enum.TextXAlignment.Left,
+}, khung)
+
+local nutChepThietBi = New("TextButton", {
+    Name = "NutChepThietBi",
+    AnchorPoint = Vector2.new(1, 0),
+    Position = UDim2.new(1, -16, 0, 58),
+    Size = UDim2.new(0, 96, 0, 24),
+    BackgroundColor3 = MAU.O,
+    BorderSizePixel = 0,
+    Font = Enum.Font.GothamBold,
+    Text = "Sao chép mã",
+    TextColor3 = MAU.VANG,
+    TextSize = 12,
+    AutoButtonColor = true,
+}, khung)
+Bo(nutChepThietBi, 6)
+Vien(nutChepThietBi)
+
 local nutDong = New("TextButton", {
     Name = "NutDong",
     AnchorPoint = Vector2.new(1, 0),
@@ -556,7 +718,7 @@ Bo(nutDong, 8)
 
 local oKey = New("TextBox", {
     Name = "OKey",
-    Position = UDim2.new(0, 16, 0, 66),
+    Position = UDim2.new(0, 16, 0, 94),
     Size = UDim2.new(1, -32, 0, 40),
     BackgroundColor3 = MAU.O,
     BorderSizePixel = 0,
@@ -576,7 +738,7 @@ local coNutLayKey = type(CAU_HINH.LINK_LAY_KEY) == "string" and CAU_HINH.LINK_LA
 
 local nutXacNhan = New("TextButton", {
     Name = "NutXacNhan",
-    Position = UDim2.new(0, 16, 0, 116),
+    Position = UDim2.new(0, 16, 0, 144),
     Size = coNutLayKey and UDim2.new(0.5, -21, 0, 38) or UDim2.new(1, -32, 0, 38),
     BackgroundColor3 = MAU.VANG,
     BorderSizePixel = 0,
@@ -593,7 +755,7 @@ if coNutLayKey then
     nutLayKey = New("TextButton", {
         Name = "NutLayKey",
         AnchorPoint = Vector2.new(1, 0),
-        Position = UDim2.new(1, -16, 0, 116),
+        Position = UDim2.new(1, -16, 0, 144),
         Size = UDim2.new(0.5, -21, 0, 38),
         BackgroundColor3 = MAU.O,
         BorderSizePixel = 0,
@@ -610,7 +772,7 @@ end
 local trangThai = New("TextLabel", {
     Name = "TrangThai",
     BackgroundTransparency = 1,
-    Position = UDim2.new(0, 16, 0, 162),
+    Position = UDim2.new(0, 16, 0, 190),
     Size = UDim2.new(1, -32, 0, 62),
     Font = Enum.Font.Gotham,
     Text = "",
@@ -734,16 +896,38 @@ oKey.FocusLost:Connect(function(nhanEnter)
     if nhanEnter then XacNhan() end
 end)
 
+local function SaoChep(noiDung)
+    return pcall(function()
+        local chep = setclipboard or toclipboard or (Clipboard and Clipboard.set)
+        chep(noiDung)
+    end)
+end
+
+local function MaHoaUrl(s)
+    return (tostring(s):gsub("[^%w%-_%.~]", function(c) return string.format("%%%02X", c:byte()) end))
+end
+
+-- Link lấy key kèm sẵn mã thiết bị + tên -> trang web tự điền
+local function LinkLayKey()
+    local noi = CAU_HINH.LINK_LAY_KEY:find("?", 1, true) and "&" or "?"
+    return CAU_HINH.LINK_LAY_KEY .. noi .. "tb=" .. MA_THIET_BI .. "&ten=" .. MaHoaUrl(player.Name)
+end
+
+nutChepThietBi.MouseButton1Click:Connect(function()
+    if SaoChep(MA_THIET_BI) then
+        BaoTrangThai("Đã sao chép mã thiết bị " .. MA_THIET_BI .. ". Dán vào ô \"Mã thiết bị\" trên web.", MAU.VANG)
+    else
+        BaoTrangThai("Mã thiết bị của bạn: " .. MA_THIET_BI .. " (nhập vào ô \"Mã thiết bị\" trên web).", MAU.VANG)
+    end
+end)
+
 if nutLayKey then
     nutLayKey.MouseButton1Click:Connect(function()
-        local daChep = pcall(function()
-            local chep = setclipboard or toclipboard or (Clipboard and Clipboard.set)
-            chep(CAU_HINH.LINK_LAY_KEY)
-        end)
-        if daChep then
-            BaoTrangThai("Đã sao chép link lấy key, dán vào trình duyệt.", MAU.VANG)
+        local link = LinkLayKey()
+        if SaoChep(link) then
+            BaoTrangThai("Đã sao chép link lấy key (có sẵn mã thiết bị), dán vào trình duyệt.", MAU.VANG)
         else
-            BaoTrangThai("Link lấy key: " .. CAU_HINH.LINK_LAY_KEY, MAU.VANG)
+            BaoTrangThai("Link lấy key: " .. link, MAU.VANG)
         end
     end)
 end
@@ -770,4 +954,4 @@ if CAU_HINH.LUU_KEY then
 end
 
 -- Trả về các hàm kiểm tra (để test; không ảnh hưởng khi chạy bằng loadstring)
-return { GiaiMaKey = GiaiMaKey, KiemTraKey = KiemTraKey }
+return { GiaiMaKey = GiaiMaKey, KiemTraKey = KiemTraKey, MaThietBi = MA_THIET_BI }

@@ -2,7 +2,7 @@
 """Chạy key-system.lua trong Luau THẬT (ngôn ngữ của Roblox) với key lấy từ code trang web.
 
 - Key Free_v2_: sinh bằng hàm taoMaDemo của trang đang chạy (nhánh origin/main).
-- Key Free_v3_: sinh bằng hàm taoMaDemo của index.html hiện tại.
+- Key Free_v4_: sinh bằng hàm taoMaDemo của index.html hiện tại (SHA-256 dùng bit32 thật của Luau).
 
 Cần: binary `luau` (đặt biến môi trường LUAU=/đường/dẫn/luau hoặc có trong PATH), Node.js, git.
 Build Luau: git clone https://github.com/luau-lang/luau && cd luau && make config=release luau
@@ -41,6 +41,13 @@ console.log(JSON.stringify(JSON.parse(html[1]).map(([ten, id, time]) => taoMaDem
     kq = subprocess.run(["node", "-e", code], input=html + "\u0000" + json.dumps(cases),
                         capture_output=True, text=True, check=True)
     return json.loads(kq.stdout)
+
+
+def tao_v4(cases):
+    """[tên, nhiệm vụ, ms, số quay, mã thiết bị?] -> key từ index.html (nonce ngẫu nhiên nhưng cố định theo seed)."""
+    ngau_nhien = random.Random(len(cases))
+    return k.tao_ma_bang_index_html([[c[0], c[1], c[2], c[3], c[4] if len(c) > 4 else k.MA_TB,
+                                      ngau_nhien.randbytes(12).hex()] for c in cases])
 
 
 def chuoi_luau(s):
@@ -116,19 +123,20 @@ class LuauThatTest(unittest.TestCase):
         t = (NOW - 120) * 1000 + 345
         v2 = tao_ma_trang_main([["Tester", "nv4", t], ["NguoiKhac", "nv4", t],
                                 ["Tester", "nv1", (NOW - k.NGAY - 5) * 1000]])
-        v3 = k.tao_ma_bang_index_html([["Tester", "nv4", t, 58], ["NguoiKhac", "nv2", t, 999],
-                                       ["Tester", "nv3", (NOW - k.NGAY - 5) * 1000, 0], ["tester", "nv1", t, 0]])
+        v3 = tao_v4([["Tester", "nv4", t, 58], ["NguoiKhac", "nv2", t, 999],
+                     ["Tester", "nv3", (NOW - k.NGAY - 5) * 1000, 0], ["tester", "nv1", t, 0],
+                     ["Tester", "nv4", t, 1, k.ma_thiet_bi("client:MAY-KHAC")]])
         sua = v3[0][:20] + ("A" if v3[0][20] != "A" else "B") + v3[0][21:]
         cases = {
             "v2_dung": v2[0], "v2_nguoi_khac": v2[1], "v2_het_han": v2[2],
             "v3_dung": v3[0], "v3_nguoi_khac": v3[1], "v3_het_han": v3[2], "v3_chu_thuong": v3[3],
-            "v3_bi_sua": sua, "v3_dan_thua": f"  key: {v3[0]} \n", "rac": "abc",
+            "v3_bi_sua": sua, "v3_dan_thua": f"  key: {v3[0]} \n", "rac": "abc", "v4_may_khac": v3[4],
         }
         than = "\n".join(f"do local n, tt = thu({chuoi_luau(key)}) ra({json.dumps(ten)}, n, tt) end"
                          for ten, key in cases.items())
         kq = chay_luau(than)
         mong_doi = {"v2_dung": 1, "v2_nguoi_khac": 0, "v2_het_han": 0, "v3_dung": 1, "v3_nguoi_khac": 0,
-                    "v3_het_han": 0, "v3_chu_thuong": 1, "v3_bi_sua": 0, "v3_dan_thua": 1, "rac": 0}
+                    "v3_het_han": 0, "v3_chu_thuong": 1, "v3_bi_sua": 0, "v3_dan_thua": 1, "rac": 0, "v4_may_khac": 0}
         for ten, so in mong_doi.items():
             with self.subTest(ten=ten):
                 self.assertEqual(int(kq[ten][0]), so, kq[ten][1])
@@ -136,10 +144,12 @@ class LuauThatTest(unittest.TestCase):
         self.assertIn("không phải của tài khoản Tester", kq["v3_nguoi_khac"][1])
         self.assertIn("hết hạn", kq["v2_het_han"][1])
         self.assertIn("không hợp lệ", kq["v3_bi_sua"][1])
+        self.assertIn("thiết bị khác", kq["v4_may_khac"][1])
+        self.assertIn(k.MA_TB, kq["v4_may_khac"][1])
 
     def test_luu_key_tu_dien_va_tu_xoa(self):
         t = (NOW - k.NGAY + 600) * 1000  # còn 10 phút
-        ma = k.tao_ma_bang_index_html([["Tester", "nv4", t, 314]])[0]
+        ma = tao_v4([["Tester", "nv4", t, 314]])[0]
         than = f"""
 local o_dia = {{}}
 local n = thu({chuoi_luau(ma)}, nil, o_dia)
@@ -157,7 +167,7 @@ ra("tu_xoa", p.o.Text, o_dia["taodepzai_key_12345.txt"] or "<đã xoá>", p.tt.T
         self.assertIn("tự xoá", kq["tu_xoa"][2])
 
     def test_gio_may_chu_trong_luau(self):
-        ma = k.tao_ma_bang_index_html([["Tester", "nv4", (NOW - 2 * k.NGAY) * 1000, 1]])[0]
+        ma = tao_v4([["Tester", "nv4", (NOW - 2 * k.NGAY) * 1000, 1]])[0]
         than = (f"do local n, tt = thu({chuoi_luau(ma)}, {{ ten = 'Tester', gio_may = {NOW - 2 * k.NGAY + 30}, "
                 f"gio_may_chu = {NOW}.5 }}) ra('x', n, tt) end")
         kq = chay_luau(than)
@@ -172,7 +182,7 @@ ra("tu_xoa", p.o.Text, o_dia["taodepzai_key_12345.txt"] or "<đã xoá>", p.tt.T
             t = ngau_nhien.randint(1, 4_000_000_000_000)
             cases.append([ten, ngau_nhien.choice(["nv1", "nv2", "nv3", "nv4"]), t, ngau_nhien.randint(0, 999)])
             v2_cases.append([ten, "nv2", t])
-        cac_ma = k.tao_ma_bang_index_html(cases) + tao_ma_trang_main(v2_cases)
+        cac_ma = tao_v4(cases) + tao_ma_trang_main(v2_cases)
         for i in range(0, len(cac_ma), 5):  # thêm vài key bị sửa
             ma = cac_ma[i]
             cac_ma.append(ma[:12] + ("x" if ma[12] != "x" else "y") + ma[13:])
@@ -180,7 +190,8 @@ ra("tu_xoa", p.o.Text, o_dia["taodepzai_key_12345.txt"] or "<đã xoá>", p.tt.T
         than = "local p = mo({ ten = 'Tester', gio_may = %d })\n" % NOW
         for i, ma in enumerate(cac_ma):
             than += (f"do local t = p.api.GiaiMaKey({chuoi_luau(ma)}) "
-                     f"if t then ra('k{i}', t.ten, t.nhiemVu, t.thoiDiem, t.soQuay or -1) else ra('k{i}') end end\n")
+                     f"if t then ra('k{i}', t.ten, t.nhiemVu, t.thoiDiem, t.soQuay or -1, t.thietBi or '') "
+                     f"else ra('k{i}') end end\n")
         kq = chay_luau(than)
         so_hop_le = 0
         for i, (ma, mong) in enumerate(zip(cac_ma, js)):
@@ -193,7 +204,26 @@ ra("tu_xoa", p.o.Text, o_dia["taodepzai_key_12345.txt"] or "<đã xoá>", p.tt.T
             self.assertEqual(lua[1], mong["nhiemVu"], ma)
             self.assertEqual(int(float(lua[2])), mong["thoiDiem"] // 1000, ma)
             self.assertEqual(int(float(lua[3])), mong.get("soQuay", -1), ma)
+            self.assertEqual(lua[4], mong.get("thietBi", ""), ma)
         self.assertGreaterEqual(so_hop_le, 200)
+
+
+    def test_ma_thiet_bi_va_bit32_that(self):
+        than = """
+ra("co_bit32", tostring(type(bit32) == "table" and bit32.rrotate ~= nil))
+local p = mo({ ten = "Tester", gio_may = %d, client_id = "ABC-123" })
+ra("tb", p.api.MaThietBi, p.gui:FindFirstChildDeep("MaThietBi").Text)
+local p2 = mo({ ten = "Tester", gio_may = %d, khong_client_id = true, hwid = "HW-9" })
+ra("hwid", p2.api.MaThietBi)
+p.gui:FindFirstChildDeep("NutLayKey").MouseButton1Click:Fire()
+ra("link", p.log.clipboard[1] or "")
+""" % (NOW, NOW)
+        kq = chay_luau(than)
+        self.assertEqual(kq["co_bit32"], ["true"], "Luau thật phải có bit32 (nhánh Roblox dùng)")
+        self.assertEqual(kq["tb"][0], k.ma_thiet_bi("client:ABC-123"))
+        self.assertIn(k.ma_thiet_bi("client:ABC-123"), kq["tb"][1])
+        self.assertEqual(kq["hwid"], [k.ma_thiet_bi("hwid:HW-9")])
+        self.assertEqual(kq["link"], [f"https://mncuadaigmailcom.github.io/taodepzai/?tb={k.ma_thiet_bi('client:ABC-123')}&ten=Tester"])
 
 
 if __name__ == "__main__":

@@ -1,19 +1,67 @@
 #!/usr/bin/env node
-// Đọc mã Free_v3_ (và Free_v2_ cũ) của index.html; KHÔNG xác minh danh tính hay key thật.
-// Thuật toán công khai: ai có mã nguồn đều có thể đọc tên hoặc tự tạo mã mới.
+// Đọc mã Free_v4_ (và Free_v2_ cũ) của index.html bằng module crypto của Node
+// (cài đặt độc lập với bản SHA-256 tự viết trong index.html / key-system.lua để đối chiếu).
+// Chỉ dành cho chủ trang: cần BI_MAT_V4. KHÔNG xác minh ai đã làm nhiệm vụ.
+const crypto = require('node:crypto');
+
 const PREFIX_V2 = 'Free_v2_';
-const PREFIX_V3 = 'Free_v3_';
-const INVALID = 'Mã không hợp lệ hoặc không thuộc bản Free_v3_/Free_v2_. Mã Free_ cũ dạng hash không thể đọc ngược tên.';
+const PREFIX_V4 = 'Free_v4_';
+const INVALID = 'Mã không hợp lệ hoặc không thuộc bản Free_v4_/Free_v2_.';
 
-// Phải khớp BI_MAT_V3 / bamV3 / taoMaDemo trong index.html và key-system.lua.
-const BI_MAT_V3 = 'taodepzai|v3|HoiAn';
-const P31 = 2147483647;
+// Phải khớp BI_MAT_V4 trong index.html và key-system.lua.
+const BI_MAT_V4 = 'z!V~~RO3mS2dCMvW-GE@#v2XYYuLsNoQKS5U0pGeAY5EOkd_';
+const BANG_THIET_BI = '0123456789ABCDEFGHJKMNPQRSTVWXYZ';
+const DAI_CO_DINH = 12 + 16 + 20;
 
-function bamV3(dsByte, h, coSo, mod) {
-    for (const b of dsByte) h = (h * coSo + b + 1) % mod;
-    return h;
+const sha256 = (...phan) => crypto.createHash('sha256').update(Buffer.concat(phan.map(p => Buffer.from(p)))).digest();
+const hmac = (...phan) => crypto.createHmac('sha256', BI_MAT_V4).update(Buffer.concat(phan.map(p => Buffer.from(p)))).digest();
+
+function layBit(bytes, tu, so) {
+    let v = 0;
+    for (let i = tu; i < tu + so; i++) v = v * 2 + ((bytes[i >> 3] >> (7 - (i & 7))) & 1);
+    return v;
 }
-const byteAscii = chuoi => Array.from(chuoi, kyTu => kyTu.charCodeAt(0));
+
+function kyTuKiemTra(than) {
+    const h = sha256('taodepzai|kiem-tra|' + than);
+    return BANG_THIET_BI[layBit(h, 0, 5)] + BANG_THIET_BI[layBit(h, 5, 5)];
+}
+
+// Mã gốc của máy (vd "client:<ClientId>") -> mã thiết bị XXXX-XXXX-XXXX như script Roblox hiển thị
+function maThietBiTuGoc(maGoc) {
+    const h = sha256('taodepzai|thiet-bi|' + maGoc);
+    let than = '';
+    for (let i = 0; i < 10; i++) than += BANG_THIET_BI[layBit(h, i * 5, 5)];
+    const d = than + kyTuKiemTra(than);
+    return `${d.slice(0, 4)}-${d.slice(4, 8)}-${d.slice(8)}`;
+}
+
+// Nhận mã người dùng gõ (không phân biệt hoa thường, bỏ dấu -/khoảng trắng, O->0, I/L->1) -> 10 ký tự thân hoặc null
+function chuanHoaMaThietBi(ma) {
+    const t = String(ma ?? '').toUpperCase().replace(/[\s-]/g, '').replace(/O/g, '0').replace(/[IL]/g, '1');
+    if (!/^[0-9A-HJKMNP-TV-Z]{12}$/.test(t)) return null;
+    return kyTuKiemTra(t.slice(0, 10)) === t.slice(10) ? t.slice(0, 10) : null;
+}
+
+function dongKhoa(khoa, dai) {
+    const phan = [];
+    for (let j = 0; j * 32 < dai; j++) phan.push(sha256(khoa, [j]));
+    return Buffer.concat(phan);
+}
+
+// Bộ tạo key v4 độc lập (dùng cho test đối chiếu với index.html)
+function taoMaV4(ten, nhiemVu, thoiDiem, soQuay, maThietBi, nonce = crypto.randomBytes(12)) {
+    const than = chuanHoaMaThietBi(maThietBi);
+    if (!than) throw new Error('Mã thiết bị không hợp lệ');
+    const ms = Buffer.alloc(6);
+    ms.writeUIntBE(thoiDiem, 0, 6);
+    const p = Buffer.concat([Buffer.from([4, soQuay >> 8, soQuay & 255]), ms,
+        Buffer.from([Number(nhiemVu.slice(2))]), Buffer.from(than), Buffer.from(ten.trim(), 'utf8')]);
+    const tag = hmac('tdz4|tag|', nonce, p).subarray(0, 16);
+    const dong = dongKhoa(hmac('tdz4|enc|', nonce, tag), p.length);
+    const c = p.map((b, i) => b ^ dong[i]);
+    return PREFIX_V4 + Buffer.concat([Buffer.from(nonce), tag, c]).toString('base64url');
+}
 
 function docBase64Url(noiDung) {
     if (!/^[A-Za-z0-9_-]{8,700}$/.test(noiDung)) throw new Error(INVALID);
@@ -22,7 +70,14 @@ function docBase64Url(noiDung) {
     return bytes;
 }
 
-function kiemTraNoiDung(bytes) {
+function kiemTraTen(bytes) {
+    const ten = new TextDecoder('utf-8', { fatal: true, ignoreBOM: true }).decode(bytes);
+    if (!ten || ten !== ten.replace(/^[ \t\n\v\f\r]+|[ \t\n\v\f\r]+$/g, '') || ten.length > 32) throw new Error(INVALID);
+    return ten;
+}
+
+function giaiMaV2(noiDung) {
+    const bytes = docBase64Url(noiDung).map((byte, viTri) => byte ^ ((viTri * 73 + 0xA5) & 255));
     const [ten, nhiemVu, thoiDiem] = JSON.parse(new TextDecoder('utf-8', { fatal: true }).decode(bytes));
     if (typeof ten !== 'string' || !ten || ten !== ten.trim() || ten.length > 32 ||
         !/^nv[1-4]$/.test(nhiemVu) || !Number.isSafeInteger(thoiDiem) || thoiDiem <= 0 ||
@@ -30,64 +85,28 @@ function kiemTraNoiDung(bytes) {
     return { ten, nhiemVu, thoiDiem };
 }
 
-function giaiMaV2(noiDung) {
-    const daChe = docBase64Url(noiDung);
-    const bytes = daChe.map((byte, viTri) => byte ^ ((viTri * 73 + 0xA5) & 255));
-    return kiemTraNoiDung(bytes);
-}
-
-function giaiMaV3(noiDung) {
+function giaiMaV4(noiDung) {
     const raw = docBase64Url(noiDung);
-    if (raw.length < 5 + 4 + 8) throw new Error(INVALID);
-    const biMat = byteAscii(BI_MAT_V3);
-
-    // Đầu mã 5 byte: số quay, ngày, tháng, giây, mili-giây
-    let y = bamV3(biMat, 7, 131, P31) || 1;
-    let giaTriDau = 0;
-    const dau = [];
-    for (let i = 0; i < 5; i++) {
-        y = (y * 48271) % P31;
-        const b = ((raw[i] - Math.floor(y / 8388608) - (i ? raw[i - 1] : 0)) % 256 + 512) % 256;
-        dau.push(b);
-        giaTriDau = giaTriDau * 256 + b;
-    }
-    const mili = giaTriDau % 1024;
-    const giay = Math.floor(giaTriDau / 1024) % 64;
-    const thang = Math.floor(giaTriDau / 65536) % 16;
-    const ngay = Math.floor(giaTriDau / 1048576) % 32;
-    const soQuay = Math.floor(giaTriDau / 33554432);
-    if (soQuay > 999 || ngay < 1 || ngay > 31 || thang < 1 || thang > 12 || giay > 59 || mili > 999) {
-        throw new Error(INVALID);
-    }
-
-    let x = bamV3(byteAscii(`${BI_MAT_V3}|${soQuay}|${ngay}|${thang}|${giay}|${mili}`), 11, 257, P31) || 1;
-    let truoc = soQuay % 256;
-    let byteTruoc = 0;
-    const than = [];
-    for (let i = 5; i < raw.length; i++) {
-        x = ((x * 48271 + byteTruoc) % P31) || 1;
-        byteTruoc = ((raw[i] - Math.floor(x / 8388608) - truoc) % 256 + 512) % 256;
-        than.push(byteTruoc);
-        truoc = raw[i];
-    }
-    const noiDungByte = than.slice(0, -4);
-    const tatCa = [...biMat, ...dau, ...noiDungByte];
-    const h1 = bamV3(tatCa, 5, 131, P31);
-    const h2 = bamV3(tatCa, 3, 257, 2147483629);
-    const tag = [Math.floor(h1 / 256) % 256, h1 % 256, Math.floor(h2 / 256) % 256, h2 % 256];
-    if (tag.some((b, i) => b !== than[than.length - 4 + i])) throw new Error(INVALID);
-
-    const ketQua = kiemTraNoiDung(Uint8Array.from(noiDungByte));
-    const d = new Date(ketQua.thoiDiem);
-    if (d.getUTCDate() !== ngay || d.getUTCMonth() + 1 !== thang ||
-        Math.floor(ketQua.thoiDiem / 1000) % 60 !== giay || ketQua.thoiDiem % 1000 !== mili) throw new Error(INVALID);
-    return { ...ketQua, soQuay };
+    if (raw.length < DAI_CO_DINH + 1 || raw.length > DAI_CO_DINH + 128) throw new Error(INVALID);
+    const nonce = raw.subarray(0, 12);
+    const tag = raw.subarray(12, 28);
+    const c = raw.subarray(28);
+    const dong = dongKhoa(hmac('tdz4|enc|', nonce, tag), c.length);
+    const p = c.map((b, i) => b ^ dong[i]);
+    if (!crypto.timingSafeEqual(hmac('tdz4|tag|', nonce, p).subarray(0, 16), tag) || p[0] !== 4) throw new Error(INVALID);
+    const soQuay = p[1] * 256 + p[2];
+    const thoiDiem = p.readUIntBE(3, 6);
+    const nv = p[9];
+    const thietBi = p.subarray(10, 20).toString('latin1');
+    if (soQuay > 999 || thoiDiem <= 0 || thoiDiem > 8.64e15 || nv < 1 || nv > 4 ||
+        !/^[0-9A-HJKMNP-TV-Z]{10}$/.test(thietBi)) throw new Error(INVALID);
+    return { ten: kiemTraTen(p.subarray(20)), nhiemVu: `nv${nv}`, thoiDiem, soQuay, thietBi };
 }
 
 function giaiMaDemo(ma) {
     if (typeof ma !== 'string') throw new Error(INVALID);
     try {
-        if (ma.startsWith(PREFIX_V3)) return giaiMaV3(ma.slice(PREFIX_V3.length));
+        if (ma.startsWith(PREFIX_V4)) return giaiMaV4(ma.slice(PREFIX_V4.length));
         if (ma.startsWith(PREFIX_V2)) return giaiMaV2(ma.slice(PREFIX_V2.length));
     } catch {
         throw new Error(INVALID);
@@ -97,16 +116,19 @@ function giaiMaDemo(ma) {
 
 if (require.main === module) {
     if (process.argv.length !== 3) {
-        console.error('Cách dùng: node tools/decode-demo.cjs "Free_v3_..."');
+        console.error('Cách dùng: node tools/decode-demo.cjs "Free_v4_..."');
         process.exitCode = 1;
     } else {
         try {
-            const { ten, nhiemVu, thoiDiem, soQuay } = giaiMaDemo(process.argv[2]);
+            const { ten, nhiemVu, thoiDiem, soQuay, thietBi } = giaiMaDemo(process.argv[2]);
             console.log(`Tên người chơi: ${JSON.stringify(ten)}`);
             console.log(`Nhiệm vụ hoàn thành cuối: ${nhiemVu}`);
             console.log(`Thời điểm hoàn thành (UTC): ${new Date(thoiDiem).toISOString()}`);
             if (soQuay !== undefined) console.log(`Số vòng quay: ${String(soQuay).padStart(3, '0')}`);
-            console.log('Lưu ý: Mã demo có thể bị giả mạo, không chứng minh ai đã làm nhiệm vụ.');
+            if (thietBi !== undefined) {
+                const d = thietBi + kyTuKiemTra(thietBi);
+                console.log(`Mã thiết bị: ${d.slice(0, 4)}-${d.slice(4, 8)}-${d.slice(8)}`);
+            }
         } catch (error) {
             console.error(error.message);
             process.exitCode = 1;
@@ -114,4 +136,4 @@ if (require.main === module) {
     }
 }
 
-module.exports = { giaiMaDemo };
+module.exports = { giaiMaDemo, taoMaV4, maThietBiTuGoc, chuanHoaMaThietBi };

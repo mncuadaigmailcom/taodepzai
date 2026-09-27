@@ -135,6 +135,12 @@ return function(tuy_chon)
             SetCore = function(_, ten, bang) table.insert(log.thong_bao, { ten, bang }) end,
         },
     }
+    -- Mã máy: ClientId của Roblox (mặc định có), tắt bằng khong_client_id để thử gethwid / UserId
+    if not tuy_chon.khong_client_id then
+        dich_vu.RbxAnalyticsService = {
+            GetClientId = function() return tuy_chon.client_id or "MOCK-CLIENT-0001" end,
+        }
+    end
 
     local game = {}
     function game:GetService(ten)
@@ -211,6 +217,7 @@ return function(tuy_chon)
         env.setclipboard = function(s) table.insert(log.clipboard, s) end
     end
     if tuy_chon.khong_loadstring then env.loadstring = nil end
+    if tuy_chon.hwid then env.gethwid = function() return tuy_chon.hwid end end
     -- Roblox luôn có bit32 (Luau); Lua 5.1 thì không -> kiểm tra được cả hai nhánh
     env.bit32 = tuy_chon.bit32 or bit32
     if tuy_chon.gio_may_chu then

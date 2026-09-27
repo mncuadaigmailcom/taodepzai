@@ -2,20 +2,33 @@
 
 Trang HTML tĩnh tại `index.html`. Mở tệp trong trình duyệt hoặc chạy `python3 -m http.server 8000` để xem trên máy. Chạy kiểm thử bằng `node --test tests/portal.test.cjs`.
 
-## Mã Free_v3_ (vòng quay 3 số)
+## Mã Free_v4_ (mã hoá HMAC-SHA256 + mã thiết bị)
 
-Trong cửa sổ nhận mã có **vòng quay 3 số** (000–999). Mỗi lần bấm **🎰 Quay số mới**, ba ô số quay rồi dừng lần lượt, và trang tạo một key mới cho cùng tên, cùng thời điểm (1000 key khác nhau có thể có). Dòng **“Kết hợp”** bên dưới cho thấy các thành phần được trộn vào key: số quay · ngày/tháng (UTC) · giây · mili-giây · tên người chơi (tên không hiện ra). Trong lúc quay, nút sao chép bị khoá để không chép nhầm key cũ. Đóng cửa sổ giữa chừng thì huỷ lượt quay và giữ số cũ.
+Để tạo key, người dùng nhập **tên người chơi**, **mã thiết bị** và hoàn thành 4 nhiệm vụ.
 
-Cách tạo mã v3 (`taoMaDemo` trong `index.html`, giống hệt `tools/decode-demo.cjs` và `key-system.lua`):
+- **Mã thiết bị** có dạng `XXXX-XXXX-XXXX` và hiện trong bảng key của script Roblox.
+  - Bấm “Sao chép mã” để lấy mã, hoặc bấm **Lấy key** để mở trang với tên và mã điền sẵn qua `?tb=...&ten=...`.
+  - Trang đọc xong sẽ xoá tham số khỏi thanh địa chỉ.
+  - Mã được băm SHA-256 từ ClientId của Roblox (hoặc `gethwid()` của executor, cuối cùng là UserId). Hai ký tự cuối là ký tự kiểm tra, nên gõ sai sẽ bị báo ngay.
+- **Không hiện ngày giờ ở đâu cả.** Dòng dưới vòng quay chỉ còn chữ mô tả cố định. Thời điểm, tên và mã thiết bị chỉ nằm trong key ở dạng đã mã hoá.
+- **Vòng quay 3 số:** mỗi lần quay sẽ đổi số và đổi **nonce ngẫu nhiên 96 bit** (`crypto.getRandomValues`), nên key luôn khác, kể cả khi trùng số. Key vẫn giữ nguyên sau F5; làm mới phiên thì đổi nonce.
 
-1. **Đầu mã 5 byte** = số quay + **ngày + tháng** (UTC) + **giây + mili-giây** của lúc hoàn thành nhiệm vụ cuối. Các byte được che bằng dòng mặt nạ và xích với nhau.
-2. **Nội dung** = `[tên, nhiệm vụ, thời điểm]` dạng JSON UTF-8, kèm **mã kiểm tra 32 bit** (2 hàm băm độc lập trên chuỗi bí mật + đầu mã + nội dung).
-3. **Dòng khoá** sinh từ (chuỗi bí mật, số quay, ngày, tháng, giây, mili-giây) bằng bộ sinh Park–Miller. **Từng byte của tên được trộn tiếp vào dòng khoá**, và mỗi byte mã được **xích với byte trước**. Vì vậy chỉ khác 1 chữ trong tên là phần lớn key khác hẳn, còn sửa một ký tự của key thì phần sau hỏng hết và mã kiểm tra không khớp.
-4. Khi giải mã, ngày/tháng/giây/mili-giây ở đầu mã phải khớp đúng thời điểm bên trong; số quay phải trong khoảng 000–999.
+Cấu trúc key (`taoMaDemo`, nằm giữa hai dòng `// === MÃ HOÁ V4 ... ===` trong `index.html`). Phần này giống hệt `key-system.lua`, `tools/decode-demo.cjs` (dùng `node:crypto`) và bản Python trong test:
 
-Mọi phép tính dùng số nguyên dưới 2^53, nên JS và Lua cho kết quả giống hệt nhau (test đối chiếu tự động).
+```
+Free_v4_ + base64url( nonce 12 byte | tag 16 byte | bản mã )
+bản rõ = [4, số quay (2 byte), thời điểm ms (6 byte), nhiệm vụ 1–4, mã thiết bị (10 ký tự), tên UTF-8]
+tag    = HMAC-SHA256(BI_MAT_V4, "tdz4|tag|" + nonce + bản rõ)[0..16]
+khoá   = HMAC-SHA256(BI_MAT_V4, "tdz4|enc|" + nonce + tag)
+bản mã = bản rõ XOR SHA256(khoá + 0) SHA256(khoá + 1) ...
+```
 
-**Giới hạn:** chuỗi bí mật và thuật toán vẫn nằm công khai trong mã nguồn trang. Cách này chặn được việc sửa hoặc bịa key bằng tay, nhưng người đọc code vẫn có thể tự viết chương trình tạo key. Muốn chặn hẳn cần máy chủ ký key bằng khoá bí mật.
+- **Không đọc được bằng mắt:** nhìn key không biết tên, ngày giờ hay mã thiết bị.
+- **Thay đổi nhỏ làm key khác hẳn:** chỉ khác 1 mili-giây hay 1 chữ trong tên thì gần như toàn bộ key đổi.
+- **Không sửa hay bịa được bằng tay:** tag có 128 bit, nên sửa 1 ký tự hoặc tự bịa key đều bị phát hiện.
+- **Độ dài:** key dài khoảng 75–240 ký tự, tuỳ độ dài tên.
+
+**Giới hạn:** `BI_MAT_V4` vẫn nằm trong mã nguồn trang (trang tĩnh không giấu được bí mật). Người đọc code vẫn có thể tự viết chương trình tạo key. Muốn chặn hẳn cần máy chủ cấp key giữ bí mật riêng.
 
 ## Cấu hình liên kết
 
@@ -27,33 +40,43 @@ Tìm mảng `NHIEM_VU` ở cuối `index.html`:
 
 ## Cách hoạt động
 
-Bốn nhiệm vụ xếp thành một cột. Người dùng **phải nhập tên** và hoàn thành **đủ cả bốn nhiệm vụ** trong phiên 3 phút, không cần theo thứ tự. Mỗi nhiệm vụ theo dõi riêng 5 giây rời tab; quay lại sớm chỉ báo lỗi nhiệm vụ đó.
+Bốn nhiệm vụ xếp thành một cột. Người dùng **phải nhập tên + mã thiết bị** và hoàn thành **đủ cả bốn nhiệm vụ** trong phiên 3 phút, không cần theo thứ tự. Mỗi nhiệm vụ theo dõi riêng 5 giây rời tab; quay lại sớm chỉ báo lỗi nhiệm vụ đó.
 
-Khi một nhiệm vụ hoàn thành, thời điểm hoàn thành được lưu trong trình duyệt. Sau 4/4, trang lấy **thời điểm của nhiệm vụ hoàn thành cuối cùng** và ID nhiệm vụ đó cùng tên người chơi để tạo mã `Free_v3_...`. Tên không hiện bằng chữ trong mã, nhưng **có thể đọc lại khi biết thuật toán**. Mã ổn định sau F5 nếu vẫn cùng tên, phiên và số vòng quay; đổi tên, bấm **🎰 Quay số mới** hoặc tạo phiên mới sẽ tạo mã khác. Tên được lưu trong trình duyệt và giữ lại khi reset phiên, còn trạng thái nhiệm vụ và mốc thời gian được reset sau 3 phút hoặc khi bấm nút làm mới. Bản sao của mã đã gửi đi vẫn có thể đọc được sau khi reset.
+Khi một nhiệm vụ hoàn thành, thời điểm hoàn thành được lưu trong trình duyệt. Sau 4/4, trang lấy **thời điểm của nhiệm vụ hoàn thành cuối cùng** và ID nhiệm vụ đó cùng tên người chơi để tạo mã `Free_v4_...` (đã mã hoá, xem trên). Mã ổn định sau F5 nếu vẫn cùng tên, phiên và số vòng quay; đổi tên, bấm **🎰 Quay số mới** hoặc tạo phiên mới sẽ tạo mã khác. Tên được lưu trong trình duyệt và giữ lại khi reset phiên, còn trạng thái nhiệm vụ và mốc thời gian được reset sau 3 phút hoặc khi bấm nút làm mới. Bản sao của mã đã gửi đi vẫn có thể đọc được sau khi reset.
 
 Để đọc tên từ **mã demo mới**, tại thư mục repo chạy:
 
 ```bash
-node tools/decode-demo.cjs 'Free_v3_...'
+node tools/decode-demo.cjs 'Free_v4_...'
 ```
 
-Công cụ in ra tên gốc (cả chữ hoa và dấu tiếng Việt), ID nhiệm vụ cuối, thời điểm hoàn thành dạng UTC và số vòng quay (mã `Free_v2_` cũ vẫn đọc được). Các mã cũ có **14 ký tự sau `Free_`** là hash một chiều, **không thể đọc ngược tên**; hãy dùng bản trang mới để tạo mã `Free_v3_...` (nếu phiên cũ đã hết hạn, cần làm lại bốn nhiệm vụ). Công cụ không xác nhận được mã có thật hoặc người chơi đã làm nhiệm vụ: ai đọc mã nguồn cũng có thể tự tạo mã giả.
+Công cụ này chỉ dành cho chủ trang (cần `BI_MAT_V4`). Nó in ra tên gốc, ID nhiệm vụ cuối, thời điểm hoàn thành dạng UTC, số vòng quay và mã thiết bị. Mã `Free_v2_` cũ vẫn đọc được. Các mã cũ có **14 ký tự sau `Free_`** là hash một chiều, **không thể đọc ngược tên**; hãy dùng bản trang mới để tạo mã `Free_v4_...` (nếu phiên cũ đã hết hạn, cần làm lại bốn nhiệm vụ). Công cụ không xác nhận được mã có thật hoặc người chơi đã làm nhiệm vụ: ai đọc mã nguồn cũng có thể tự tạo mã giả.
 
 Trang vẫn có đếm ngược, reset thủ công/tự động, thông báo, hiệu ứng 3D, sao chép mã demo và sao chép script cũ. Tên trên cửa sổ nhận mã được thu gọn theo mặc định để không lộ ngay khi chia sẻ ảnh; trường tên trong trang chính vẫn hiển thị khi người dùng nhập.
 
-**Lưu ý quan trọng:** Mã `Free_` này **chỉ để minh họa, không kích hoạt script Taodepzai**. Cách che tên trong mã **không phải mã hóa bảo mật**: bất kỳ ai xem mã nguồn công khai cũng có thể đọc lại tên từ mã, nên không nhập tên thật hay thông tin nhạy cảm nếu cần riêng tư. Thời gian/trạng thái trong trình duyệt có thể bị chỉnh sửa và trang không xác minh người dùng đã xem liên kết. Muốn cấp key sử dụng được và chỉ chủ trang tra tên, cần máy chủ lưu key–tên cùng trang quản trị có xác thực; không để bí mật trong mã nguồn trình duyệt.
+**Lưu ý quan trọng:** Mã `Free_` này **chỉ để minh họa, không kích hoạt script Taodepzai**. Key được mã hoá HMAC-SHA256, nhưng bí mật nằm trong mã nguồn công khai. Vì vậy người đọc code vẫn giải hoặc tạo được key; không nhập thông tin nhạy cảm. Thời gian/trạng thái trong trình duyệt có thể bị chỉnh sửa và trang không xác minh người dùng đã xem liên kết. Muốn cấp key sử dụng được và chỉ chủ trang tra tên, cần máy chủ lưu key–tên cùng trang quản trị có xác thực; không để bí mật trong mã nguồn trình duyệt.
 
 ## Script nhập key cho Roblox (`key-system.lua`)
 
-Script mở bảng nhập key trong game, giải mã key `Free_v3_...` bằng cùng thuật toán với `taoMaDemo` rồi kiểm tra ba điều. Mặc định script nhận **cả key `Free_v2_`** (trang đang chạy trên GitHub Pages trước khi merge bản mới) lẫn `Free_v3_`. Key v2 vẫn phải đúng tên và còn hạn. Khi trang đã lên bản v3, có thể đặt `CHAP_NHAN_KEY_V2 = false` để chỉ nhận v3:
+Script mở bảng nhập key trong game và hiện **mã thiết bị** của máy. Nó giải mã key `Free_v4_...` bằng cùng thuật toán (SHA-256 dùng `bit32` của Roblox; không có `bit32` thì tự tính) rồi kiểm tra các điều dưới đây.
 
-1. **Đúng định dạng:** key giải mã được, mã kiểm tra 32 bit khớp, ngày/tháng khớp thời điểm; không bị sửa hay thiếu ký tự. Dán thừa chữ trước/sau key vẫn nhận.
-2. **Đúng người chơi:** tên trong key phải trùng **tên tài khoản Roblox** (`player.Name`) hoặc **tên hiển thị** (`DisplayName`). Không phân biệt hoa/thường, bỏ dấu `@` ở đầu. Key của người khác bị từ chối và bảng không hiện tên chủ key.
-3. **Còn hạn:** key dùng được **24 giờ** kể từ lúc hoàn thành nhiệm vụ cuối. Giờ lấy theo máy chủ Roblox (`workspace:GetServerTimeNow()`), nên chỉnh đồng hồ máy không gia hạn được key. Key có thời điểm ở tương lai quá 5 phút cũng bị từ chối.
+Mặc định script nhận **cả key `Free_v2_`** của trang đang chạy trên GitHub Pages trước khi merge bản mới. Key v2 **không có mã thiết bị**, nhưng vẫn phải đúng tên và còn hạn. Khi trang đã lên bản v4, hãy đặt `CHAP_NHAN_KEY_V2 = false` để bắt buộc mã thiết bị. Key `Free_v3_` cũ không còn được nhận.
+
+1. **Đúng định dạng:** key giải mã được và tag 128 bit khớp, tức là không bị sửa hay thiếu ký tự. Dán thừa chữ trước/sau key vẫn nhận.
+2. **Đúng người chơi:** tên trong key phải trùng **tên tài khoản Roblox** (`player.Name`) hoặc **tên hiển thị** (`DisplayName`).
+   - Không phân biệt hoa/thường, bỏ dấu `@` ở đầu.
+   - Key của người khác bị từ chối, và bảng không hiện tên chủ key.
+3. **Đúng thiết bị:** mã thiết bị trong key phải trùng mã của máy đang chạy.
+   - Gửi key hoặc chép file key sang máy khác đều bị từ chối.
+   - Khi từ chối, bảng báo mã của máy mình để lấy key mới.
+   - Tắt bằng `KIEM_TRA_THIET_BI = false`.
+4. **Còn hạn:** key dùng được **24 giờ** kể từ lúc hoàn thành nhiệm vụ cuối.
+   - Giờ lấy theo máy chủ Roblox (`workspace:GetServerTimeNow()`), nên chỉnh đồng hồ máy không gia hạn được key.
+   - Key có thời điểm ở tương lai quá 5 phút cũng bị từ chối.
 
 **Lưu key:** key xác nhận thành công được lưu vào file của executor (`writefile`), mỗi tài khoản một file `taodepzai_key_<UserId>.txt`. Lần sau mở script, key còn hạn được **tự điền vào ô nhập** (vẫn cần bấm Xác nhận). Khi key hết hạn 24 giờ (tính từ lúc hoàn thành nhiệm vụ cuối), key **tự bị xoá** khỏi file: ngay lúc hết hạn nếu game còn mở (xoá cả trong ô nhập nếu bảng đang hiện), hoặc lúc mở lại script. Key sai không ghi đè key đã lưu. Executor không có `writefile` thì script vẫn chạy, chỉ không lưu được.
 
-Khi hợp lệ, bảng báo thời gian còn lại, **xoá giao diện nhập key** rồi tải và chạy `https://mncuadaigmailcom.github.io/aiaiaitao2/script.js`. Nếu tải lỗi hoặc script lỗi cú pháp, bảng vẫn giữ lại để thử lại. Có thể nhấn Enter để xác nhận, và nút “Lấy key” sẽ sao chép link trang tạo mã.
+Khi hợp lệ, bảng báo thời gian còn lại, **xoá giao diện nhập key** rồi tải và chạy `https://mncuadaigmailcom.github.io/aiaiaitao2/script.js`. Nếu tải lỗi hoặc script lỗi cú pháp, bảng vẫn giữ lại để thử lại. Có thể nhấn Enter để xác nhận. Nút “Lấy key” sao chép link trang tạo mã kèm sẵn mã thiết bị và tên; nút “Sao chép mã” sao chép mã thiết bị.
 
 Sau khi GitHub Pages cập nhật, chạy trong executor:
 
@@ -65,7 +88,7 @@ Muốn đổi hạn key, độ lệch giờ, tắt kiểm tra tên/tên hiển t
 
 Chạy test (giả lập Roblox bằng Lua 5.1; có Node thì đối chiếu thêm với `index.html` và `tools/decode-demo.cjs`): `pip install lupa` rồi `python3 tests/key_system_test.py`.
 
-Test trong **Luau thật** (ngôn ngữ của Roblox), với key sinh từ code trang đang chạy (`origin/main`, v2) và trang mới (v3):
+Test trong **Luau thật** (ngôn ngữ của Roblox), với key sinh từ code trang đang chạy (`origin/main`, v2) và trang mới (v4, dùng `bit32` thật):
 
 ```bash
 git clone https://github.com/luau-lang/luau /tmp/luau-src && make -C /tmp/luau-src config=release luau
@@ -73,4 +96,4 @@ git fetch origin main
 LUAU=/tmp/luau-src/luau python3 tests/luau_test.py
 ```
 
-**Lưu ý:** cách này chặn được việc dùng lại key của người khác và key đã quá 24 giờ. Tuy nhiên thuật toán nằm công khai trong mã nguồn, nên người biết đọc code vẫn có thể tự tạo key cho tên của chính họ mà không làm nhiệm vụ, hoặc sửa script để bỏ qua kiểm tra. Muốn chặn hẳn cần máy chủ cấp key có chữ ký bí mật.
+**Lưu ý:** cách này chặn được việc xem hạn key, dùng lại key của người khác, key của máy khác và key đã quá 24 giờ. Tuy nhiên bí mật mã hoá nằm công khai trong mã nguồn, nên người biết đọc code vẫn có thể tự tạo key cho tên của chính họ mà không làm nhiệm vụ, hoặc sửa script để bỏ qua kiểm tra. Muốn chặn hẳn cần máy chủ cấp key có chữ ký bí mật.
