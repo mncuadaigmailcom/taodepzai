@@ -4,16 +4,14 @@ Trang HTML tĩnh tại `index.html`. Mở tệp trong trình duyệt hoặc ch�
 
 ## Mã Free_v4_ (mã hoá HMAC-SHA256 + mã thiết bị)
 
-Để tạo key, người dùng chỉ cần nhập **tên người chơi** và hoàn thành 4 nhiệm vụ. **Mã thiết bị được lấy tự động theo IP mạng của điện thoại**, không cần nhập:
+Để tạo key, người dùng chỉ cần nhập **tên người chơi** và hoàn thành 4 nhiệm vụ. **Mã mạng được lấy ngầm theo IP của điện thoại** (4G, 5G hoặc wifi), không cần nhập và không hiện ở đâu:
 
 - **Trang web:** khi mở trang (và khi quay lại trang), trang gọi lần lượt `https://api.ipify.org`, `https://ipv4.icanhazip.com`, `https://v4.ident.me` (chỉ IPv4) để lấy IP công khai.
-- **Tạo mã:** IP được chuẩn hoá rồi băm SHA-256 (`"taodepzai|thiet-bi|ip:" + ip`) thành mã mạng và mã hoá vào key.
-  - **Không có ô ID và không hiện mã hay IP**, cả trên web lẫn trong game (dòng trạng thái mạng trong game cũng bị ẩn).
-  - Chỉ khi không lấy được mạng, trang mới hiện khung báo lỗi kèm nút “🔄 Thử lại”.
-- **Script Roblox:** tự lấy IP từ cùng các nguồn bằng `game:HttpGet` rồi so khớp. Nếu không khớp, script lấy lại IP một lần (phòng khi vừa đổi mạng) rồi mới từ chối.
-- **Vì vậy phải lấy key và chơi Roblox trên cùng mạng** (cùng wifi hoặc cùng 4G, tắt VPN / iCloud Private Relay). Đổi mạng thì cần lấy key mới.
-  - Key đã lưu không bị xoá khi đang ở mạng khác hoặc mất mạng; về lại mạng cũ là dùng tiếp.
-  - Người dùng chung wifi (hoặc chung IP của nhà mạng) có thể dùng chung key.
+  - IP được chuẩn hoá rồi băm SHA-256 (`"taodepzai|thiet-bi|ip:" + ip`) thành mã mạng 10 ký tự.
+  - Không lấy được IP thì giữ mã đã có; nếu chưa có thì dùng mã dự phòng `ip:0.0.0.0`, nên vẫn tạo được key.
+- **Chuỗi trộn:** mã mạng + tên + ngày tháng năm giờ phút giây mili giây (UTC) + số quay ghép thành một chuỗi riêng, rồi băm thành **khoá con** để mã hoá key (xem bên dưới).
+- **Đổi mạng vẫn dùng được:** mặc định script Roblox **không** bắt cùng mạng (`KIEM_TRA_THIET_BI = false`) và không gọi dịch vụ IP nào. Lấy key xong chuyển từ wifi sang 4G/5G (hoặc ngược lại) vẫn xác nhận được, key đã lưu vẫn tự điền.
+  - Muốn bắt buộc cùng mạng thì đặt `KIEM_TRA_THIET_BI = true`: script sẽ tự lấy IP và từ chối key tạo ở mạng khác.
 - Nút **Lấy key** trong game sao chép link trang kèm `?ten=...` để trang tự điền tên. Trang đọc xong thì xoá tham số khỏi thanh địa chỉ.
 - **Không hiện ngày giờ ở đâu cả.** Dòng dưới vòng quay chỉ còn chữ mô tả cố định. Thời điểm, tên và mã thiết bị chỉ nằm trong key ở dạng đã mã hoá.
 - **Vòng quay 3 số:** mỗi lần quay sẽ đổi số và đổi **nonce ngẫu nhiên 96 bit** (`crypto.getRandomValues`), nên key luôn khác, kể cả khi trùng số. Key vẫn giữ nguyên sau F5; làm mới phiên thì đổi nonce.
@@ -23,7 +21,9 @@ Cấu trúc key (`taoMaDemo`, nằm giữa hai dòng `// === MÃ HOÁ V4 ... ===
 ```
 Free_v4_ + base64url( nonce 12 byte | tag 16 byte | bản mã )
 bản rõ = [4, số quay (2 byte), thời điểm ms (6 byte), nhiệm vụ 1–4, mã thiết bị (10 ký tự), tên UTF-8]
-tag    = HMAC-SHA256(BI_MAT_V4, "tdz4|tag|" + nonce + bản rõ)[0..16]
+chuỗi trộn = "tdz4|tron|" + mã mạng + "|" + tên + "|" + "YYYY-MM-DD HH:MM:SS.mmm" (UTC) + "|" + số quay (3 chữ số)
+khoá con   = HMAC-SHA256(BI_MAT_V4, chuỗi trộn)
+tag    = HMAC-SHA256(khoá con, "tdz4|tag|" + nonce + bản rõ)[0..16]
 khoá   = HMAC-SHA256(BI_MAT_V4, "tdz4|enc|" + nonce + tag)
 bản mã = bản rõ XOR SHA256(khoá + 0) SHA256(khoá + 1) ...
 ```
@@ -45,7 +45,7 @@ Tìm mảng `NHIEM_VU` ở cuối `index.html`:
 
 ## Cách hoạt động
 
-Bốn nhiệm vụ xếp thành một cột. Người dùng **phải nhập tên** (mã thiết bị tự lấy theo IP) và hoàn thành **đủ cả bốn nhiệm vụ** trong phiên 3 phút, không cần theo thứ tự. Mỗi nhiệm vụ theo dõi riêng 5 giây rời tab; quay lại sớm chỉ báo lỗi nhiệm vụ đó.
+Bốn nhiệm vụ xếp thành một cột. Người dùng **phải nhập tên** (mã mạng tự lấy ngầm) và hoàn thành **đủ cả bốn nhiệm vụ** trong phiên 3 phút, không cần theo thứ tự. Mỗi nhiệm vụ theo dõi riêng 5 giây rời tab; quay lại sớm chỉ báo lỗi nhiệm vụ đó.
 
 Khi một nhiệm vụ hoàn thành, thời điểm hoàn thành được lưu trong trình duyệt. Sau 4/4, trang lấy **thời điểm của nhiệm vụ hoàn thành cuối cùng** và ID nhiệm vụ đó cùng tên người chơi để tạo mã `Free_v4_...` (đã mã hoá, xem trên). Mã ổn định sau F5 nếu vẫn cùng tên, phiên và số vòng quay; đổi tên, bấm **🎰 Quay số mới** hoặc tạo phiên mới sẽ tạo mã khác. Tên được lưu trong trình duyệt và giữ lại khi reset phiên, còn trạng thái nhiệm vụ và mốc thời gian được reset sau 3 phút hoặc khi bấm nút làm mới. Bản sao của mã đã gửi đi vẫn có thể đọc được sau khi reset.
 
@@ -63,7 +63,7 @@ Trang vẫn có đếm ngược, reset thủ công/tự động, thông báo, hi
 
 ## Script nhập key cho Roblox (`key-system.lua`)
 
-Script mở bảng nhập key trong game, tự lấy IP mạng và hiện **mã thiết bị (IP)** của máy. Nó giải mã key `Free_v4_...` bằng cùng thuật toán (SHA-256 dùng `bit32` của Roblox; không có `bit32` thì tự tính) rồi kiểm tra các điều dưới đây.
+Script mở bảng nhập key trong game. Nó giải mã key `Free_v4_...` bằng cùng thuật toán (SHA-256 dùng `bit32` của Roblox; không có `bit32` thì tự tính) rồi kiểm tra các điều dưới đây.
 
 Mặc định script nhận **cả key `Free_v2_`** của trang đang chạy trên GitHub Pages trước khi merge bản mới. Key v2 **không có mã thiết bị**, nhưng vẫn phải đúng tên và còn hạn. Khi trang đã lên bản v4, hãy đặt `CHAP_NHAN_KEY_V2 = false` để bắt buộc mã thiết bị. Key `Free_v3_` cũ không còn được nhận.
 
@@ -71,9 +71,8 @@ Mặc định script nhận **cả key `Free_v2_`** của trang đang chạy tr�
 2. **Đúng người chơi:** tên trong key phải trùng **tên tài khoản Roblox** (`player.Name`) hoặc **tên hiển thị** (`DisplayName`).
    - Không phân biệt hoa/thường, bỏ dấu `@` ở đầu.
    - Key của người khác bị từ chối, và bảng không hiện tên chủ key.
-3. **Đúng thiết bị (IP):** mã thiết bị trong key phải trùng mã tính từ IP mạng hiện tại, nên người ở mạng khác không dùng được key.
-   - Không lấy được IP thì báo lỗi mạng và chưa chạy script; bấm Xác nhận lại khi có mạng.
-   - Tắt bằng `KIEM_TRA_THIET_BI = false`.
+3. **Mạng:** mặc định không kiểm tra, đổi mạng vẫn dùng được key (mã mạng chỉ dùng để trộn mã hoá).
+   - Bật `KIEM_TRA_THIET_BI = true` nếu muốn key chỉ dùng được trên đúng IP mạng lúc lấy key.
 4. **Còn hạn:** key dùng được **24 giờ** kể từ lúc hoàn thành nhiệm vụ cuối.
    - Giờ lấy theo máy chủ Roblox (`workspace:GetServerTimeNow()`), nên chỉnh đồng hồ máy không gia hạn được key.
    - Key có thời điểm ở tương lai quá 5 phút cũng bị từ chối.
@@ -100,4 +99,4 @@ git fetch origin main
 LUAU=/tmp/luau-src/luau python3 tests/luau_test.py
 ```
 
-**Lưu ý:** cách này chặn được việc xem hạn key, dùng lại key của người khác, key của người ở mạng (IP) khác và key đã quá 24 giờ. Tuy nhiên bí mật mã hoá nằm công khai trong mã nguồn, nên người biết đọc code vẫn có thể tự tạo key cho tên của chính họ mà không làm nhiệm vụ, hoặc sửa script để bỏ qua kiểm tra. Muốn chặn hẳn cần máy chủ cấp key có chữ ký bí mật.
+**Lưu ý:** cách này chặn được việc xem hạn key, dùng lại key của người khác và key đã quá 24 giờ. Tuy nhiên bí mật mã hoá nằm công khai trong mã nguồn, nên người biết đọc code vẫn có thể tự tạo key cho tên của chính họ mà không làm nhiệm vụ, hoặc sửa script để bỏ qua kiểm tra. Muốn chặn hẳn cần máy chủ cấp key có chữ ký bí mật.

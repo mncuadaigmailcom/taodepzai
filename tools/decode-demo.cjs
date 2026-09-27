@@ -14,7 +14,20 @@ const BANG_THIET_BI = '0123456789ABCDEFGHJKMNPQRSTVWXYZ';
 const DAI_CO_DINH = 12 + 16 + 20;
 
 const sha256 = (...phan) => crypto.createHash('sha256').update(Buffer.concat(phan.map(p => Buffer.from(p)))).digest();
-const hmac = (...phan) => crypto.createHmac('sha256', BI_MAT_V4).update(Buffer.concat(phan.map(p => Buffer.from(p)))).digest();
+const hmacVoiKhoa = (khoa, ...phan) => crypto.createHmac('sha256', khoa).update(Buffer.concat(phan.map(p => Buffer.from(p)))).digest();
+const hmac = (...phan) => hmacVoiKhoa(BI_MAT_V4, ...phan);
+
+// Chuỗi trộn = 'tdz4|tron|' + mã mạng + '|' + tên + '|' + 'YYYY-MM-DD HH:MM:SS.mmm' (UTC) + '|' + số quay
+function chuoiTron(p) {
+    const ms = p.readUIntBE(3, 6);
+    const d = new Date(ms), so = (n, dai = 2) => String(n).padStart(dai, '0');
+    const ngayGio = `${so(d.getUTCFullYear(), 4)}-${so(d.getUTCMonth() + 1)}-${so(d.getUTCDate())} ` +
+        `${so(d.getUTCHours())}:${so(d.getUTCMinutes())}:${so(d.getUTCSeconds())}.${so(d.getUTCMilliseconds(), 3)}`;
+    return Buffer.concat([Buffer.from('tdz4|tron|'), p.subarray(10, 20), Buffer.from('|'), p.subarray(20),
+        Buffer.from(`|${ngayGio}|${String(p[1] * 256 + p[2]).padStart(3, '0')}`)]);
+}
+// tag = HMAC(khoá con = HMAC(BI_MAT, chuỗi trộn), 'tdz4|tag|' + nonce + P)
+const tagV4 = (nonce, p) => hmacVoiKhoa(hmac(chuoiTron(p)), 'tdz4|tag|', nonce, p).subarray(0, 16);
 
 function layBit(bytes, tu, so) {
     let v = 0;
@@ -57,7 +70,7 @@ function taoMaV4(ten, nhiemVu, thoiDiem, soQuay, maThietBi, nonce = crypto.rando
     ms.writeUIntBE(thoiDiem, 0, 6);
     const p = Buffer.concat([Buffer.from([4, soQuay >> 8, soQuay & 255]), ms,
         Buffer.from([Number(nhiemVu.slice(2))]), Buffer.from(than), Buffer.from(ten.trim(), 'utf8')]);
-    const tag = hmac('tdz4|tag|', nonce, p).subarray(0, 16);
+    const tag = tagV4(nonce, p);
     const dong = dongKhoa(hmac('tdz4|enc|', nonce, tag), p.length);
     const c = p.map((b, i) => b ^ dong[i]);
     return PREFIX_V4 + Buffer.concat([Buffer.from(nonce), tag, c]).toString('base64url');
@@ -93,7 +106,7 @@ function giaiMaV4(noiDung) {
     const c = raw.subarray(28);
     const dong = dongKhoa(hmac('tdz4|enc|', nonce, tag), c.length);
     const p = c.map((b, i) => b ^ dong[i]);
-    if (!crypto.timingSafeEqual(hmac('tdz4|tag|', nonce, p).subarray(0, 16), tag) || p[0] !== 4) throw new Error(INVALID);
+    if (!crypto.timingSafeEqual(tagV4(nonce, p), tag) || p[0] !== 4) throw new Error(INVALID);
     const soQuay = p[1] * 256 + p[2];
     const thoiDiem = p.readUIntBE(3, 6);
     const nv = p[9];
@@ -136,4 +149,4 @@ if (require.main === module) {
     }
 }
 
-module.exports = { giaiMaDemo, taoMaV4, maThietBiTuGoc, chuanHoaMaThietBi };
+module.exports = { chuoiTron, giaiMaDemo, taoMaV4, maThietBiTuGoc, chuanHoaMaThietBi };

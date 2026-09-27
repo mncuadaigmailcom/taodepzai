@@ -5,9 +5,11 @@ Cài: pip install lupa   (cần thêm Node.js để đối chiếu với index.h
 Chạy: python3 tests/key_system_test.py
 """
 import base64
+import datetime
 import hashlib
 import hmac
 import json
+import os
 import pathlib
 import random
 import shutil
@@ -22,8 +24,9 @@ MOCK = (GOC / "tests" / "roblox_mock.lua").read_text(encoding="utf-8")
 SCRIPT_V2 = SCRIPT  # mặc định nhận cả key Free_v2_ (trang web bản cũ)
 SCRIPT_KHONG_V2 = SCRIPT.replace("CHAP_NHAN_KEY_V2   = true", "CHAP_NHAN_KEY_V2   = false")
 assert SCRIPT_KHONG_V2 != SCRIPT
-SCRIPT_KHONG_TB = SCRIPT.replace("KIEM_TRA_THIET_BI  = true", "KIEM_TRA_THIET_BI  = false")
-assert SCRIPT_KHONG_TB != SCRIPT
+SCRIPT_KHONG_TB = SCRIPT  # mặc định: không bắt cùng mạng (đổi mạng vẫn dùng key được)
+assert "KIEM_TRA_THIET_BI  = false," in SCRIPT
+SCRIPT_KIEM_TRA_MANG = SCRIPT.replace("KIEM_TRA_THIET_BI  = false,", "KIEM_TRA_THIET_BI  = true,")
 URL = "https://mncuadaigmailcom.github.io/aiaiaitao2/script.js"
 NGAY = 24 * 60 * 60
 BAY_GIO = 1790000000  # giây, UTC (giờ "hiện tại" giả lập)
@@ -74,10 +77,40 @@ THAN_TB = than_thiet_bi(GOC_TB)
 MA_TB = ma_thiet_bi(GOC_TB)
 
 
+def ngay_gio_utc(ms):
+    """ms -> 'YYYY-MM-DD HH:MM:SS.mmm' (UTC). Dùng lịch Gregory đếm ngày (datetime chỉ tới năm 9999)."""
+    giay, phan_ms = divmod(ms, 1000)
+    ngay, trong_ngay = divmod(giay, 86400)
+    d = datetime.date(1970, 1, 1).toordinal() + ngay
+    if d <= datetime.date.max.toordinal():
+        dd = datetime.date.fromordinal(d)
+        nam, thang, ngay_thang = dd.year, dd.month, dd.day
+    else:  # sau năm 9999: đếm tiếp theo chu kỳ 400 năm = 146097 ngày
+        chu_ky, du = divmod(d - datetime.date(2000, 1, 1).toordinal(), 146097)
+        dd = datetime.date(2000, 1, 1) + datetime.timedelta(days=du)
+        nam, thang, ngay_thang = dd.year + 400 * chu_ky, dd.month, dd.day
+    return (f"{nam:04d}-{thang:02d}-{ngay_thang:02d} {trong_ngay // 3600:02d}:{trong_ngay % 3600 // 60:02d}:"
+            f"{trong_ngay % 60:02d}.{phan_ms:03d}")
+
+
+def chuoi_tron(ban_ro):
+    """'tdz4|tron|' + mã mạng + '|' + tên + '|' + ngày giờ ms UTC + '|' + số quay (3 chữ số)."""
+    ban_ro = bytes(ban_ro)
+    so_quay = ban_ro[1] * 256 + ban_ro[2]
+    ms = int.from_bytes(ban_ro[3:9], "big")
+    return (b"tdz4|tron|" + ban_ro[10:20] + b"|" + ban_ro[20:] + b"|"
+            + f"{ngay_gio_utc(ms)}|{so_quay:03d}".encode())
+
+
+def tag_v4(nonce, ban_ro):
+    khoa_con = hmac.new(BI_MAT_V4, chuoi_tron(ban_ro), hashlib.sha256).digest()
+    return hmac.new(khoa_con, b"tdz4|tag|" + bytes(nonce) + bytes(ban_ro), hashlib.sha256).digest()[:16]
+
+
 def ma_v4_tu_ban_ro(ban_ro, nonce=b"\x07" * 12):
     """Mã hoá bản rõ bất kỳ đúng chuẩn v4 (tag hợp lệ) -> dùng để thử bản rõ sai định dạng."""
     ban_ro, nonce = bytes(ban_ro), bytes(nonce)
-    tag = hmac.new(BI_MAT_V4, b"tdz4|tag|" + nonce + ban_ro, hashlib.sha256).digest()[:16]
+    tag = tag_v4(nonce, ban_ro)
     khoa = hmac.new(BI_MAT_V4, b"tdz4|enc|" + nonce + tag, hashlib.sha256).digest()
     dong = b"".join(hashlib.sha256(khoa + bytes([j])).digest() for j in range((len(ban_ro) + 31) // 32))
     return PREFIX + _b64(nonce + tag + bytes(b ^ k for b, k in zip(ban_ro, dong)))
@@ -125,7 +158,8 @@ def tao_ma_bang_index_html(cac_truong_hop):
     """Chạy đúng hàm taoMaDemo lấy từ index.html bằng Node.
     Mỗi trường hợp: [tên, nhiệm vụ, thời điểm ms, số quay, mã thiết bị, nonce hex (24 ký tự)]."""
     kq = subprocess.run(["node", "-e", NODE_TAO_MA, str(GOC / "index.html")],
-                        input=json.dumps(cac_truong_hop), capture_output=True, text=True, check=True)
+                        input=json.dumps(cac_truong_hop), capture_output=True, text=True, check=True,
+                        env={**os.environ, "TZ": "Asia/Ho_Chi_Minh"})  # giờ VN: bắt lỗi dùng giờ máy thay vì UTC
     return json.loads(kq.stdout)
 
 
@@ -136,6 +170,12 @@ def giai_ma_bang_tool_js(cac_ma):
     kq = subprocess.run(["node", "-e", code, str(GOC / "tools" / "decode-demo.cjs")],
                         input=json.dumps(cac_ma), capture_output=True, text=True, check=True)
     return json.loads(kq.stdout)
+
+
+def PhienMang(**tuy_chon):
+    """Phiên với KIEM_TRA_THIET_BI = true (bắt cùng IP mạng)."""
+    tuy_chon.setdefault("script", SCRIPT_KIEM_TRA_MANG)
+    return Phien(**tuy_chon)
 
 
 class Phien:
@@ -624,7 +664,7 @@ class GiaiMaTest(unittest.TestCase):
         bit32 = {"bxor": goi(lambda a, b: a ^ b), "band": goi(lambda a, b: a & b),
                  "rshift": goi(lambda a, n: a >> n),
                  "rrotate": goi(lambda a, n: ((a >> n) | (a << (32 - n))) & 0xFFFFFFFF)}
-        p_bit = Phien(bit32=bit32)
+        p_bit = Phien(bit32=bit32, script=SCRIPT_KIEM_TRA_MANG)
         self.assertGreater(dem["n"], 1000, "Có bit32 thì phải dùng bit32")
         self.assertEqual(p_bit.api.MaThietBi(), MA_TB)
         p = Phien()
@@ -659,7 +699,7 @@ class GiaiMaTest(unittest.TestCase):
         # Tự dựng key: bản rõ đúng nhưng tag lệch đúng 1 byte (mã hoá bằng khoá của tag lệch)
         ban_ro = ban_ro_v4("Tester", "nv4", (BAY_GIO - 60) * 1000, 5, THAN_TB)
         nonce = b"\x09" * 12
-        tag = hmac.new(BI_MAT_V4, b"tdz4|tag|" + nonce + ban_ro, hashlib.sha256).digest()[:16]
+        tag = tag_v4(nonce, ban_ro)
         p = Phien()
         for vt in (0, 7, 15):
             for doi in (1, 128):
@@ -740,10 +780,10 @@ class GiaiMaTest(unittest.TestCase):
 
 
 class ThietBiTest(unittest.TestCase):
-    """Mã thiết bị = băm IP mạng: trang web tự lấy IP điện thoại, script tự lấy IP lúc chơi."""
+    """Khi BẬT KIEM_TRA_THIET_BI: key phải tạo trên cùng IP mạng (script tự lấy IP lúc chơi)."""
 
     def test_tu_lay_ip_va_hien_ma_thiet_bi(self):
-        p = Phien()
+        p = PhienMang()
         self.assertEqual(p.api.MaThietBi(), MA_TB, "Lua và Python phải tính ra cùng mã từ cùng IP")
         self.assertRegex(MA_TB, r"^[0-9A-HJKMNP-TV-Z]{4}-[0-9A-HJKMNP-TV-Z]{4}-[0-9A-HJKMNP-TV-Z]{4}$")
         self.assertIn("đã nhận", p.phan_tu("MaThietBi").Text)
@@ -759,7 +799,7 @@ class ThietBiTest(unittest.TestCase):
     def test_key_tao_o_mang_khac_bi_tu_choi(self):
         than_khac = than_thiet_bi("ip:14.232.7.9")
         o_dia = {}
-        p = Phien(o_dia=o_dia).thu_key(tao_ma("Tester", thiet_bi=than_khac))
+        p = PhienMang(o_dia=o_dia).thu_key(tao_ma("Tester", thiet_bi=than_khac))
         self.assertEqual(p.so_lan_chay, 0)
         self.assertFalse(p.da_an_gui)
         self.assertIn("IP không khớp", p.trang_thai)
@@ -767,17 +807,17 @@ class ThietBiTest(unittest.TestCase):
         self.assertEqual(o_dia, {}, "Key sai thiết bị không được lưu")
         self.assertEqual(len(p.log.ip_get), 2, "Không khớp thì lấy lại IP 1 lần (phòng khi vừa đổi mạng)")
         # Người ở đúng mạng đó thì dùng được
-        self.assertEqual(Phien(ip="14.232.7.9").thu_key(tao_ma("Tester", thiet_bi=than_khac)).so_lan_chay, 1)
+        self.assertEqual(PhienMang(ip="14.232.7.9").thu_key(tao_ma("Tester", thiet_bi=than_khac)).so_lan_chay, 1)
 
     def test_doi_mang_sau_khi_mo_script(self):
         # Mở script ở wifi, rồi chuyển 4G và lấy key trên 4G -> bấm xác nhận vẫn nhận (script lấy lại IP)
-        p = Phien()
+        p = PhienMang()
         p.log.doi_ip("14.232.7.9")
         p.thu_key(tao_ma("Tester", thiet_bi=than_thiet_bi("ip:14.232.7.9")))
         self.assertEqual(p.so_lan_chay, 1)
 
     def test_mat_mang_roi_co_lai(self):
-        p = Phien(ip_loi="timeout")
+        p = PhienMang(ip_loi="timeout")
         self.assertIn("chưa lấy được", p.phan_tu("MaThietBi").Text)
         self.assertEqual(len(p.log.ip_get), 3, "Thử đủ 3 nguồn")
         p.thu_key(tao_ma("Tester"))
@@ -789,58 +829,155 @@ class ThietBiTest(unittest.TestCase):
         self.assertEqual(p.so_lan_chay, 1)
 
     def test_nguon_ip_du_phong_va_chuan_hoa(self):
-        p = Phien(ip_theo_url={"https://api.ipify.org": "2402:800:6310::1",
+        p = PhienMang(ip_theo_url={"https://api.ipify.org": "2402:800:6310::1",
                                "https://ipv4.icanhazip.com": " 113.161.010.020 \n"})
         self.assertEqual(p.api.MaThietBi(), MA_TB, "Bỏ IPv6, chuẩn hoá số 0 đầu giống trang web")
-        self.assertEqual(Phien(ip_theo_url={"https://v4.ident.me": IP}).api.MaThietBi(), MA_TB)
+        self.assertEqual(PhienMang(ip_theo_url={"https://v4.ident.me": IP}).api.MaThietBi(), MA_TB)
         for sai in ("256.1.1.1", "1.2.3", "1.2.3.4.5", "abc", "", "1.2.3.4x", "1111.2.3.4"):
             with self.subTest(sai=sai):
-                p = Phien(ip_theo_url={u: sai for u in ("https://api.ipify.org", "https://ipv4.icanhazip.com",
+                p = PhienMang(ip_theo_url={u: sai for u in ("https://api.ipify.org", "https://ipv4.icanhazip.com",
                                                         "https://v4.ident.me")})
                 self.assertIsNone(p.api.MaThietBi())
 
     def test_key_da_luu_khi_o_mang_khac(self):
         o_dia = {}
         ma = tao_ma("Tester")
-        Phien(o_dia=o_dia).thu_key(ma)
+        PhienMang(o_dia=o_dia).thu_key(ma)
         self.assertEqual(o_dia, {FILE: ma})
-        p = Phien(o_dia=o_dia, ip="14.232.7.9")  # mở lại ở mạng khác
+        p = PhienMang(o_dia=o_dia, ip="14.232.7.9")  # mở lại ở mạng khác
         self.assertEqual(o_dia, {FILE: ma}, "Đổi mạng tạm thời không xoá key đã lưu")
         self.assertEqual(p.o_key, ma)
         self.assertIn("IP không khớp", p.trang_thai)
         p.bam()
         self.assertEqual(p.so_lan_chay, 0)
-        p2 = Phien(o_dia=o_dia)  # về lại mạng cũ -> dùng tiếp
+        p2 = PhienMang(o_dia=o_dia)  # về lại mạng cũ -> dùng tiếp
         self.assertIn("Đã điền key đã lưu", p2.trang_thai)
         self.assertEqual(p2.bam() or p2.so_lan_chay, 1)
         # Hết hạn thì vẫn xoá dù đang ở mạng khác
-        p3 = Phien(o_dia=o_dia, ip="14.232.7.9", gio_may=BAY_GIO + NGAY)
+        p3 = PhienMang(o_dia=o_dia, ip="14.232.7.9", gio_may=BAY_GIO + NGAY)
         self.assertEqual(o_dia, {})
         self.assertEqual(p3.o_key, "")
 
     def test_mat_mang_khi_mo_lai_khong_xoa_key(self):
         o_dia = {}
         ma = tao_ma("Tester")
-        Phien(o_dia=o_dia).thu_key(ma)
-        p = Phien(o_dia=o_dia, ip_loi="offline")
+        PhienMang(o_dia=o_dia).thu_key(ma)
+        p = PhienMang(o_dia=o_dia, ip_loi="offline")
         self.assertEqual(o_dia, {FILE: ma})
         self.assertIn("Không lấy được IP", p.trang_thai)
 
     def test_key_v2_khong_kiem_tra_ip(self):
-        self.assertEqual(Phien(ip_loi="offline").thu_key(tao_ma_v2("Tester")).so_lan_chay, 1)
+        self.assertEqual(PhienMang(ip_loi="offline").thu_key(tao_ma_v2("Tester")).so_lan_chay, 1)
+
+    def test_link_lay_key_kem_ten(self):
+        p = PhienMang(ten="Tao Dep_01")
+        p.bam("NutLayKey")
+        self.assertEqual(list(p.log.clipboard.values()), ["https://mncuadaigmailcom.github.io/taodepzai/?ten=Tao%20Dep_01"])
+        p2 = PhienMang(khong_clipboard=True)
+        p2.bam("NutLayKey")
+        self.assertIn("taodepzai/?ten=Tester", p2.trang_thai)
+
+
+class DoiMangTest(unittest.TestCase):
+    """Mặc định: mã mạng + tên + ngày giờ ms chỉ để trộn mã hoá; lấy key xong đổi mạng vẫn xác nhận được."""
+
+    MANG_KHAC = "14.232.7.9"
+
+    def test_lay_key_roi_doi_sang_mang_khac_van_xac_nhan(self):
+        ma = tao_ma("Tester", thiet_bi=than_thiet_bi("ip:" + self.MANG_KHAC))  # lấy key ở mạng khác
+        p = Phien().thu_key(ma)
+        self.assertEqual(p.so_lan_chay, 1)
+        self.assertTrue(p.da_an_gui)
+        self.assertEqual(p.httpget(), [URL])
+        self.assertEqual(len(p.log.ip_get), 0, "Không bắt cùng mạng thì game không gọi dịch vụ IP")
+        self.assertIsNone(p.api.MaThietBi())
+
+    def test_mat_mang_ip_van_xac_nhan(self):
+        for tuy_chon in ({"ip_loi": "offline"}, {"ip": self.MANG_KHAC}):
+            with self.subTest(**tuy_chon):
+                self.assertEqual(Phien(**tuy_chon).thu_key(tao_ma("Tester")).so_lan_chay, 1)
+
+    def test_key_ma_mang_du_phong_cua_trang_web(self):
+        # Trang web không lấy được IP -> dùng mã mạng dự phòng "ip:0.0.0.0"; key vẫn dùng được
+        self.assertEqual(Phien().thu_key(tao_ma("Tester", thiet_bi=than_thiet_bi("ip:0.0.0.0"))).so_lan_chay, 1)
+
+    def test_key_da_luu_doi_mang_van_tu_dien_va_chay(self):
+        o_dia = {}
+        ma = tao_ma("Tester")
+        Phien(o_dia=o_dia).thu_key(ma)
+        p = Phien(o_dia=o_dia, ip=self.MANG_KHAC)  # mở lại script ở mạng khác
+        self.assertEqual(p.o_key, ma)
+        self.assertIn("Đã điền key đã lưu", p.trang_thai)
+        p.bam()
+        self.assertEqual(p.so_lan_chay, 1)
+        self.assertEqual(o_dia, {FILE: ma})
+
+    def test_van_bat_ten_va_han(self):
+        ma = tao_ma("Tester", thiet_bi=than_thiet_bi("ip:" + self.MANG_KHAC))
+        self.assertEqual(Phien(ten="NguoiKhac").thu_key(ma).so_lan_chay, 0)
+        self.assertEqual(Phien(gio_may=BAY_GIO + NGAY).thu_key(ma).so_lan_chay, 0)
+        self.assertEqual(Phien().thu_key(tao_ma("NguoiKhac")).so_lan_chay, 0)
+
+    def test_chuoi_tron_mang_ten_ngay_gio_ms(self):
+        ms = (BAY_GIO - 60) * 1000 + 123
+        ban_ro = ban_ro_v4("Tester", "nv4", ms, 7, THAN_TB)
+        self.assertEqual(chuoi_tron(ban_ro), b"tdz4|tron|" + THAN_TB.encode() + b"|Tester|"
+                         + ngay_gio_utc(ms).encode() + b"|007")
+        self.assertEqual(ngay_gio_utc(ms), "2026-09-21 14:12:20.123")
+        # Tag tính từ chuỗi trộn lệch 1 thứ (mã mạng / tên / 1 mili giây / số quay) -> key bị từ chối
+        p = Phien()
+        nonce = b"\x05" * 12
+        def ma_voi_chuoi(chuoi):
+            khoa_con = hmac.new(BI_MAT_V4, chuoi, hashlib.sha256).digest()
+            tag = hmac.new(khoa_con, b"tdz4|tag|" + nonce + ban_ro, hashlib.sha256).digest()[:16]
+            khoa = hmac.new(BI_MAT_V4, b"tdz4|enc|" + nonce + tag, hashlib.sha256).digest()
+            dong = hashlib.sha256(khoa + b"\0").digest() + hashlib.sha256(khoa + b"\1").digest()
+            return PREFIX + _b64(nonce + tag + bytes(b ^ k for b, k in zip(ban_ro, dong)))
+        dung = chuoi_tron(ban_ro)
+        self.assertIsNotNone(p.giai_ma(ma_voi_chuoi(dung)))
+        lech = {
+            "mã mạng": dung.replace(THAN_TB.encode(), than_thiet_bi("ip:" + self.MANG_KHAC).encode()),
+            "tên": dung.replace(b"|Tester|", b"|tester|"),
+            "1 mili giây": dung.replace(b".123|", b".124|"),
+            "ngày": dung.replace(b"2026-09-21", b"2026-09-22"),
+            "số quay": dung.replace(b"|007", b"|008"),
+            "không có chuỗi trộn (bản cũ)": None,
+        }
+        for ten, chuoi in lech.items():
+            with self.subTest(ten=ten):
+                if chuoi is None:
+                    tag = hmac.new(BI_MAT_V4, b"tdz4|tag|" + nonce + ban_ro, hashlib.sha256).digest()[:16]
+                    khoa = hmac.new(BI_MAT_V4, b"tdz4|enc|" + nonce + tag, hashlib.sha256).digest()
+                    dong = hashlib.sha256(khoa + b"\0").digest() + hashlib.sha256(khoa + b"\1").digest()
+                    ma = PREFIX + _b64(nonce + tag + bytes(b ^ k for b, k in zip(ban_ro, dong)))
+                else:
+                    self.assertNotEqual(chuoi, dung)
+                    ma = ma_voi_chuoi(chuoi)
+                self.assertIsNone(p.giai_ma(ma))
+
+    def test_ngay_gio_moi_moc_lich_giong_lua(self):
+        # Lua tự tính lịch (NgayGioUtc): năm nhuận, thế kỷ, cuối ngày, sau năm 9999
+        p = Phien()
+        moc = [1, 999, 86_399_999, 951_782_399_999, 951_868_800_000, 1_709_251_199_999,
+               4_107_542_399_999, 4_107_542_400_000, 253_402_300_799_999, 253_402_300_800_000,
+               2 ** 48 - 1, (BAY_GIO - 60) * 1000]
+        for ms in moc:
+            with self.subTest(ms=ms):
+                kq = p.giai_ma(tao_ma("Tester", thoi_diem_ms=ms))
+                self.assertIsNotNone(kq, ngay_gio_utc(ms))
+                self.assertEqual(kq["thoiDiem"], ms // 1000)
+        self.assertEqual(ngay_gio_utc(951_782_399_999), "2000-02-28 23:59:59.999")
+        self.assertEqual(ngay_gio_utc(951_868_800_000), "2000-03-01 00:00:00.000")
+        self.assertEqual(ngay_gio_utc(1_709_251_199_999), "2024-02-29 23:59:59.999")
+        self.assertEqual(ngay_gio_utc(4_107_542_399_999), "2100-02-28 23:59:59.999")
+        self.assertEqual(ngay_gio_utc(4_107_542_400_000), "2100-03-01 00:00:00.000")
+        self.assertEqual(ngay_gio_utc(2 ** 48 - 1), "10889-08-02 05:31:50.655")
+        self.assertEqual(ngay_gio_utc(253_402_300_800_000), "10000-01-01 00:00:00.000")
 
     def test_tat_kiem_tra_thiet_bi(self):
         ma = tao_ma("Tester", thiet_bi=than_thiet_bi("ip:14.232.7.9"))
         self.assertEqual(Phien(script=SCRIPT_KHONG_TB).thu_key(ma).so_lan_chay, 1)
-        self.assertEqual(Phien(script=SCRIPT_KHONG_TB).thu_key(tao_ma("NguoiKhac")).so_lan_chay, 0)
-
-    def test_link_lay_key_kem_ten(self):
-        p = Phien(ten="Tao Dep_01")
-        p.bam("NutLayKey")
-        self.assertEqual(list(p.log.clipboard.values()), ["https://mncuadaigmailcom.github.io/taodepzai/?ten=Tao%20Dep_01"])
-        p2 = Phien(khong_clipboard=True)
-        p2.bam("NutLayKey")
-        self.assertIn("taodepzai/?ten=Tester", p2.trang_thai)
+        self.assertEqual(PhienMang().thu_key(ma).so_lan_chay, 0, "Bật KIEM_TRA_THIET_BI thì bắt cùng mạng")
 
 
 @unittest.skipUnless(CO_NODE, "Cần Node.js để đối chiếu với index.html")
@@ -861,6 +998,19 @@ class DoiChieuIndexHtmlTest(unittest.TestCase):
                 self.assertEqual(p.giai_ma(ma), {"ten": ten.strip(), "nhiemVu": nv, "thoiDiem": t // 1000,
                                                  "soQuay": so, "thietBi": THAN_TB})
                 self.assertEqual(p.thu_key(ma).so_lan_chay, 1)
+
+    def test_ngay_gio_moi_moc_lich_giong_index_html(self):
+        # Chuỗi trộn có ngày giờ ms: index.html (Date UTC), Python (lịch đếm ngày) và Lua phải ra cùng key
+        ngau_nhien = random.Random(7)
+        moc = [1, 999, 86_399_999, 951_782_399_999, 951_868_800_000, 1_709_251_199_999, 4_107_542_400_000,
+               253_402_300_799_999, 253_402_300_800_000, 2 ** 48 - 1] + [ngau_nhien.randint(1, 2 ** 48 - 1)
+                                                                         for _ in range(40)]
+        cases = [["Tester", "nv3", ms, i % 1000, MA_TB, nonce_mac_dinh(ms).hex()] for i, ms in enumerate(moc)]
+        p = Phien()
+        for (ten, nv, ms, so, _tb, nonce), ma in zip(cases, tao_ma_bang_index_html(cases)):
+            with self.subTest(ms=ms, ngay=ngay_gio_utc(ms)):
+                self.assertEqual(ma, tao_ma(ten, nv, ms, so, nonce=bytes.fromhex(nonce)))
+                self.assertEqual(p.giai_ma(ma)["thoiDiem"], ms // 1000)
 
     def test_giai_ma_giong_tools_decode_demo(self):
         ngau_nhien = random.Random(42)
@@ -908,7 +1058,7 @@ class DoiChieuIndexHtmlTest(unittest.TestCase):
         for g, (ma, than) in zip(goc, kq):
             self.assertEqual(ma, ma_thiet_bi(g))
             self.assertEqual(than, than_thiet_bi(g))
-            self.assertEqual(Phien(ip=g[3:]).api.MaThietBi(), ma)
+            self.assertEqual(Phien(ip=g[3:], script=SCRIPT_KIEM_TRA_MANG).api.MaThietBi(), ma)
 
 
 if __name__ == "__main__":

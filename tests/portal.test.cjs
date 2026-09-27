@@ -1,3 +1,4 @@
+process.env.TZ = 'Asia/Ho_Chi_Minh'; // giờ VN (UTC+7): bắt lỗi dùng giờ máy thay vì UTC trong chuỗi trộn
 const assert = require('node:assert/strict');
 const test = require('node:test');
 const fs = require('node:fs');
@@ -5,7 +6,7 @@ const path = require('node:path');
 const vm = require('node:vm');
 const { TextEncoder } = require('node:util');
 const { execFileSync } = require('node:child_process');
-const { giaiMaDemo, taoMaV4, maThietBiTuGoc, chuanHoaMaThietBi } = require('../tools/decode-demo.cjs');
+const { giaiMaDemo, taoMaV4, maThietBiTuGoc, chuanHoaMaThietBi, chuoiTron } = require('../tools/decode-demo.cjs');
 
 // IP mạng giả lập của điện thoại -> mã thiết bị (script Roblox tính ra cùng mã khi cùng IP)
 const IP = '113.161.10.20';
@@ -207,7 +208,7 @@ test('chỉ tạo mã demo khi đã nhập tên và hoàn thành đủ bốn nhi
 
     await enterName(site);
     assert.equal(button.disabled, false);
-    assert.equal(site.elements.get('device-box').hidden, true, 'Lấy được mạng thì ẩn hẳn khung mã thiết bị');
+    assert.equal(site.elements.get('device-box'), undefined, 'Không còn khung / ô mã thiết bị');
     for (const [id, el] of site.elements) {
         assert.equal(String(el.textContent).includes(MA_TB), false, `#${id} không hiện mã thiết bị`);
         assert.equal(String(el.textContent).includes(IP), false, `#${id} không hiện IP`);
@@ -283,7 +284,6 @@ test('F5 giữ tên/mốc nhiệm vụ, vẫn cần đủ bốn và giữ chức
     assert.equal(second.status(1), 'success');
     assert.equal(second.elements.get('player-name').value, 'HoiAnPlayer_09');
     await second.flush();
-    assert.equal(second.elements.get('device-box').hidden, true, 'Mở lại trang vẫn tự lấy mạng, khung vẫn ẩn');
     assert.deepEqual(second.fetchLog, ['https://api.ipify.org']);
     assert.equal(storage.get('completedAtnv1'), firstTime);
     assert.equal(second.status(2), 'idle');
@@ -532,7 +532,10 @@ test('không hiện ngày giờ / hạn key ở bất kỳ đâu trên trang, ke
         }
     }
     // Mã nguồn trang không còn hàm nào định dạng ngày giờ để hiển thị
-    assert.doesNotMatch(script, /getUTCDate|getDate\(|toLocale|toISOString|thanhPhanThoiGian/);
+    // (ngày giờ ms chỉ được định dạng bên trong khối mã hoá để trộn vào chuỗi trộn, không hiển thị)
+    const ngoaiKhoiMaHoa = script.slice(0, script.indexOf('// === MÃ HOÁ V4 BẮT ĐẦU')) +
+        script.slice(script.indexOf('// === MÃ HOÁ V4 KẾT THÚC'));
+    assert.doesNotMatch(ngoaiKhoiMaHoa, /getUTC|getDate\(|toLocale|toISOString|thanhPhanThoiGian|ngayGioUtc|chuoiTron/);
     const mix = html.match(/<p class="spin-mix" id="spin-mix">([\s\S]*?)<\/p>/)[1];
     assert.doesNotMatch(mix, /\d{1,2}\/\d{1,2}|\d{1,2}:\d{2}|\b(19|20)\d\d\b|<b>\d/);
     assert.match(mix, /HMAC-SHA256/);
@@ -544,25 +547,25 @@ test('không hiện ngày giờ / hạn key ở bất kỳ đâu trên trang, ke
     assert.equal(giaiMaDemo(code).thoiDiem, t);
 });
 
-test('mã mạng lấy ngầm theo IP; không lấy được thì hiện khung lỗi, bấm "Thử lại" để lấy lại', async () => {
+test('mã mạng lấy ngầm theo IP; không lấy được IP vẫn tạo được key (mã mạng dự phòng), không hiện gì', async () => {
+    const DU_PHONG = chuanHoaMaThietBi(maThietBiTuGoc('ip:0.0.0.0'));
     const site = createPortal(new Map(), 1_000_000, { ip: null });
     await enterName(site, 'Player_01');
     for (const number of [1, 2, 3, 4]) await completeTask(site, number);
     const button = site.elements.get('nut-giai-bai');
-    const oMa = site.elements.get('device-code');
-    assert.equal(button.disabled, true, 'Chưa có IP thì chưa tạo key');
-    assert.match(button.children.get('span').textContent, /Không lấy được mạng/);
-    assert.equal(site.elements.get('device-box').hidden, false, 'Chỉ hiện khung khi lỗi mạng');
-    assert.match(oMa.textContent, /Không lấy được mạng/);
     assert.deepEqual(site.fetchLog.slice(0, 3), ['https://api.ipify.org', 'https://ipv4.icanhazip.com', 'https://v4.ident.me'],
         'Thử lần lượt cả 3 nguồn IPv4');
+    assert.equal(button.disabled, false, 'Mất mạng IP vẫn tạo được key');
+    await site.click('nut-giai-bai');
+    const code0 = site.elements.get('key-value').value;
+    assert.equal(giaiMaDemo(code0).thietBi, DU_PHONG);
+    await site.click('back-btn');
 
-    site.ipState.ip = IP; // có mạng lại
-    await site.click('device-refresh');
+    // Có IP lại -> quay lại trang (sau 30 giây) -> key theo IP thật
+    site.ipState.ip = IP;
+    site.advance(31_000);
+    site.focus();
     await site.flush();
-    assert.equal(site.elements.get('device-box').hidden, true, 'Có mạng lại thì ẩn khung');
-    assert.equal(oMa.textContent, '');
-    assert.equal(button.disabled, false);
     await site.click('nut-giai-bai');
     const code1 = site.elements.get('key-value').value;
     assert.equal(giaiMaDemo(code1).thietBi, THAN_TB);
@@ -573,31 +576,48 @@ test('mã mạng lấy ngầm theo IP; không lấy được thì hiện khung l
         assert.equal(String(el.textContent).includes(MA_TB), false, `#${id} không hiện mã thiết bị`);
     }
 
-    // Đổi mạng khi đang mở hộp thoại -> bấm Lấy lại -> key mới theo IP mới
-    site.ipState.ip = '14.232.7.9';
-    await site.click('device-refresh');
+    // Mất IP lần nữa -> giữ mã mạng đã có (không quay về dự phòng)
+    site.ipState.ip = null;
+    site.advance(31_000);
+    site.focus();
     await site.flush();
-    const code2 = site.elements.get('key-value').value;
-    assert.notEqual(code2, code1);
-    assert.equal(giaiMaDemo(code2).thietBi, chuanHoaMaThietBi(maThietBiTuGoc('ip:14.232.7.9')));
+    assert.equal(giaiMaDemo(site.elements.get('key-value').value).thietBi, THAN_TB);
 });
 
 test('nguồn IP đầu trả sai (IPv6 / rác) thì dùng nguồn sau; IP được chuẩn hoá giống script Roblox', async () => {
-    const site = createPortal(new Map(), 1_000_000, { ipTheoUrl: {
-        'https://api.ipify.org': '2402:800:6310::1', 'https://ipv4.icanhazip.com': ' 113.161.010.020 ',
-    } });
-    await site.flush();
-    assert.equal(site.elements.get('device-box').hidden, true);
-    await enterName(site);
-    for (const number of [1, 2, 3, 4]) await completeTask(site, number);
-    await site.click('nut-giai-bai');
-    assert.equal(giaiMaDemo(site.elements.get('key-value').value).thietBi, THAN_TB);
+    const khoaCua = async ipTheoUrl => {
+        const site = createPortal(new Map(), 1_000_000, { ipTheoUrl });
+        await enterName(site);
+        for (const number of [1, 2, 3, 4]) await completeTask(site, number);
+        await site.click('nut-giai-bai');
+        return giaiMaDemo(site.elements.get('key-value').value).thietBi;
+    };
+    assert.equal(await khoaCua({ 'https://api.ipify.org': '2402:800:6310::1', 'https://ipv4.icanhazip.com': ' 113.161.010.020 ' }),
+        THAN_TB);
+    const DU_PHONG = chuanHoaMaThietBi(maThietBiTuGoc('ip:0.0.0.0'));
     for (const sai of ['256.1.1.1', '1.2.3', '1.2.3.4.5', 'abc', '']) {
-        const s2 = createPortal(new Map(), 1_000_000, { ipTheoUrl: {
-            'https://api.ipify.org': sai, 'https://ipv4.icanhazip.com': sai, 'https://v4.ident.me': sai } });
-        await s2.flush();
-        assert.equal(s2.elements.get('device-box').hidden, false, sai);
+        assert.equal(await khoaCua({ 'https://api.ipify.org': sai, 'https://ipv4.icanhazip.com': sai, 'https://v4.ident.me': sai }),
+            DU_PHONG, sai);
     }
+});
+
+test('chuỗi trộn: mã mạng + tên + ngày tháng năm giờ phút giây mili giây làm khoá con mã hoá key', async () => {
+    const storage = new Map();
+    const site = createPortal(storage, 1_790_000_012_345);
+    const code = await openKeyDialog(site, 'Tester');
+    const t = Number(storage.get('completedAtnv4'));
+    const so = Number(storage.get('taodepzai_so_quay'));
+    const nonce = Buffer.from(storage.get('taodepzai_nonce'), 'hex');
+    const p = Buffer.concat([Buffer.from([4, so >> 8, so & 255]), Buffer.from([5, 4, 3, 2, 1, 0].map(k => Math.floor(t / 256 ** k) % 256)),
+        Buffer.from([4]), Buffer.from(THAN_TB), Buffer.from('Tester')]);
+    const d = new Date(t).toISOString().replace('T', ' ').replace('Z', '');
+    assert.equal(chuoiTron(p).toString(), `tdz4|tron|${THAN_TB}|Tester|${d}|${String(so).padStart(3, '0')}`);
+    assert.match(d, /^\d{4}-\d\d-\d\d \d\d:\d\d:\d\d\.\d{3}$/);
+    // Cùng mọi thứ nhưng lệch 1 mili giây -> key khác hẳn (không chỉ khác vài ký tự)
+    const lech = taoMaV4('Tester', 'nv4', t + 1, so, MA_TB, nonce);
+    assert.equal(code, taoMaV4('Tester', 'nv4', t, so, MA_TB, nonce));
+    const giong = [...code].filter((c, i) => c === lech[i]).length;
+    assert.ok(giong < 8 + 16 + 12, `lệch 1 ms phải đổi tag + bản mã (giống ${giong} ký tự)`);
 });
 
 test('link "Lấy key" từ Roblox (?ten=...) tự điền tên rồi xoá khỏi thanh địa chỉ', async () => {
@@ -623,13 +643,10 @@ test('key của trang giống hệt bộ tạo độc lập (node:crypto) khi c�
         Number(storage.get('taodepzai_so_quay')), MA_TB, nonce));
 });
 
-test('HTML: khung mã thiết bị ẩn sẵn (không có ô nhập ID), trang không có chữ "IP" hiển thị', () => {
+test('HTML: không có khung / ô ID thiết bị, trang không nhắc IP hay mã mạng', () => {
     const html = fs.readFileSync(path.join(__dirname, '..', 'index.html'), 'utf8');
-    assert.match(html, /<div class="device-box" id="device-box" hidden>/);
-    assert.doesNotMatch(html, /id="device-input"|placeholder="[^"]*thiết bị/i, 'Không có ô nhập ID');
+    assert.doesNotMatch(html, /id="device-|placeholder="[^"]*thiết bị/i, 'Không có ô / khung ID');
     const body = html.slice(html.indexOf('<body'), html.indexOf('<script'));
     const chu = body.replace(/<!--[\s\S]*?-->/g, '').replace(/<[^>]+>/g, ' ');
-    assert.doesNotMatch(chu, /\bIP\b/, 'Không hiện chữ IP / mã thiết bị trên trang');
-    const chuNgoaiKhungLoi = chu.replace(/✕ Không lấy được mạng[\s\S]*?Thử lại\s*\./, '');
-    assert.doesNotMatch(chuNgoaiKhungLoi, /mã mạng|mã thiết bị|mạng bạn đang dùng/i, 'Không nhắc tới mã mạng ngoài khung lỗi');
+    assert.doesNotMatch(chu, /\bIP\b|mã mạng|mã thiết bị|mạng bạn đang dùng/i, 'Không nhắc tới IP / mã mạng');
 });

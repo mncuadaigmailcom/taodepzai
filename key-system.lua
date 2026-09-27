@@ -7,9 +7,9 @@
     Script giải mã key (cùng thuật toán với taoMaDemo trong index.html) rồi kiểm tra:
       0. Tag khớp -> key không bị sửa / tự bịa.
       1. Tên trong key phải trùng tên tài khoản Roblox (hoặc tên hiển thị) của bạn.
-      2. Còn hạn 24 giờ (xem dưới) và mã thiết bị trong key phải trùng mã của máy đang chạy:
-         mã = băm SHA-256 của IP mạng; trang web tự lấy IP của điện thoại lúc làm nhiệm vụ,
-         script tự lấy IP lúc chơi -> gửi key cho người ở mạng khác không dùng được.
+      2. Mã mạng (băm SHA-256 IP 4G / 5G / wifi lúc lấy key) + tên + ngày tháng năm giờ phút giây
+         mili giây tạo thành "chuỗi trộn" -> khoá con để mã hoá key. Lấy key xong đổi sang mạng
+         khác vẫn xác nhận được (bật KIEM_TRA_THIET_BI = true nếu muốn bắt cùng mạng).
       3. Key chỉ có hạn 24 giờ kể từ lúc hoàn thành nhiệm vụ cuối cùng
          (giờ lấy theo máy chủ Roblox nếu có, chỉnh đồng hồ máy không gia hạn được).
     Đúng hết -> ẩn (xoá) bảng nhập key rồi chạy script chính.
@@ -18,7 +18,7 @@
 
     Test: python3 tests/key_system_test.py  (và tests/luau_test.py với Luau thật)
     LƯU Ý: bí mật mã hoá nằm trong mã nguồn trang web, người đọc được code vẫn có thể tự tạo key.
-    Chặn được việc xem hạn key, dùng lại key của người khác / máy khác / key cũ, nhưng không phải
+    Chặn được việc xem hạn key, dùng lại key của người khác / key cũ, nhưng không phải
     bảo mật tuyệt đối (muốn vậy cần máy chủ cấp key giữ bí mật riêng).
 ]]
 
@@ -26,7 +26,8 @@ local CAU_HINH = {
     KEY_PREFIX         = "Free_v4_",      -- mã hoá HMAC-SHA256: số quay + thời điểm + tên + mã thiết bị
     CHAP_NHAN_KEY_V2   = true,            -- nhận cả key Free_v2_ (trang web bản cũ đang chạy, KHÔNG có
                                           -- mã thiết bị); đặt false sau khi trang web đã lên bản Free_v4_
-    KIEM_TRA_THIET_BI  = true,            -- key v4 phải được tạo trên cùng IP mạng với máy đang chơi
+    KIEM_TRA_THIET_BI  = false,           -- false: lấy key xong đổi sang mạng khác vẫn xác nhận được
+                                          -- (mã mạng chỉ dùng để trộn mã hoá key). true = bắt cùng IP mạng
     HAN_KEY_GIAY       = 24 * 60 * 60,    -- key có hạn 1 ngày
     LECH_GIO_CHO_PHEP  = 5 * 60,          -- cho phép giờ máy lệch tối đa 5 phút
     KIEM_TRA_TEN       = true,            -- false = không bắt trùng tên
@@ -430,13 +431,47 @@ end
 -- ================= Key v4 =================
 -- Free_v4_ + base64url( nonce 12 byte | tag 16 byte | bản mã )
 --   bản rõ P = [4, số quay (2 byte), thời điểm ms (6 byte), nhiệm vụ 1-4, mã thiết bị (10 ký tự), tên UTF-8]
---   tag   = HMAC-SHA256(BI_MAT, "tdz4|tag|" .. nonce .. P) lấy 16 byte đầu
+--   chuỗi trộn = "tdz4|tron|" .. mã mạng .. "|" .. tên .. "|" .. "YYYY-MM-DD HH:MM:SS.mmm" (UTC) .. "|" .. số quay
+--   khoá con = HMAC-SHA256(BI_MAT, chuỗi trộn)   -> mỗi mạng / tên / mili giây cho một khoá khác
+--   tag   = HMAC-SHA256(khoá con, "tdz4|tag|" .. nonce .. P) lấy 16 byte đầu
 --   khoá  = HMAC-SHA256(BI_MAT, "tdz4|enc|" .. nonce .. tag)
 --   bản mã = P XOR (SHA256(khoá .. 0) .. SHA256(khoá .. 1) .. ...)
 -- Phải khớp BI_MAT_V4 / taoMaDemo trong index.html và tools/decode-demo.cjs.
 local BI_MAT_V4 = ByteCua("z!V~~RO3mS2dCMvW-GE@#v2XYYuLsNoQKS5U0pGeAY5EOkd_")
 local NHAN_TAG, NHAN_KHOA = ByteCua("tdz4|tag|"), ByteCua("tdz4|enc|")
 local DAI_CO_DINH_V4 = 12 + 16 + 20
+
+-- ms (UTC) -> "YYYY-MM-DD HH:MM:SS.mmm"; tự tính lịch (không phụ thuộc os.date / múi giờ máy)
+local function NgayGioUtc(ms)
+    local giay = math.floor(ms / 1000)
+    local phanMs = ms - giay * 1000
+    local ngay = math.floor(giay / 86400)
+    local trongNgay = giay - ngay * 86400
+    local z = ngay + 719468
+    local ky = math.floor(z / 146097)
+    local doe = z - ky * 146097
+    local yoe = math.floor((doe - math.floor(doe / 1460) + math.floor(doe / 36524) - math.floor(doe / 146096)) / 365)
+    local nam = yoe + ky * 400
+    local doy = doe - (365 * yoe + math.floor(yoe / 4) - math.floor(yoe / 100))
+    local mp = math.floor((5 * doy + 2) / 153)
+    local ngayThang = doy - math.floor((153 * mp + 2) / 5) + 1
+    local thang = mp < 10 and mp + 3 or mp - 9
+    if thang <= 2 then nam = nam + 1 end
+    return string.format("%04d-%02d-%02d %02d:%02d:%02d.%03d", nam, thang, ngayThang,
+        math.floor(trongNgay / 3600), math.floor(trongNgay % 3600 / 60), trongNgay % 60, phanMs)
+end
+
+-- Chuỗi trộn từ bản rõ P: mã mạng + tên + ngày tháng năm giờ phút giây mili giây + số quay
+local function ChuoiTron(p)
+    local soQuay = p[2] * 256 + p[3]
+    local ms = 0
+    for i = 4, 9 do ms = ms * 256 + p[i] end
+    local kq = ByteCua("tdz4|tron|")
+    for i = 11, 20 do kq[#kq + 1] = p[i] end
+    kq[#kq + 1] = 124 -- "|"
+    for i = 21, #p do kq[#kq + 1] = p[i] end
+    return Noi(kq, ByteCua("|" .. NgayGioUtc(ms) .. "|" .. string.format("%03d", soQuay)))
+end
 
 local function GiaiMaV4(noiDung)
     local raw = GiaiBase64Url(noiDung)
@@ -455,7 +490,8 @@ local function GiaiMaV4(noiDung)
     end
 
     -- Tag 128 bit phải khớp -> sửa 1 ký tự hay tự bịa key đều bị phát hiện
-    local tagThat = HmacSha256(BI_MAT_V4, Noi(NHAN_TAG, nonce, p))
+    local khoaCon = HmacSha256(BI_MAT_V4, ChuoiTron(p))
+    local tagThat = HmacSha256(khoaCon, Noi(NHAN_TAG, nonce, p))
     local khac = 0
     for i = 1, 16 do
         if tagThat[i] ~= tag[i] then khac = khac + 1 end
@@ -814,7 +850,8 @@ KhiDoiThietBi = function()
     nhanThietBi.Text = MA_THIET_BI and "Mạng (4G / 5G / wifi): ✓ đã nhận"
         or "Mạng: chưa lấy được, kiểm tra kết nối"
 end
-CapNhatThietBi()
+-- Chỉ lấy IP trong game khi bật kiểm tra mạng; mặc định không cần (đổi mạng vẫn dùng key được)
+if CAU_HINH.KIEM_TRA_THIET_BI then CapNhatThietBi() end
 
 -- ================= Logic =================
 local function BaoTrangThai(text, mau)

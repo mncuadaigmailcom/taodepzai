@@ -236,15 +236,6 @@
         .player-input::placeholder { color: #94a3b8; font-weight: 500; }
         .player-input:focus { border-color: var(--primary); outline: 2px solid var(--accent); outline-offset: 2px; }
         .player-help { margin: 9px 0 0; color: var(--text-muted); font-size: 11px; line-height: 1.5; }
-        .device-label { margin-top: 16px; }
-        .device-row { display: flex; align-items: center; gap: 10px; }
-        .device-box { margin-top: 12px; }
-        .device-box[hidden] { display: none; }
-        .device-code { flex: 1; min-height: 46px; display: flex; align-items: center; padding: 0 14px; border: 1px solid var(--glass-border); border-radius: 14px; background: rgba(2, 6, 23, .45); color: var(--text-main); font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: 14px; font-weight: 700; letter-spacing: .06em; }
-        .device-code.ok { border-color: rgba(52, 211, 153, .45); color: #6ee7b7; }
-        .device-code.loi { border-color: rgba(248, 113, 113, .45); color: #fca5a5; }
-        #device-refresh { min-height: 46px; padding: 0 14px; border: 1px solid var(--glass-border); border-radius: 14px; background: rgba(255, 255, 255, .06); color: var(--text-main); font-weight: 700; cursor: pointer; }
-        #device-refresh:disabled { opacity: .6; cursor: wait; }
         .player-help.ok { color: #34d399; }
         .player-help.loi { color: #f87171; }
 
@@ -566,14 +557,7 @@
             </label>
             <input class="player-input" id="player-name" name="playerName" type="text" maxlength="32" autocomplete="nickname" spellcheck="false" required placeholder="Tên tài khoản Roblox của bạn" aria-describedby="player-help">
             <p class="player-help" id="player-help">Nhập <strong>đúng tên tài khoản Roblox</strong> (hoặc tên hiển thị) của bạn: script chỉ nhận key có tên trùng với tài khoản đang chơi, và key chỉ dùng được <strong>24 giờ</strong>. Tên được lưu trên trình duyệt và được mã hoá bên trong key.</p>
-            <!-- Mã mạng (IP 4G / 5G / wifi) được lấy ngầm và mã hoá vào key; khung này chỉ hiện khi không lấy được mạng. -->
-            <div class="device-box" id="device-box" hidden>
-                <div class="device-row">
-                    <span class="device-code loi" id="device-code" role="status" aria-live="polite">✕ Không lấy được mạng</span>
-                    <button id="device-refresh" type="button" aria-label="Lấy lại mạng">🔄 Thử lại</button>
-                </div>
-                <p class="player-help" id="device-help">Kiểm tra kết nối 4G / 5G / wifi rồi bấm <strong>Thử lại</strong>.</p>
-            </div>
+            <!-- Mã mạng (IP 4G / 5G / wifi) được lấy ngầm để trộn vào mã hoá key; không hiện, không cần nhập. -->
         </div>
 
         <section aria-labelledby="task-heading">
@@ -717,7 +701,9 @@
         // === MÃ HOÁ V4 BẮT ĐẦU ===
         // Key v4 = 'Free_v4_' + base64url(nonce 12 byte | tag 16 byte | bản mã).
         //   Bản rõ = [4, số quay (2 byte), thời điểm hoàn thành ms (6 byte), nhiệm vụ 1-4, mã thiết bị (10 ký tự), tên UTF-8]
-        //   tag  = HMAC-SHA256(BI_MAT_V4, 'tdz4|tag|' + nonce + bản rõ), lấy 16 byte đầu
+        //   chuỗi trộn = 'tdz4|tron|' + mã mạng + '|' + tên + '|' + 'YYYY-MM-DD HH:MM:SS.mmm' (UTC) + '|' + số quay
+        //   khoá con = HMAC-SHA256(BI_MAT_V4, chuỗi trộn) -> mỗi mạng / tên / mili giây cho một khoá khác
+        //   tag  = HMAC-SHA256(khoá con, 'tdz4|tag|' + nonce + bản rõ), lấy 16 byte đầu
         //   khoá = HMAC-SHA256(BI_MAT_V4, 'tdz4|enc|' + nonce + tag); bản mã = bản rõ XOR SHA256(khoá + j) (j = 0, 1, ...)
         // Nhìn key không đọc được tên, ngày giờ hay mã thiết bị; mỗi lần quay (nonce mới) cho key khác hẳn.
         // Giới hạn: bí mật nằm trong mã nguồn trang, người đọc code vẫn tự tạo được key (cần máy chủ nếu muốn tuyệt đối).
@@ -814,6 +800,22 @@
             return [...nonce];
         }
 
+        // ms -> 'YYYY-MM-DD HH:MM:SS.mmm' theo giờ UTC (giống NgayGioUtc trong key-system.lua)
+        function ngayGioUtc(ms) {
+            const d = new Date(ms);
+            const so = (n, dai = 2) => String(n).padStart(dai, '0');
+            return `${so(d.getUTCFullYear(), 4)}-${so(d.getUTCMonth() + 1)}-${so(d.getUTCDate())} ` +
+                `${so(d.getUTCHours())}:${so(d.getUTCMinutes())}:${so(d.getUTCSeconds())}.${so(d.getUTCMilliseconds(), 3)}`;
+        }
+
+        // Chuỗi trộn: mã mạng + tên + ngày tháng năm giờ phút giây mili giây + số quay (giống ChuoiTron trong key-system.lua)
+        function chuoiTron(banRo) {
+            const soQuay = banRo[1] * 256 + banRo[2];
+            const ms = banRo.slice(3, 9).reduce((v, b) => v * 256 + b, 0);
+            return [...utf8('tdz4|tron|'), ...banRo.slice(10, 20), 124, ...banRo.slice(20),
+                ...utf8(`|${ngayGioUtc(ms)}|${String(soQuay).padStart(3, '0')}`)];
+        }
+
         function taoMaDemo(ten, lanCuoi, soQuay, maThietBi, nonce = taoNonce()) {
             const thanThietBi = chuanHoaMaThietBi(maThietBi);
             if (!thanThietBi) throw new Error('Mã thiết bị không hợp lệ');
@@ -821,7 +823,8 @@
                 ...[5, 4, 3, 2, 1, 0].map(k => Math.floor(lanCuoi.time / 256 ** k) % 256),
                 Number(lanCuoi.id.slice(2)), ...utf8(thanThietBi), ...utf8(ten.trim())];
             const biMat = utf8(BI_MAT_V4);
-            const tag = hmacSha256(biMat, [...utf8('tdz4|tag|'), ...nonce, ...banRo]).slice(0, 16);
+            const khoaCon = hmacSha256(biMat, chuoiTron(banRo));
+            const tag = hmacSha256(khoaCon, [...utf8('tdz4|tag|'), ...nonce, ...banRo]).slice(0, 16);
             const khoa = hmacSha256(biMat, [...utf8('tdz4|enc|'), ...nonce, ...tag]);
             let dong = [];
             for (let j = 0; dong.length < banRo.length; j++) dong = dong.concat(sha256([...khoa, j]));
@@ -829,6 +832,7 @@
         }
         // Mã thiết bị theo IP: phải khớp NGUON_IP / ChuanHoaIp / ThanMaThietBi("ip:" .. ip) trong key-system.lua
         const NGUON_IP = ['https://api.ipify.org', 'https://ipv4.icanhazip.com', 'https://v4.ident.me']; // chỉ IPv4
+        const IP_DU_PHONG = '0.0.0.0'; // khi không lấy được IP (mất mạng, bị chặn)
         function chuanHoaIp(chuoi) {
             const m = String(chuoi ?? '').trim().match(/^(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})$/);
             if (!m) return null;
@@ -850,9 +854,6 @@
         const hopThoai = manHinhTrang.querySelector('.editor-wrapper');
         const keyField = document.getElementById('key-value');
         const playerNameInput = document.getElementById('player-name');
-        const khungThietBi = document.getElementById('device-box');
-        const deviceCode = document.getElementById('device-code');
-        const nutLayLaiIp = document.getElementById('device-refresh');
         let thanThietBi = null;      // 10 ký tự, băm từ IP mạng (4G/5G/wifi); null khi chưa lấy được
         let dangLayIp = false;
         let lanLayIpCuoi = 0;
@@ -880,8 +881,7 @@
             if ([...thamSo.keys()].length) history.replaceState(null, '', location.pathname + location.hash);
         } catch { /* Không có location/history (môi trường test). */ }
         playerNameInput.value = luu.get(PLAYER_NAME_KEY) || '';
-        nutLayLaiIp.addEventListener('click', () => capNhatIp(true, true));
-        capNhatIp(true).catch(() => {}); // Tự lấy IP ngay khi mở trang.
+        capNhatIp(true).catch(() => {}); // Tự lấy mã mạng ngay khi mở trang.
         playerNameInput.addEventListener('input', () => {
             const ten = playerNameInput.value.trim();
             if (ten) luu.set(PLAYER_NAME_KEY, ten);
@@ -937,14 +937,6 @@
             } catch { return Math.floor(Math.random() * 1000); }
         }
 
-        // Không bao giờ hiện mã mạng / IP: chỉ hiện khung báo lỗi khi không lấy được mạng.
-        function hienThiTrangThaiThietBi() {
-            const loi = !thanThietBi && !dangLayIp;
-            khungThietBi.hidden = !loi;
-            deviceCode.textContent = loi ? '✕ Không lấy được mạng' : '';
-            nutLayLaiIp.disabled = dangLayIp;
-        }
-
         async function layIp() {
             for (const url of NGUON_IP) {
                 try {
@@ -957,24 +949,23 @@
             return null;
         }
 
-        // Lấy IP khi mở trang, khi bấm "Lấy lại" và khi quay lại trang (tối đa mỗi 30 giây một lần).
-        async function capNhatIp(batBuoc = false, baoKetQua = false) {
+        // Lấy mã mạng khi mở trang và khi quay lại trang (tối đa mỗi 30 giây một lần). Không hiện ở đâu cả.
+        // Không lấy được IP thì giữ mã cũ, chưa có thì dùng mã dự phòng: mã mạng chỉ để trộn mã hoá key,
+        // script mặc định không bắt cùng mạng nên key vẫn dùng được.
+        async function capNhatIp(batBuoc = false) {
             if (dangLayIp || (!batBuoc && Date.now() - lanLayIpCuoi < 30000)) return;
             dangLayIp = true;
             lanLayIpCuoi = Date.now();
-            hienThiTrangThaiThietBi();
+            kiemTraMoKhoa();
             const ip = await layIp();
             const cu = thanThietBi;
-            thanThietBi = ip ? thanTuIp(ip) : null;
+            thanThietBi = ip ? thanTuIp(ip) : (cu || thanTuIp(IP_DU_PHONG));
             dangLayIp = false;
-            hienThiTrangThaiThietBi();
             kiemTraMoKhoa();
-            if (thanThietBi && thanThietBi !== cu && manHinhTrang.classList.contains('show') && !henGioQuay) {
+            if (thanThietBi !== cu && manHinhTrang.classList.contains('show') && !henGioQuay) {
                 capNhatMa();
                 hienThiTenNguoiChoi();
             }
-            if (baoKetQua) notify(thanThietBi ? '✓ Đã kết nối.' : 'Không kết nối được. Kiểm tra 4G / 5G / wifi rồi thử lại.',
-                thanThietBi ? 'success' : 'error');
         }
 
         // Nonce 12 byte giữ trong phiên (key ổn định sau F5); quay số mới / làm mới phiên thì đổi nonce.
@@ -1057,7 +1048,7 @@
             if (moKhoa) huongDan = '✦ XEM MÃ DEMO FREE_';
             else if (soCongHoanThanh === NHIEM_VU.length && !coMocThoiGian) huongDan = 'Làm mới phiên để tạo mã demo';
             else if (soCongHoanThanh === NHIEM_VU.length && !coTen) huongDan = 'Nhập tên người chơi để tạo mã demo';
-            else if (soCongHoanThanh === NHIEM_VU.length && !coThietBi) huongDan = dangLayIp ? 'Đang kiểm tra mạng…' : 'Không lấy được mạng: bấm Thử lại';
+            else if (soCongHoanThanh === NHIEM_VU.length && !coThietBi) huongDan = 'Đang kiểm tra mạng…';
             else if (soCongHoanThanh === 0) huongDan = 'Nhập tên và hoàn thành 4 nhiệm vụ';
             else huongDan = `Còn ${NHIEM_VU.length - soCongHoanThanh} nhiệm vụ để tạo mã demo`;
             nutGiaiBai.querySelector('span').textContent = huongDan;

@@ -54,9 +54,10 @@ def chuoi_luau(s):
     return '"' + "".join(f"\\{b}" for b in s.encode("utf-8")) + '"'
 
 
-def chay_luau(than_test):
-    """Ghép mock + key-system.lua + đoạn test thành một file Luau rồi chạy."""
-    nguon = GOC.joinpath("key-system.lua").read_text(encoding="utf-8")
+def chay_luau(than_test, kiem_tra_mang=False):
+    """Ghép mock + key-system.lua + đoạn test thành một file Luau rồi chạy.
+    kiem_tra_mang=True: bật KIEM_TRA_THIET_BI (mặc định tắt: đổi mạng vẫn dùng key được)."""
+    nguon = k.SCRIPT_KIEM_TRA_MANG if kiem_tra_mang else GOC.joinpath("key-system.lua").read_text(encoding="utf-8")
     mock = GOC.joinpath("tests", "roblox_mock.lua").read_text(encoding="utf-8")
     assert "]=========]" not in nguon
     code = f"""
@@ -130,13 +131,13 @@ class LuauThatTest(unittest.TestCase):
         cases = {
             "v2_dung": v2[0], "v2_nguoi_khac": v2[1], "v2_het_han": v2[2],
             "v3_dung": v3[0], "v3_nguoi_khac": v3[1], "v3_het_han": v3[2], "v3_chu_thuong": v3[3],
-            "v3_bi_sua": sua, "v3_dan_thua": f"  key: {v3[0]} \n", "rac": "abc", "v4_may_khac": v3[4],
+            "v3_bi_sua": sua, "v3_dan_thua": f"  key: {v3[0]} \n", "rac": "abc", "v4_mang_khac": v3[4],
         }
         than = "\n".join(f"do local n, tt = thu({chuoi_luau(key)}) ra({json.dumps(ten)}, n, tt) end"
                          for ten, key in cases.items())
         kq = chay_luau(than)
         mong_doi = {"v2_dung": 1, "v2_nguoi_khac": 0, "v2_het_han": 0, "v3_dung": 1, "v3_nguoi_khac": 0,
-                    "v3_het_han": 0, "v3_chu_thuong": 1, "v3_bi_sua": 0, "v3_dan_thua": 1, "rac": 0, "v4_may_khac": 0}
+                    "v3_het_han": 0, "v3_chu_thuong": 1, "v3_bi_sua": 0, "v3_dan_thua": 1, "rac": 0, "v4_mang_khac": 1}
         for ten, so in mong_doi.items():
             with self.subTest(ten=ten):
                 self.assertEqual(int(kq[ten][0]), so, kq[ten][1])
@@ -144,7 +145,7 @@ class LuauThatTest(unittest.TestCase):
         self.assertIn("không phải của tài khoản Tester", kq["v3_nguoi_khac"][1])
         self.assertIn("hết hạn", kq["v2_het_han"][1])
         self.assertIn("không hợp lệ", kq["v3_bi_sua"][1])
-        self.assertIn("IP không khớp", kq["v4_may_khac"][1])
+        self.assertIn("Key hợp lệ", kq["v4_mang_khac"][1], "Lấy key ở mạng khác rồi đổi mạng vẫn nhận")
 
     def test_luu_key_tu_dien_va_tu_xoa(self):
         t = (NOW - k.NGAY + 600) * 1000  # còn 10 phút
@@ -219,7 +220,7 @@ ra("mat_mang", tostring(p3.api.MaThietBi()), p3.gui:FindFirstChildDeep("MaThietB
 p.gui:FindFirstChildDeep("NutLayKey").MouseButton1Click:Fire()
 ra("link", p.log.clipboard[1] or "")
 """ % (NOW, NOW, NOW)
-        kq = chay_luau(than)
+        kq = chay_luau(than, kiem_tra_mang=True)
         ma = k.ma_thiet_bi("ip:14.232.7.9")
         self.assertEqual(kq["co_bit32"], ["true"], "Luau thật phải có bit32 (nhánh Roblox dùng)")
         self.assertEqual(kq["tb"][0], ma)
@@ -237,7 +238,13 @@ ra("link", p.log.clipboard[1] or "")
 do local n, tt = thu({chuoi_luau(ma)}) ra("khac", n, tt) end
 do local n, tt = thu({chuoi_luau(ma)}, {{ ten = "Tester", gio_may = {NOW}, ip = "14.232.7.9" }}) ra("dung", n, tt) end
 """
-        kq = chay_luau(than)
+        # Mặc định: lấy key ở mạng này, chơi ở mạng khác vẫn xác nhận được; game không gọi dịch vụ IP
+        kq = chay_luau(than + 'do local _, _, p = thu(%s) ra("so_lan_lay_ip", #p.log.ip_get) end' % chuoi_luau(ma))
+        self.assertEqual(kq["khac"][0], "1", kq["khac"][1])
+        self.assertEqual(kq["dung"][0], "1")
+        self.assertEqual(kq["so_lan_lay_ip"], ["0"])
+        # Bật KIEM_TRA_THIET_BI: bắt cùng mạng
+        kq = chay_luau(than, kiem_tra_mang=True)
         self.assertEqual(kq["khac"][0], "0")
         self.assertIn("IP không khớp", kq["khac"][1])
         self.assertEqual(kq["dung"][0], "1")
