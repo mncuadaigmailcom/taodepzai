@@ -211,7 +211,8 @@ return function(tuy_chon)
         env.setclipboard = function(s) table.insert(log.clipboard, s) end
     end
     if tuy_chon.khong_loadstring then env.loadstring = nil end
-    if tuy_chon.bit32 then env.bit32 = tuy_chon.bit32 end
+    -- Roblox luôn có bit32 (Luau); Lua 5.1 thì không -> kiểm tra được cả hai nhánh
+    env.bit32 = tuy_chon.bit32 or bit32
     if tuy_chon.gio_may_chu then
         env.workspace.GetServerTimeNow = function() return dong_ho.chu end
     end

@@ -19,8 +19,9 @@ from lupa import lua51
 GOC = pathlib.Path(__file__).resolve().parent.parent
 SCRIPT = (GOC / "key-system.lua").read_text(encoding="utf-8")
 MOCK = (GOC / "tests" / "roblox_mock.lua").read_text(encoding="utf-8")
-SCRIPT_V2 = SCRIPT.replace("CHAP_NHAN_KEY_V2   = false", "CHAP_NHAN_KEY_V2   = true")
-assert SCRIPT_V2 != SCRIPT
+SCRIPT_V2 = SCRIPT  # mặc định nhận cả key Free_v2_ (trang web bản cũ)
+SCRIPT_KHONG_V2 = SCRIPT.replace("CHAP_NHAN_KEY_V2   = true", "CHAP_NHAN_KEY_V2   = false")
+assert SCRIPT_KHONG_V2 != SCRIPT
 URL = "https://mncuadaigmailcom.github.io/aiaiaitao2/script.js"
 NGAY = 24 * 60 * 60
 BAY_GIO = 1790000000  # giây, UTC (giờ "hiện tại" giả lập)
@@ -315,7 +316,10 @@ class TenNguoiChoiTest(unittest.TestCase):
         self.assertFalse(p.da_an_gui)
         self.assertEqual(p.httpget(), [])
         self.assertIn("không phải của tài khoản Tester", p.trang_thai)
+        self.assertIn('nhập đúng tên "Tester"', p.trang_thai)
         self.assertNotIn("NguoiKhac", p.trang_thai, "Không để lộ tên chủ key")
+        p = Phien(ten="tao_123", ten_hien_thi="Tao Dep").thu_key(tao_ma("NguoiKhac"))
+        self.assertIn('"tao_123" hoặc "Tao Dep"', p.trang_thai, "Gợi ý cả tên hiển thị")
 
     def test_ten_gan_giong_van_bi_tu_choi(self):
         for ten_key in ("Teste", "Tester1", "Test er", "Tëster", "Tester_", "xTester"):
@@ -652,13 +656,27 @@ class GiaiMaTest(unittest.TestCase):
             ms = max(ms, 1)
             self.assertEqual(p.giai_ma(tao_ma("x", "nv1", ms, so_quay=ms % 1000))["thoiDiem"], ms // 1000, ms)
 
-    def test_key_v2_cu_mac_dinh_bi_tu_choi(self):
-        p = Phien().thu_key(tao_ma_v2("Tester"))
+    def test_mac_dinh_nhan_ca_key_v2_cua_trang_web_hien_tai(self):
+        # Trang web đang chạy (nhánh main) vẫn tạo Free_v2_ -> key đúng phải được nhận
+        self.assertEqual(Phien().thu_key(tao_ma_v2("Tester")).so_lan_chay, 1)
+        self.assertEqual(Phien().thu_key(tao_ma("Tester")).so_lan_chay, 1)
+        # ...nhưng key v2 vẫn phải đúng tên và còn hạn
+        p = Phien().thu_key(tao_ma_v2("NguoiKhac"))
+        self.assertEqual(p.so_lan_chay, 0)
+        self.assertIn("không phải của tài khoản", p.trang_thai)
+        p = Phien().thu_key(tao_ma_v2("Tester", thoi_diem_ms=(BAY_GIO - NGAY - 1) * 1000))
+        self.assertEqual(p.so_lan_chay, 0)
+        self.assertIn("hết hạn", p.trang_thai)
+        o_dia = {}
+        Phien(o_dia=o_dia).thu_key(tao_ma_v2("Tester"))
+        self.assertEqual(Phien(o_dia=o_dia).o_key, tao_ma_v2("Tester"), "Key v2 cũng được lưu và tự điền")
+
+    def test_tat_nhan_key_v2(self):
+        p = Phien(script=SCRIPT_KHONG_V2).thu_key(tao_ma_v2("Tester"))
         self.assertEqual(p.so_lan_chay, 0)
         self.assertIn("cũ không còn dùng được", p.trang_thai)
         self.assertIn("Free_v3_", p.trang_thai)
-        self.assertEqual(Phien(script=SCRIPT_V2).thu_key(tao_ma_v2("Tester")).so_lan_chay, 1)
-        self.assertEqual(Phien(script=SCRIPT_V2).thu_key(tao_ma("Tester")).so_lan_chay, 1)
+        self.assertEqual(Phien(script=SCRIPT_KHONG_V2).thu_key(tao_ma("Tester")).so_lan_chay, 1)
 
 
 @unittest.skipUnless(CO_NODE, "Cần Node.js để đối chiếu với index.html")

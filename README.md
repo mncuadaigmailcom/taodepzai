@@ -45,7 +45,7 @@ Trang vẫn có đếm ngược, reset thủ công/tự động, thông báo, hi
 
 ## Script nhập key cho Roblox (`key-system.lua`)
 
-Script mở bảng nhập key trong game, giải mã key `Free_v3_...` bằng cùng thuật toán với `taoMaDemo` rồi kiểm tra ba điều (key `Free_v2_` cũ bị từ chối, trừ khi đặt `CHAP_NHAN_KEY_V2 = true`):
+Script mở bảng nhập key trong game, giải mã key `Free_v3_...` bằng cùng thuật toán với `taoMaDemo` rồi kiểm tra ba điều. Mặc định script nhận **cả key `Free_v2_`** (trang đang chạy trên GitHub Pages trước khi merge bản mới) lẫn `Free_v3_`. Key v2 vẫn phải đúng tên và còn hạn. Khi trang đã lên bản v3, có thể đặt `CHAP_NHAN_KEY_V2 = false` để chỉ nhận v3:
 
 1. **Đúng định dạng:** key giải mã được, mã kiểm tra 32 bit khớp, ngày/tháng khớp thời điểm; không bị sửa hay thiếu ký tự. Dán thừa chữ trước/sau key vẫn nhận.
 2. **Đúng người chơi:** tên trong key phải trùng **tên tài khoản Roblox** (`player.Name`) hoặc **tên hiển thị** (`DisplayName`). Không phân biệt hoa/thường, bỏ dấu `@` ở đầu. Key của người khác bị từ chối và bảng không hiện tên chủ key.
@@ -64,5 +64,13 @@ loadstring(game:HttpGet("https://mncuadaigmailcom.github.io/taodepzai/key-system
 Muốn đổi hạn key, độ lệch giờ, tắt kiểm tra tên/tên hiển thị, tắt lưu key (`LUU_KEY`) hoặc đổi link, sửa bảng `CAU_HINH` ở đầu file.
 
 Chạy test (giả lập Roblox bằng Lua 5.1; có Node thì đối chiếu thêm với `index.html` và `tools/decode-demo.cjs`): `pip install lupa` rồi `python3 tests/key_system_test.py`.
+
+Test trong **Luau thật** (ngôn ngữ của Roblox), với key sinh từ code trang đang chạy (`origin/main`, v2) và trang mới (v3):
+
+```bash
+git clone https://github.com/luau-lang/luau /tmp/luau-src && make -C /tmp/luau-src config=release luau
+git fetch origin main
+LUAU=/tmp/luau-src/luau python3 tests/luau_test.py
+```
 
 **Lưu ý:** cách này chặn được việc dùng lại key của người khác và key đã quá 24 giờ. Tuy nhiên thuật toán nằm công khai trong mã nguồn, nên người biết đọc code vẫn có thể tự tạo key cho tên của chính họ mà không làm nhiệm vụ, hoặc sửa script để bỏ qua kiểm tra. Muốn chặn hẳn cần máy chủ cấp key có chữ ký bí mật.

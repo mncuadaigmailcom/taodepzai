@@ -23,7 +23,8 @@
 
 local CAU_HINH = {
     KEY_PREFIX         = "Free_v3_",      -- vòng quay 3 số + ngày/tháng + giây/mili-giây + tên
-    CHAP_NHAN_KEY_V2   = false,           -- true = vẫn nhận key Free_v2_ cũ (yếu hơn)
+    CHAP_NHAN_KEY_V2   = true,            -- nhận cả key Free_v2_ (trang web bản cũ đang chạy);
+                                          -- đặt false sau khi trang web đã lên bản Free_v3_
     HAN_KEY_GIAY       = 24 * 60 * 60,    -- key có hạn 1 ngày
     LECH_GIO_CHO_PHEP  = 5 * 60,          -- cho phép giờ máy lệch tối đa 5 phút
     KIEM_TRA_TEN       = true,            -- false = không bắt trùng tên
@@ -389,8 +390,12 @@ local function KiemTraKey(nhap)
         return false, "Key không hợp lệ (bị sửa hoặc thiếu ký tự). Hãy sao chép lại key."
     end
     if CAU_HINH.KIEM_TRA_TEN and not TenKhop(thongTin.ten) then
+        local tenHienThi = ""
+        if CAU_HINH.CHAP_NHAN_TEN_HIEN_THI and player.DisplayName and player.DisplayName ~= player.Name then
+            tenHienThi = " hoặc \"" .. tostring(player.DisplayName) .. "\""
+        end
         return false, "Key này không phải của tài khoản " .. player.Name
-            .. ". Hãy tạo key bằng đúng tên của bạn."
+            .. ". Trên web hãy nhập đúng tên \"" .. player.Name .. "\"" .. tenHienThi .. " rồi lấy key mới."
     end
     local bayGio = BayGio()
     if thongTin.thoiDiem - bayGio > CAU_HINH.LECH_GIO_CHO_PHEP then
