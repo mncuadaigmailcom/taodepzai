@@ -233,6 +233,15 @@
             color: var(--text-main);
             font: 600 14px 'Plus Jakarta Sans', system-ui, sans-serif;
         }
+        .my-link[hidden] { display: none; }
+        .my-link { margin-top: 12px; padding-top: 12px; border-top: 1px dashed rgba(148, 163, 184, .3); }
+        .my-link-label { display: block; margin-bottom: 6px; color: #cbd5e1; font-size: 13px; font-weight: 700; }
+        .my-link-row { display: flex; gap: 8px; }
+        .my-link-input { flex: 1; min-width: 0; padding: 9px 10px; border: 1px solid rgba(148, 163, 184, .35); border-radius: 10px;
+            background: rgba(15, 23, 42, .6); color: #e2e8f0; font: 12px ui-monospace, monospace; }
+        .my-link-btn { padding: 9px 12px; border: 0; border-radius: 10px; background: var(--primary); color: #fff;
+            font: inherit; font-size: 13px; font-weight: 700; cursor: pointer; }
+        .my-link-help { margin: 6px 0 0; }
         .paste-name-btn { margin-top: 8px; width: 100%; padding: 9px 12px; border: 1px dashed #34d399; border-radius: 10px;
             background: rgba(52, 211, 153, .08); color: #34d399; font: inherit; font-size: 13px; font-weight: 700; cursor: pointer; }
         .paste-name-btn:hover { background: rgba(52, 211, 153, .16); }
@@ -569,6 +578,14 @@
             <p class="player-help" id="player-help">Nhập <strong>đúng tên tài khoản Roblox</strong> (hoặc tên hiển thị) của bạn: script chỉ nhận key có tên trùng với tài khoản đang chơi, và key chỉ dùng được <strong>24 giờ</strong>. Tên được lưu trên trình duyệt và được mã hoá bên trong key. <strong>Hãy nhập tên trước khi xong nhiệm vụ cuối:</strong> xong đủ 4 nhiệm vụ là tên bị khoá; <strong>lấy key rồi thì tên khoá luôn đến khi key hết hạn (24 giờ)</strong>.</p>
             <p class="player-help name-lock" id="name-lock" role="status" aria-live="polite" hidden></p>
             </div>
+            <div class="my-link" id="my-link-box" hidden>
+                <label class="my-link-label" for="my-link">🔗 Link lấy key của bạn (tên đã mã hoá)</label>
+                <div class="my-link-row">
+                    <input class="my-link-input" id="my-link" type="text" readonly spellcheck="false">
+                    <button class="my-link-btn" id="copy-my-link" type="button">Sao chép</button>
+                </div>
+                <p class="player-help my-link-help">Lưu link này: lần sau mở link là tên tự điền (đã mã hoá, không lộ tên).</p>
+            </div>
             <!-- Mã mạng (IP 4G / 5G / wifi) được lấy ngầm để trộn vào mã hoá key; không hiện, không cần nhập. -->
         </div>
 
@@ -694,7 +711,16 @@
         const PLAYER_NAME_KEY = 'taodepzai_player_name';
         const SO_QUAY_KEY = 'taodepzai_so_quay';
         const NONCE_KEY = 'taodepzai_nonce';
-        const TEN_AN_KEY = 'taodepzai_ten_an';     // tên lấy từ link Roblox (?tk=, đã mã hoá) -> ẩn phần nhập tên
+        // Địa chỉ của chính trang này (github.io, githack...) để tạo "Link lấy key của bạn" (?mahoa=...)
+        const DIA_CHI_TRANG = (() => {
+            try {
+                const dc = String(location.href || '').split(/[?#]/)[0];
+                if (/^https?:\/\//.test(dc)) return dc;
+            } catch { /* không có location */ }
+            return 'https://mncuadaigmailcom.github.io/taodepzai/';
+        })();
+        let linkCuaBan = { ten: null, link: '' };
+        const TEN_AN_KEY = 'taodepzai_ten_an';     // tên lấy từ link Roblox (?mahoa=, đã mã hoá) -> ẩn phần nhập tên
         const KHOA_TEN_KEY = 'taodepzai_khoa_ten'; // {ten, den}: tên đã lấy key, khoá đến khi key hết hạn
         const HAN_KEY_MS = 24 * 60 * 60 * 1000;    // key có hạn 24 giờ (giống HAN_KEY_GIAY trong key-system.lua)
         const boNhoTam = new Map();
@@ -714,15 +740,17 @@
         };
 
         // === MÃ HOÁ V4 BẮT ĐẦU ===
-        // Key v4 = 'Free_v4_' + base64url(nonce 12 byte | tag 16 byte | bản mã).
-        //   Bản rõ = [4, số quay (2 byte), thời điểm hoàn thành ms (6 byte), nhiệm vụ 1-4, mã thiết bị (10 ký tự), tên UTF-8]
-        //   chuỗi trộn = 'tdz4|tron|' + mã mạng + '|' + tên + '|' + 'YYYY-MM-DD HH:MM:SS.mmm' (UTC) + '|' + số quay
+        // Key v5 = 'Free_v5_' + base64url(nonce 16 byte | tag 32 byte | bản mã).
+        //   Bản rõ = [5, cờ tên từ link mã hoá Roblox (0/1), số quay (2 byte), thời điểm hoàn thành ms (6 byte),
+        //             nhiệm vụ 1-4, mã thiết bị (10 ký tự), tên UTF-8]
+        //   chuỗi trộn = 'tdz5|tron|' + mã mạng + '|' + tên + '|' + 'YYYY-MM-DD HH:MM:SS.mmm' (UTC) + '|' + số quay + '|' + cờ
         //   khoá con = HMAC-SHA256(BI_MAT_V4, chuỗi trộn) -> mỗi mạng / tên / mili giây cho một khoá khác
-        //   tag  = HMAC-SHA256(khoá con, 'tdz4|tag|' + nonce + bản rõ), lấy 16 byte đầu
-        //   khoá = HMAC-SHA256(BI_MAT_V4, 'tdz4|enc|' + nonce + tag); bản mã = bản rõ XOR SHA256(khoá + j) (j = 0, 1, ...)
+        //   tag  = HMAC-SHA256(khoá con, 'tdz5|tag|' + nonce + bản rõ), giữ đủ 32 byte (256 bit)
+        //   khoá = HMAC-SHA256(BI_MAT_V4, 'tdz5|enc|' + nonce + tag); bản mã = bản rõ XOR SHA256(khoá + j) (j = 0, 1, ...)
+        // (Free_v4_ cũ: nonce 12, tag 16, nhãn tdz4, không có cờ; script vẫn nhận.)
         // Nhìn key không đọc được tên, ngày giờ hay mã thiết bị; mỗi lần quay (nonce mới) cho key khác hẳn.
         // Giới hạn: bí mật nằm trong mã nguồn trang, người đọc code vẫn tự tạo được key (cần máy chủ nếu muốn tuyệt đối).
-        const MA_DEMO_PREFIX = 'Free_v4_';
+        const MA_DEMO_PREFIX = 'Free_v5_';
         const BI_MAT_V4 = 'z!V~~RO3mS2dCMvW-GE@#v2XYYuLsNoQKS5U0pGeAY5EOkd_'; // Phải khớp key-system.lua
         const BANG_THIET_BI = '0123456789ABCDEFGHJKMNPQRSTVWXYZ'; // Crockford base32
         const SHA256_K = [
@@ -808,12 +836,13 @@
             return `${d.slice(0, 4)}-${d.slice(4, 8)}-${d.slice(8)}`;
         }
 
-        function taoNonce() {
-            const nonce = new Uint8Array(12);
+        function taoNgauNhien(so) {
+            const nonce = new Uint8Array(so);
             try { crypto.getRandomValues(nonce); }
-            catch { for (let i = 0; i < 12; i++) nonce[i] = Math.floor(Math.random() * 256); }
+            catch { for (let i = 0; i < so; i++) nonce[i] = Math.floor(Math.random() * 256); }
             return [...nonce];
         }
+        const taoNonce = () => taoNgauNhien(16);
 
         // ms -> 'YYYY-MM-DD HH:MM:SS.mmm' theo giờ UTC (giống NgayGioUtc trong key-system.lua)
         function ngayGioUtc(ms) {
@@ -825,22 +854,22 @@
 
         // Chuỗi trộn: mã mạng + tên + ngày tháng năm giờ phút giây mili giây + số quay (giống ChuoiTron trong key-system.lua)
         function chuoiTron(banRo) {
-            const soQuay = banRo[1] * 256 + banRo[2];
-            const ms = banRo.slice(3, 9).reduce((v, b) => v * 256 + b, 0);
-            return [...utf8('tdz4|tron|'), ...banRo.slice(10, 20), 124, ...banRo.slice(20),
-                ...utf8(`|${ngayGioUtc(ms)}|${String(soQuay).padStart(3, '0')}`)];
+            const soQuay = banRo[2] * 256 + banRo[3];
+            const ms = banRo.slice(4, 10).reduce((v, b) => v * 256 + b, 0);
+            return [...utf8('tdz5|tron|'), ...banRo.slice(11, 21), 124, ...banRo.slice(21),
+                ...utf8(`|${ngayGioUtc(ms)}|${String(soQuay).padStart(3, '0')}|${banRo[1]}`)];
         }
 
-        function taoMaDemo(ten, lanCuoi, soQuay, maThietBi, nonce = taoNonce()) {
+        function taoMaDemo(ten, lanCuoi, soQuay, maThietBi, nonce = taoNonce(), tuRoblox = false) {
             const thanThietBi = chuanHoaMaThietBi(maThietBi);
             if (!thanThietBi) throw new Error('Mã thiết bị không hợp lệ');
-            const banRo = [4, soQuay >> 8, soQuay & 255,
+            const banRo = [5, tuRoblox ? 1 : 0, soQuay >> 8, soQuay & 255,
                 ...[5, 4, 3, 2, 1, 0].map(k => Math.floor(lanCuoi.time / 256 ** k) % 256),
                 Number(lanCuoi.id.slice(2)), ...utf8(thanThietBi), ...utf8(ten.trim())];
             const biMat = utf8(BI_MAT_V4);
             const khoaCon = hmacSha256(biMat, chuoiTron(banRo));
-            const tag = hmacSha256(khoaCon, [...utf8('tdz4|tag|'), ...nonce, ...banRo]).slice(0, 16);
-            const khoa = hmacSha256(biMat, [...utf8('tdz4|enc|'), ...nonce, ...tag]);
+            const tag = hmacSha256(khoaCon, [...utf8('tdz5|tag|'), ...nonce, ...banRo]);
+            const khoa = hmacSha256(biMat, [...utf8('tdz5|enc|'), ...nonce, ...tag]);
             let dong = [];
             for (let j = 0; dong.length < banRo.length; j++) dong = dong.concat(sha256([...khoa, j]));
             return MA_DEMO_PREFIX + base64Url([...nonce, ...tag, ...banRo.map((b, i) => b ^ dong[i])]);
@@ -860,10 +889,19 @@
             for (let i = 0; i < 10; i++) than += BANG_THIET_BI[layBit(h, i * 5, 5)];
             return than;
         }
-        // Tên người chơi mã hoá trong link "Lấy key" của script Roblox (?tk=...), giống MaHoaTen trong key-system.lua:
+        // Tên người chơi mã hoá trong link "Lấy key" của script Roblox (đuôi ?mahoa=..., bản cũ ?tk=...), giống MaHoaTen trong key-system.lua:
         //   tk = base64url(nonce 8 byte | tag 12 byte | tên XOR dòng khoá)
         //   tag = HMAC(BI_MAT_V4, 'tdz4|ten|tag|' + nonce + tên)[0..12]; khoá = HMAC(BI_MAT_V4, 'tdz4|ten|enc|' + nonce + tag)
         // Trả về tên nếu hợp lệ (tag khớp, UTF-8 đúng, 1-32 ký tự, không có khoảng trắng đầu/cuối), không thì null.
+        function taoMaTen(ten, nonce = taoNgauNhien(8)) {
+            const biMat = utf8(BI_MAT_V4), ban = utf8(ten);
+            const tag = hmacSha256(biMat, [...utf8('tdz4|ten|tag|'), ...nonce, ...ban]).slice(0, 12);
+            const khoa = hmacSha256(biMat, [...utf8('tdz4|ten|enc|'), ...nonce, ...tag]);
+            let dong = [];
+            for (let j = 0; dong.length < ban.length; j++) dong = dong.concat(sha256([...khoa, j]));
+            return base64Url([...nonce, ...tag, ...ban.map((b, i) => b ^ dong[i])]);
+        }
+
         function giaiMaTen(tk) {
             if (typeof tk !== 'string' || !/^[A-Za-z0-9_-]{28,200}$/.test(tk) || tk.length % 4 === 1) return null;
             let raw;
@@ -914,7 +952,7 @@
         let phanTuTruocHopThoai = null;
 
         scriptField.value = SCRIPT_CUA_BAN;
-        let loiLinkTen = null; // 'sai' | 'khoa' khi link ?tk= không dùng được
+        let loiLinkTen = null; // 'sai' | 'khoa' khi link ?mahoa= không dùng được
         // Link "Lấy key" trong script Roblox: ?ten=<tên> -> tự điền tên, rồi xoá khỏi thanh địa chỉ.
         try {
             const thamSo = new URLSearchParams(location.search);
@@ -923,9 +961,10 @@
                 luu.set(PLAYER_NAME_KEY, tenTuLink);
                 luu.remove(TEN_AN_KEY);
             }
-            // ?tk= : tên đã mã hoá từ nút "Lấy key" trong Roblox -> tự điền và ẩn phần nhập tên
-            if (thamSo.has('tk')) {
-                const tenMaHoa = giaiMaTen((thamSo.get('tk') || '').trim());
+            // ?mahoa= (bản cũ ?tk=): tên đã mã hoá từ nút "Lấy key" trong Roblox -> tự điền và ẩn phần nhập tên
+            const thamSoMaHoa = thamSo.has('mahoa') ? 'mahoa' : thamSo.has('tk') ? 'tk' : null;
+            if (thamSoMaHoa) {
+                const tenMaHoa = giaiMaTen((thamSo.get(thamSoMaHoa) || '').trim());
                 if (!tenMaHoa) loiLinkTen = 'sai';
                 else if (!tenDangKhoa()) {
                     luu.set(PLAYER_NAME_KEY, tenMaHoa);
@@ -937,11 +976,11 @@
         } catch { /* Không có location/history (môi trường test). */ }
         playerNameInput.value = luu.get(PLAYER_NAME_KEY) || '';
         capNhatIp(true).catch(() => {}); // Tự lấy mã mạng ngay khi mở trang.
-        // Tên mã hoá dán vào ô tên (hoặc cả link có ?tk=) -> giải mã; hợp lệ thì điền tên và ẩn phần nhập tên.
+        // Tên mã hoá dán vào ô tên (hoặc cả link có ?mahoa= / ?tk=) -> giải mã; hợp lệ thì điền tên và ẩn phần nhập tên.
         // Trả về true nếu chuỗi là tên mã hoá / link (đã xử lý, dù hợp lệ hay không).
         function thuTenMaHoa(chuoi) {
             chuoi = String(chuoi || '').trim();
-            const trongLink = chuoi.match(/[?&]tk=([A-Za-z0-9_-]+)/);
+            const trongLink = chuoi.match(/[?&](?:mahoa|tk)=([A-Za-z0-9_-]+)/);
             const tk = trongLink ? trongLink[1] : chuoi;
             if (!trongLink && !/^[A-Za-z0-9_-]{28,}$/.test(chuoi)) return false; // tên thường (tên Roblox tối đa 20 ký tự)
             const ten = giaiMaTen(tk);
@@ -1070,7 +1109,7 @@
         const sangHex = dsByte => dsByte.map(b => b.toString(16).padStart(2, '0')).join('');
         function layNonce() {
             const raw = luu.get(NONCE_KEY);
-            if (raw && /^[0-9a-f]{24}$/.test(raw)) return raw.match(/../g).map(h => parseInt(h, 16));
+            if (raw && /^[0-9a-f]{32}$/.test(raw)) return raw.match(/../g).map(h => parseInt(h, 16));
             const moi = taoNonce();
             luu.set(NONCE_KEY, sangHex(moi));
             return moi;
@@ -1158,6 +1197,17 @@
             return ten !== null && ten !== '' && ten === luu.get(PLAYER_NAME_KEY);
         }
 
+        // Link của chính trang này (github.io, githack...) + ?mahoa=<tên mã hoá>. Chỉ tạo lại khi đổi tên.
+        function capNhatLinkCuaBan() {
+            const ten = (luu.get(PLAYER_NAME_KEY) || '').trim();
+            const hop = document.getElementById('my-link-box');
+            if (!ten || ten.length > 32) { hop.hidden = true; return; }
+            if (linkCuaBan.ten !== ten) linkCuaBan = { ten, link: `${DIA_CHI_TRANG}?mahoa=${taoMaTen(ten)}` };
+            const o = document.getElementById('my-link');
+            if (o.value !== linkCuaBan.link) o.value = linkCuaBan.link;
+            hop.hidden = false;
+        }
+
         function capNhatKhoaTen() {
             const khoaKey = docKhoaTen();
             if (khoaKey && luu.get(PLAYER_NAME_KEY) !== khoaKey.ten) luu.set(PLAYER_NAME_KEY, khoaKey.ten);
@@ -1176,6 +1226,7 @@
             oTuDong.hidden = !an;
             oTuDong.textContent = !an ? '' : '✓ Đã tự nhập tên người chơi từ Roblox (tên được mã hoá, không hiển thị).' +
                 (khoaKey ? ' Tên đã khoá đến khi key hết hạn (24 giờ).' : '');
+            capNhatLinkCuaBan();
             oKhoa.hidden = !khoa;
             oKhoa.className = `player-help name-lock ${khoa && !coTen ? 'loi' : 'ok'}`;
             oKhoa.textContent = !khoa ? '' : khoaKey
@@ -1330,7 +1381,7 @@
             const so = laySoQuay();
             hienThiSoQuay(so);
             // Không hiện ngày/giờ ở đâu cả: mọi thông tin chỉ nằm (đã mã hoá) trong key.
-            keyField.value = taoMaDemo(playerNameInput.value, lanCuoi, so, dinhDangMaThietBi(thanThietBi), layNonce());
+            keyField.value = taoMaDemo(playerNameInput.value, lanCuoi, so, dinhDangMaThietBi(thanThietBi), layNonce(), tenDangAn());
             return true;
         }
 
@@ -1418,6 +1469,7 @@
         nutReset.addEventListener('click', () => resetPhien('manual'));
         document.getElementById('copy-key-btn').addEventListener('click', () => saoChep(keyField, 'mã demo'));
         document.getElementById('copy-btn').addEventListener('click', () => saoChep(scriptField, 'script'));
+        document.getElementById('copy-my-link').addEventListener('click', () => saoChep(document.getElementById('my-link'), 'link của bạn'));
         document.getElementById('back-btn').addEventListener('click', () => dongHopThoai());
         document.getElementById('close-btn').addEventListener('click', () => dongHopThoai());
         manHinhTrang.addEventListener('click', event => { if (event.target === manHinhTrang) dongHopThoai(); });

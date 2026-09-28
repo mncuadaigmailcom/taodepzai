@@ -6,7 +6,7 @@ const path = require('node:path');
 const vm = require('node:vm');
 const { TextEncoder, TextDecoder } = require('node:util');
 const { execFileSync } = require('node:child_process');
-const { giaiMaDemo, taoMaV4, maThietBiTuGoc, chuanHoaMaThietBi, chuoiTron, taoMaTen, giaiMaTen } = require('../tools/decode-demo.cjs');
+const { giaiMaDemo, taoMaV5, maThietBiTuGoc, chuanHoaMaThietBi, chuoiTron5, taoMaTen, giaiMaTen } = require('../tools/decode-demo.cjs');
 
 // IP mạng giả lập của điện thoại -> mã thiết bị (script Roblox tính ra cùng mã khi cùng IP)
 const IP = '113.161.10.20';
@@ -120,7 +120,8 @@ function createPortal(sharedStore = new Map(), now = 1_000_000, tuyChon = {}) {
     const replaced = [];
     const extra = {};
     if (tuyChon.search !== undefined) {
-        extra.location = { search: tuyChon.search, pathname: '/taodepzai/', hash: '' };
+        const goc = tuyChon.goc || 'https://mncuadaigmailcom.github.io/taodepzai/';
+        extra.location = { search: tuyChon.search, pathname: new URL(goc).pathname, hash: '', href: goc + tuyChon.search };
         extra.history = { replaceState: (...args) => replaced.push(args) };
         extra.URLSearchParams = URLSearchParams;
     }
@@ -243,11 +244,11 @@ test('chỉ tạo mã demo khi đã nhập tên và hoàn thành đủ bốn nhi
     await site.click('nut-giai-bai');
     assert.equal(site.modalOpen(), true);
     const code = site.elements.get('key-value').value;
-    assert.match(code, /^Free_v4_[A-Za-z0-9_-]+$/);
+    assert.match(code, /^Free_v5_[A-Za-z0-9_-]+$/);
     assert.equal(code.includes('HoiAnPlayer_09'), false);
     assert.deepEqual(giaiMaDemo(code), {
         ten: 'HoiAnPlayer_09', nhiemVu: 'nv4', thoiDiem: Number(site.store.get('completedAtnv4')),
-        soQuay: Number(site.store.get('taodepzai_so_quay')), thietBi: THAN_TB
+        soQuay: Number(site.store.get('taodepzai_so_quay')), thietBi: THAN_TB, phienBan: 5, tuRoblox: false
     });
     assert.equal(site.elements.get('player-details').open, false);
     await site.click('copy-key-btn');
@@ -402,7 +403,7 @@ test('mã Free_ dùng thời điểm nhiệm vụ hoàn thành cuối, ổn đ�
     }
     await first.click('nut-giai-bai');
     const originalCode = first.elements.get('key-value').value;
-    assert.match(originalCode, /^Free_v4_[A-Za-z0-9_-]+$/);
+    assert.match(originalCode, /^Free_v5_[A-Za-z0-9_-]+$/);
     assert.equal(giaiMaDemo(originalCode).nhiemVu, 'nv2');
     assert.equal(giaiMaDemo(originalCode).thoiDiem, lastTime);
 
@@ -429,7 +430,7 @@ test('giải lại đúng tên có dấu, chữ hoa và ký tự đặc biệt t
     assert.equal(code.includes('Nguyễn'), false);
     assert.deepEqual(giaiMaDemo(code), {
         ten: name, nhiemVu: 'nv1', thoiDiem: Number(site.store.get('completedAtnv1')),
-        soQuay: Number(site.store.get('taodepzai_so_quay')), thietBi: THAN_TB
+        soQuay: Number(site.store.get('taodepzai_so_quay')), thietBi: THAN_TB, phienBan: 5, tuRoblox: false
     });
     const output = execFileSync(process.execPath, ['tools/decode-demo.cjs', code], {
         cwd: path.join(__dirname, '..'), encoding: 'utf8'
@@ -506,7 +507,7 @@ test('vòng quay 3 số: hiện đúng số trong mã, mỗi lần quay tạo ke
         assert.equal(reelDigits(site), String(soMoi).padStart(3, '0'));
         assert.deepEqual(giaiMaDemo(code), {
             ten: 'HoiAnPlayer_09', nhiemVu: 'nv4', thoiDiem: Number(site.store.get('completedAtnv4')), soQuay: soMoi,
-            thietBi: THAN_TB
+            thietBi: THAN_TB, phienBan: 5, tuRoblox: false
         });
         codes.add(code);
     }
@@ -559,17 +560,17 @@ test('số quay giữ sau F5, đổi khi làm mới phiên; đóng hộp thoại
     assert.equal(storage.has('taodepzai_nonce'), false, 'Làm mới phiên thì đổi nonce');
 });
 
-test('mã v4 bị sửa một ký tự hoặc tự bịa đều bị từ chối', async () => {
+test('mã v5 bị sửa một ký tự hoặc tự bịa đều bị từ chối', async () => {
     const site = createPortal();
     const code = await openKeyDialog(site);
     const bang = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_';
     let biTuChoi = 0;
-    for (let vt = 'Free_v4_'.length; vt < code.length; vt++) {
+    for (let vt = 'Free_v5_'.length; vt < code.length; vt++) {
         const moi = code.slice(0, vt) + bang[(bang.indexOf(code[vt]) + 17) % 64] + code.slice(vt + 1);
         try { giaiMaDemo(moi); } catch { biTuChoi++; }
     }
-    assert.equal(biTuChoi, code.length - 'Free_v4_'.length);
-    for (const fake of ['Free_v4_' + 'A'.repeat(70), 'Free_v4_' + code.slice(8).split('').reverse().join(''), code.slice(0, -2),
+    assert.equal(biTuChoi, code.length - 'Free_v5_'.length);
+    for (const fake of ['Free_v5_' + 'A'.repeat(70), 'Free_v5_' + code.slice(8).split('').reverse().join(''), code.slice(0, -2),
         'Free_v3_' + code.slice(8)]) {
         assert.throws(() => giaiMaDemo(fake), /không hợp lệ/);
     }
@@ -601,7 +602,7 @@ test('không hiện ngày giờ / hạn key ở bất kỳ đâu trên trang, ke
     for (const x of ['TenBiMat', THAN_TB, MA_TB, String(t), String(Math.floor(t / 1000))]) {
         assert.equal(code.includes(x), false, x);
     }
-    assert.ok(code.length >= 8 + 66, 'Key v4 dài hơn (nonce 96 bit + tag 128 bit)');
+    assert.ok(code.length >= 8 + 100, 'Key v5 dài hơn (nonce 128 bit + tag 256 bit)');
     assert.equal(giaiMaDemo(code).thoiDiem, t);
 });
 
@@ -666,16 +667,16 @@ test('chuỗi trộn: mã mạng + tên + ngày tháng năm giờ phút giây mi
     const t = Number(storage.get('completedAtnv4'));
     const so = Number(storage.get('taodepzai_so_quay'));
     const nonce = Buffer.from(storage.get('taodepzai_nonce'), 'hex');
-    const p = Buffer.concat([Buffer.from([4, so >> 8, so & 255]), Buffer.from([5, 4, 3, 2, 1, 0].map(k => Math.floor(t / 256 ** k) % 256)),
+    const p = Buffer.concat([Buffer.from([5, 0, so >> 8, so & 255]), Buffer.from([5, 4, 3, 2, 1, 0].map(k => Math.floor(t / 256 ** k) % 256)),
         Buffer.from([4]), Buffer.from(THAN_TB), Buffer.from('Tester')]);
     const d = new Date(t).toISOString().replace('T', ' ').replace('Z', '');
-    assert.equal(chuoiTron(p).toString(), `tdz4|tron|${THAN_TB}|Tester|${d}|${String(so).padStart(3, '0')}`);
+    assert.equal(chuoiTron5(p).toString(), `tdz5|tron|${THAN_TB}|Tester|${d}|${String(so).padStart(3, '0')}|0`);
     assert.match(d, /^\d{4}-\d\d-\d\d \d\d:\d\d:\d\d\.\d{3}$/);
     // Cùng mọi thứ nhưng lệch 1 mili giây -> key khác hẳn (không chỉ khác vài ký tự)
-    const lech = taoMaV4('Tester', 'nv4', t + 1, so, MA_TB, nonce);
-    assert.equal(code, taoMaV4('Tester', 'nv4', t, so, MA_TB, nonce));
+    const lech = taoMaV5('Tester', 'nv4', t + 1, so, MA_TB, false, nonce);
+    assert.equal(code, taoMaV5('Tester', 'nv4', t, so, MA_TB, false, nonce));
     const giong = [...code].filter((c, i) => c === lech[i]).length;
-    assert.ok(giong < 8 + 16 + 12, `lệch 1 ms phải đổi tag + bản mã (giống ${giong} ký tự)`);
+    assert.ok(giong < 8 + 21 + 12, `lệch 1 ms phải đổi tag + bản mã (giống ${giong} ký tự)`);
 });
 
 test('link "Lấy key" từ Roblox (?ten=...) tự điền tên rồi xoá khỏi thanh địa chỉ', async () => {
@@ -696,9 +697,9 @@ test('key của trang giống hệt bộ tạo độc lập (node:crypto) khi c�
     const code = await openKeyDialog(site, '  Tên Có Dấu 🎮 ');
     assert.ok(goi >= 1, 'Nonce lấy từ crypto.getRandomValues');
     const nonce = Buffer.from(storage.get('taodepzai_nonce'), 'hex');
-    assert.equal(nonce.length, 12);
-    assert.equal(code, taoMaV4('Tên Có Dấu 🎮', 'nv4', Number(storage.get('completedAtnv4')),
-        Number(storage.get('taodepzai_so_quay')), MA_TB, nonce));
+    assert.equal(nonce.length, 16);
+    assert.equal(code, taoMaV5('Tên Có Dấu 🎮', 'nv4', Number(storage.get('completedAtnv4')),
+        Number(storage.get('taodepzai_so_quay')), MA_TB, false, nonce));
 });
 
 test('HTML: không có khung / ô ID thiết bị, trang không nhắc IP hay mã mạng', () => {
@@ -907,4 +908,61 @@ test('dán tên mã hoá / link vào ô tên hoặc nút "Dán tên mã hoá": h
     assert.match(khoa.elements.get('notification-box').textContent, /khoá/);
     await enterName(khoa, taoMaTen('ChuKey')); // đúng tên đang khoá -> ẩn phần nhập tên
     assert.equal(khoa.elements.get('name-section').hidden, true);
+});
+
+test('link ?mahoa= (đuôi mã hoá = tên người chơi mã hoá): tự điền, ẩn phần nhập tên; key Free_v5_ ghi cờ tên từ Roblox', async () => {
+    const storage = new Map();
+    const tk = taoMaTen('RobloxUser_77');
+    const site = createPortal(storage, 1_000_000, { search: `?mahoa=${tk}` });
+    assert.equal(site.replaced.length, 1, 'Xoá ?mahoa= khỏi thanh địa chỉ');
+    assert.equal(storage.get('taodepzai_player_name'), 'RobloxUser_77');
+    assert.equal(site.elements.get('name-section').hidden, true);
+    for (const number of [1, 2, 3, 4]) await completeTask(site, number);
+    await site.click('nut-giai-bai');
+    const code = site.elements.get('key-value').value;
+    assert.match(code, /^Free_v5_[A-Za-z0-9_-]{100,}$/);
+    const kq = giaiMaDemo(code);
+    assert.equal(kq.ten, 'RobloxUser_77');
+    assert.equal(kq.phienBan, 5);
+    assert.equal(kq.tuRoblox, true, 'Tên từ link mã hoá -> cờ = 1');
+    // Link ?mahoa= sai -> báo lỗi, không điền
+    const sai = createPortal(new Map(), 1_000_000, { search: `?mahoa=${tk.slice(0, -3)}AAA` });
+    assert.equal(sai.elements.get('name-section').hidden, false);
+    assert.match(sai.elements.get('notification-box').textContent, /không hợp lệ/);
+    // Tên gõ tay -> cờ = 0
+    const tay = createPortal(new Map(), 1_000_000, { search: '' });
+    const codeTay = await openKeyDialog(tay, 'GoTay');
+    assert.equal(giaiMaDemo(codeTay).tuRoblox, false);
+});
+
+test('trang tự biết link của chính mình: "Link lấy key của bạn" = địa chỉ trang + ?mahoa=<tên mã hoá>', async () => {
+    for (const goc of ['https://mncuadaigmailcom.github.io/taodepzai/',
+        'https://raw.githack.com/mncuadaigmailcom/taodepzai/arena/01a0e126-taodepzai/index.html']) {
+        const storage = new Map();
+        const site = createPortal(storage, 1_000_000, { search: '', goc });
+        assert.equal(site.elements.get('my-link-box').hidden, true, 'Chưa có tên thì chưa có link');
+        await enterName(site, 'Tao Dep 01');
+        assert.equal(site.elements.get('my-link-box').hidden, false);
+        const link = site.elements.get('my-link').value;
+        assert.ok(link.startsWith(`${goc}?mahoa=`), link);
+        assert.equal(link.includes('Tao'), false, 'Link không lộ tên');
+        assert.equal(giaiMaTen(link.split('?mahoa=')[1]), 'Tao Dep 01');
+        // Vẽ lại (gõ lại cùng tên, xong 1 nhiệm vụ, vòng 500 ms) không được đổi link liên tục
+        await enterName(site, 'Tao Dep 01');
+        await completeTask(site, 1);
+        site.advance(5000);
+        assert.equal(site.elements.get('my-link').value, link);
+        await site.click('copy-my-link');
+        assert.deepEqual(site.copies, [link]);
+        await enterName(site, 'TenKhac');
+        const link2 = site.elements.get('my-link').value;
+        assert.notEqual(link2, link);
+        assert.equal(giaiMaTen(link2.split('?mahoa=')[1]), 'TenKhac');
+        // Mở link của mình ở trình duyệt khác -> tự điền, ẩn phần nhập tên, vẫn có link của mình
+        const moi = createPortal(new Map(), 1_000_000, { search: link2.slice(goc.length), goc });
+        assert.equal(moi.elements.get('player-name').value, 'TenKhac');
+        assert.equal(moi.elements.get('name-section').hidden, true);
+        assert.equal(moi.elements.get('my-link-box').hidden, false);
+        assert.equal(giaiMaTen(moi.elements.get('my-link').value.split('?mahoa=')[1]), 'TenKhac');
+    }
 });

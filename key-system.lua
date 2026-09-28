@@ -1,8 +1,9 @@
 --[[
-    taodepzai · KEY SYSTEM (v4)
-    Key Free_v4_... do trang https://mncuadaigmailcom.github.io/taodepzai/ tạo ra gồm
-    [số vòng quay 3 số, thời điểm hoàn thành (ms), nhiệm vụ cuối, MÃ THIẾT BỊ (theo IP), tên người chơi],
-    được mã hoá bằng HMAC-SHA256 (nonce ngẫu nhiên 96 bit + tag 128 bit). Nhìn key không đọc được
+    taodepzai · KEY SYSTEM (v5)
+    Key Free_v5_... do trang https://mncuadaigmailcom.github.io/taodepzai/ tạo ra gồm
+    [số vòng quay 3 số, thời điểm hoàn thành (ms), nhiệm vụ cuối, MÃ THIẾT BỊ (theo IP), tên người chơi,
+    cờ "tên lấy từ link mã hoá của Roblox"], được mã hoá bằng HMAC-SHA256 (nonce ngẫu nhiên 128 bit
+    + tag 256 bit; bản Free_v4_ cũ: nonce 96 bit + tag 128 bit, vẫn nhận). Nhìn key không đọc được
     tên, ngày giờ hay mã thiết bị; sửa 1 ký tự là key hỏng.
     Script giải mã key (cùng thuật toán với taoMaDemo trong index.html) rồi kiểm tra:
       0. Tag khớp -> key không bị sửa / tự bịa.
@@ -23,7 +24,10 @@
 ]]
 
 local CAU_HINH = {
-    KEY_PREFIX         = "Free_v4_",      -- mã hoá HMAC-SHA256: số quay + thời điểm + tên + mã thiết bị
+    KEY_PREFIX         = "Free_v5_",      -- mã hoá HMAC-SHA256: số quay + thời điểm + tên + mã thiết bị
+    CHAP_NHAN_KEY_V4   = true,            -- nhận cả key Free_v4_ (trang web bản cũ); false = chỉ nhận Free_v5_
+    YEU_CAU_TEN_TU_ROBLOX = false,        -- true: chỉ nhận key Free_v5_ tạo bằng tên lấy từ link mã hoá
+                                          -- (nhấn "Lấy key" 2 lần), không nhận tên gõ tay trên web
     CHAP_NHAN_KEY_V2   = true,            -- nhận cả key Free_v2_ (trang web bản cũ đang chạy, KHÔNG có
                                           -- mã thiết bị); đặt false sau khi trang web đã lên bản Free_v4_
     KIEM_TRA_THIET_BI  = false,           -- false: lấy key xong đổi sang mạng khác vẫn xác nhận được
@@ -440,8 +444,19 @@ end
 --   bản mã = P XOR (SHA256(khoá .. 0) .. SHA256(khoá .. 1) .. ...)
 -- Phải khớp BI_MAT_V4 / taoMaDemo trong index.html và tools/decode-demo.cjs.
 local BI_MAT_V4 = ByteCua("z!V~~RO3mS2dCMvW-GE@#v2XYYuLsNoQKS5U0pGeAY5EOkd_")
-local NHAN_TAG, NHAN_KHOA = ByteCua("tdz4|tag|"), ByteCua("tdz4|enc|")
-local DAI_CO_DINH_V4 = 12 + 16 + 20
+
+-- Key v5 (bản mới): Free_v5_ + base64url( nonce 16 byte | tag 32 byte | bản mã )
+--   P = [5, cờ tên từ Roblox (0/1), số quay (2 byte), thời điểm ms (6 byte), nhiệm vụ, mã thiết bị 10 ký tự, tên]
+--   chuỗi trộn = "tdz5|tron|" .. mã mạng .. "|" .. tên .. "|" .. ngày giờ UTC .. "|" .. số quay .. "|" .. cờ
+--   nhãn "tdz5|tag|" / "tdz5|enc|", tag giữ đủ 32 byte (256 bit). Còn lại giống v4.
+local CAU_TRUC_KEY = {
+    [4] = { nonce = 12, tag = 16, lech = 0, nhan = "tdz4" },
+    [5] = { nonce = 16, tag = 32, lech = 1, nhan = "tdz5" },
+}
+for _, pb in pairs(CAU_TRUC_KEY) do
+    pb.nhanTag, pb.nhanKhoa = ByteCua(pb.nhan .. "|tag|"), ByteCua(pb.nhan .. "|enc|")
+    pb.coDinh = pb.nonce + pb.tag + 20 + pb.lech
+end
 
 -- ms (UTC) -> "YYYY-MM-DD HH:MM:SS.mmm"; tự tính lịch (không phụ thuộc os.date / múi giờ máy)
 local function NgayGioUtc(ms)
@@ -463,27 +478,32 @@ local function NgayGioUtc(ms)
         math.floor(trongNgay / 3600), math.floor(trongNgay % 3600 / 60), trongNgay % 60, phanMs)
 end
 
--- Chuỗi trộn từ bản rõ P: mã mạng + tên + ngày tháng năm giờ phút giây mili giây + số quay
-local function ChuoiTron(p)
-    local soQuay = p[2] * 256 + p[3]
+-- Chuỗi trộn từ bản rõ P: mã mạng + tên + ngày tháng năm giờ phút giây mili giây + số quay (+ cờ ở v5)
+local function ChuoiTron(p, pb)
+    local d = pb.lech
+    local soQuay = p[2 + d] * 256 + p[3 + d]
     local ms = 0
-    for i = 4, 9 do ms = ms * 256 + p[i] end
-    local kq = ByteCua("tdz4|tron|")
-    for i = 11, 20 do kq[#kq + 1] = p[i] end
+    for i = 4 + d, 9 + d do ms = ms * 256 + p[i] end
+    local kq = ByteCua(pb.nhan .. "|tron|")
+    for i = 11 + d, 20 + d do kq[#kq + 1] = p[i] end
     kq[#kq + 1] = 124 -- "|"
-    for i = 21, #p do kq[#kq + 1] = p[i] end
-    return Noi(kq, ByteCua("|" .. NgayGioUtc(ms) .. "|" .. string.format("%03d", soQuay)))
+    for i = 21 + d, #p do kq[#kq + 1] = p[i] end
+    local duoi = "|" .. NgayGioUtc(ms) .. "|" .. string.format("%03d", soQuay)
+    if d == 1 then duoi = duoi .. "|" .. tostring(p[2]) end
+    return Noi(kq, ByteCua(duoi))
 end
 
-local function GiaiMaV4(noiDung)
+-- Giải key v4 / v5 (so = 4 hoặc 5)
+local function GiaiMaMoi(noiDung, so)
+    local pb = CAU_TRUC_KEY[so]
     local raw = GiaiBase64Url(noiDung)
-    if not raw or #raw < DAI_CO_DINH_V4 + 1 or #raw > DAI_CO_DINH_V4 + 128 then return nil end
+    if not raw or #raw < pb.coDinh + 1 or #raw > pb.coDinh + 128 then return nil end
     local nonce, tag, banMa = {}, {}, {}
-    for i = 1, 12 do nonce[i] = raw[i] end
-    for i = 1, 16 do tag[i] = raw[12 + i] end
-    for i = 29, #raw do banMa[#banMa + 1] = raw[i] end
+    for i = 1, pb.nonce do nonce[i] = raw[i] end
+    for i = 1, pb.tag do tag[i] = raw[pb.nonce + i] end
+    for i = pb.nonce + pb.tag + 1, #raw do banMa[#banMa + 1] = raw[i] end
 
-    local khoa = HmacSha256(BI_MAT_V4, Noi(NHAN_KHOA, nonce, tag))
+    local khoa = HmacSha256(BI_MAT_V4, Noi(pb.nhanKhoa, nonce, tag))
     local p, dong = {}, nil
     for i = 1, #banMa do
         local viTri = (i - 1) % 32
@@ -491,27 +511,29 @@ local function GiaiMaV4(noiDung)
         p[i] = BXor(banMa[i], dong[viTri + 1])
     end
 
-    -- Tag 128 bit phải khớp -> sửa 1 ký tự hay tự bịa key đều bị phát hiện
-    local khoaCon = HmacSha256(BI_MAT_V4, ChuoiTron(p))
-    local tagThat = HmacSha256(khoaCon, Noi(NHAN_TAG, nonce, p))
+    -- Tag (128 bit ở v4, 256 bit ở v5) phải khớp -> sửa 1 ký tự hay tự bịa key đều bị phát hiện
+    local khoaCon = HmacSha256(BI_MAT_V4, ChuoiTron(p, pb))
+    local tagThat = HmacSha256(khoaCon, Noi(pb.nhanTag, nonce, p))
     local khac = 0
-    for i = 1, 16 do
+    for i = 1, pb.tag do
         if tagThat[i] ~= tag[i] then khac = khac + 1 end
     end
-    if khac ~= 0 or p[1] ~= 4 then return nil end
+    if khac ~= 0 or p[1] ~= so then return nil end
 
-    local soQuay = p[2] * 256 + p[3]
+    local d = pb.lech
+    if d == 1 and p[2] > 1 then return nil end
+    local soQuay = p[2 + d] * 256 + p[3 + d]
     local thoiDiemMs = 0
-    for i = 4, 9 do thoiDiemMs = thoiDiemMs * 256 + p[i] end
-    local nv = p[10]
-    local thietBi = ByteSangChuoi(p, 11, 20)
-    local ten = ByteSangChuoi(p, 21, #p)
+    for i = 4 + d, 9 + d do thoiDiemMs = thoiDiemMs * 256 + p[i] end
+    local nv = p[10 + d]
+    local thietBi = ByteSangChuoi(p, 11 + d, 20 + d)
+    local ten = ByteSangChuoi(p, 21 + d, #p)
     if soQuay > 999 or thoiDiemMs <= 0 or thoiDiemMs > 8.64e15 or nv < 1 or nv > 4 then return nil end
     if thietBi:find("[^0-9A-HJKMNP-TV-Z]") then return nil end
     if ten == "" or not Utf8HopLe(ten) or ten ~= Trim(ten) or DoDaiJs(ten) > 32 then return nil end
     return {
         ten = ten, nhiemVu = "nv" .. nv, thoiDiem = math.floor(thoiDiemMs / 1000),
-        soQuay = soQuay, thietBi = thietBi, phienBan = 4,
+        soQuay = soQuay, thietBi = thietBi, phienBan = so, tuRoblox = d == 1 and p[2] == 1,
     }
 end
 
@@ -568,7 +590,8 @@ local function GiaiMaKey(ma)
     if type(ma) ~= "string" then return nil end
     local phienBan, noiDung = ma:match("^Free_v(%d)_(.*)$")
     if not noiDung or #noiDung < 8 or #noiDung > 700 or noiDung:find("[^%w_%-]") then return nil end
-    if phienBan == "4" then return GiaiMaV4(noiDung) end
+    if phienBan == "5" then return GiaiMaMoi(noiDung, 5) end
+    if phienBan == "4" and CAU_HINH.CHAP_NHAN_KEY_V4 then return GiaiMaMoi(noiDung, 4) end
     if phienBan == "2" and CAU_HINH.CHAP_NHAN_KEY_V2 then return GiaiMaV2(noiDung) end
     return nil
 end
@@ -626,6 +649,7 @@ local function KiemTraKey(nhap)
         return false, "Key sai! Key phải bắt đầu bằng \"" .. CAU_HINH.KEY_PREFIX .. "\""
     end
     if ma:sub(1, #CAU_HINH.KEY_PREFIX) ~= CAU_HINH.KEY_PREFIX
+        and not (CAU_HINH.CHAP_NHAN_KEY_V4 and ma:sub(1, 8) == "Free_v4_")
         and not (CAU_HINH.CHAP_NHAN_KEY_V2 and ma:sub(1, 8) == "Free_v2_") then
         return false, "Key " .. ma:sub(1, 8) .. " cũ không còn dùng được. Hãy lấy key "
             .. CAU_HINH.KEY_PREFIX .. " mới trên trang web."
@@ -641,6 +665,10 @@ local function KiemTraKey(nhap)
         end
         return false, "Key này không phải của tài khoản " .. player.Name
             .. ". Trên web hãy nhập đúng tên \"" .. player.Name .. "\"" .. tenHienThi .. " rồi lấy key mới."
+    end
+    if CAU_HINH.YEU_CAU_TEN_TU_ROBLOX and not thongTin.tuRoblox then
+        return false, "Key này tạo bằng tên gõ tay. Hãy nhấn \"Lấy key\" 2 lần, mở link (tên mã hoá) rồi lấy "
+            .. CAU_HINH.KEY_PREFIX .. " mới."
     end
     local bayGio = BayGio()
     if thongTin.thoiDiem - bayGio > CAU_HINH.LECH_GIO_CHO_PHEP then
@@ -1021,10 +1049,10 @@ local function SaoChep(noiDung)
     end)
 end
 
--- Link lấy key kèm tên người chơi ĐÃ MÃ HOÁ (?tk=...) -> trang web tự điền tên và ẩn phần nhập tên
+-- Link lấy key kèm tên người chơi ĐÃ MÃ HOÁ (đuôi ?mahoa=...) -> trang web tự điền tên và ẩn phần nhập tên
 local function LinkLayKey()
     local noi = CAU_HINH.LINK_LAY_KEY:find("?", 1, true) and "&" or "?"
-    return CAU_HINH.LINK_LAY_KEY .. noi .. "tk=" .. MaHoaTen(tostring(player.Name))
+    return CAU_HINH.LINK_LAY_KEY .. noi .. "mahoa=" .. MaHoaTen(tostring(player.Name))
 end
 
 -- Đồng hồ cho nhấn đúp: os.clock (có phần lẻ) nếu có, không thì giờ máy chủ

@@ -122,16 +122,56 @@ def ban_ro_v4(ten, nhiem_vu, thoi_diem_ms, so_quay, than_tb, phien_ban=4):
 
 
 def nonce_mac_dinh(*gia_tri):
-    return hashlib.sha256(repr(gia_tri).encode()).digest()[:12]
+    return hashlib.sha256(repr(gia_tri).encode()).digest()[:16]
 
 
-def tao_ma(ten, nhiem_vu="nv4", thoi_diem_ms=None, so_quay=472, thiet_bi=THAN_TB, nonce=None):
-    """Bản Python của taoMaDemo (v4) trong index.html. thiet_bi = 10 ký tự thân của mã thiết bị."""
+def tao_ma_v4(ten, nhiem_vu="nv4", thoi_diem_ms=None, so_quay=472, thiet_bi=THAN_TB, nonce=None):
+    """Key Free_v4_ (bản cũ, trang main đang chạy). thiet_bi = 10 ký tự thân của mã thiết bị."""
     if thoi_diem_ms is None:
         thoi_diem_ms = (BAY_GIO - 60) * 1000
     if nonce is None:
-        nonce = nonce_mac_dinh(ten, nhiem_vu, thoi_diem_ms, so_quay, thiet_bi)
+        nonce = nonce_mac_dinh(ten, nhiem_vu, thoi_diem_ms, so_quay, thiet_bi)[:12]
     return ma_v4_tu_ban_ro(ban_ro_v4(ten, nhiem_vu, thoi_diem_ms, so_quay, thiet_bi), nonce)
+
+
+PREFIX_V5 = "Free_v5_"
+
+
+def chuoi_tron5(ban_ro):
+    """'tdz5|tron|' + mã mạng + '|' + tên + '|' + ngày giờ ms UTC + '|' + số quay + '|' + cờ tên từ Roblox."""
+    ban_ro = bytes(ban_ro)
+    so_quay = ban_ro[2] * 256 + ban_ro[3]
+    ms = int.from_bytes(ban_ro[4:10], "big")
+    return (b"tdz5|tron|" + ban_ro[11:21] + b"|" + ban_ro[21:] + b"|"
+            + f"{ngay_gio_utc(ms)}|{so_quay:03d}|{ban_ro[1]}".encode())
+
+
+def tag_v5(nonce, ban_ro):
+    khoa_con = hmac.new(BI_MAT_V4, chuoi_tron5(ban_ro), hashlib.sha256).digest()
+    return hmac.new(khoa_con, b"tdz5|tag|" + bytes(nonce) + bytes(ban_ro), hashlib.sha256).digest()
+
+
+def ma_v5_tu_ban_ro(ban_ro, nonce=b"\x07" * 16, tag=None):
+    """Mã hoá bản rõ bất kỳ theo chuẩn v5 (nonce 16, tag 32 byte)."""
+    ban_ro, nonce = bytes(ban_ro), bytes(nonce)
+    tag = tag or tag_v5(nonce, ban_ro)
+    khoa = hmac.new(BI_MAT_V4, b"tdz5|enc|" + nonce + tag, hashlib.sha256).digest()
+    dong = b"".join(hashlib.sha256(khoa + bytes([j])).digest() for j in range((len(ban_ro) + 31) // 32))
+    return PREFIX_V5 + _b64(nonce + tag + bytes(b ^ k for b, k in zip(ban_ro, dong)))
+
+
+def ban_ro_v5(ten, nhiem_vu, thoi_diem_ms, so_quay, than_tb, tu_roblox=0, phien_ban=5):
+    return (bytes([phien_ban, tu_roblox, so_quay >> 8, so_quay & 255]) + thoi_diem_ms.to_bytes(6, "big")
+            + bytes([int(nhiem_vu[2:])]) + than_tb.encode() + ten.strip().encode("utf-8"))
+
+
+def tao_ma(ten, nhiem_vu="nv4", thoi_diem_ms=None, so_quay=472, thiet_bi=THAN_TB, nonce=None, tu_roblox=False):
+    """Bản Python của taoMaDemo (Free_v5_) trong index.html. thiet_bi = 10 ký tự thân của mã thiết bị."""
+    if thoi_diem_ms is None:
+        thoi_diem_ms = (BAY_GIO - 60) * 1000
+    if nonce is None:
+        nonce = hashlib.sha256(repr((ten, nhiem_vu, thoi_diem_ms, so_quay, thiet_bi, 5)).encode()).digest()[:16]
+    return ma_v5_tu_ban_ro(ban_ro_v5(ten, nhiem_vu, thoi_diem_ms, so_quay, thiet_bi, 1 if tu_roblox else 0), nonce)
 
 
 def _dong_ten(nonce, tag, dai):
@@ -140,7 +180,7 @@ def _dong_ten(nonce, tag, dai):
 
 
 def tao_ma_ten(ten, nonce, tag_gia=None):
-    """Bản Python của MaHoaTen (key-system.lua): tên người chơi mã hoá cho link ?tk=. tag_gia: giả mạo (test)."""
+    """Bản Python của MaHoaTen (key-system.lua): tên người chơi mã hoá cho link ?mahoa=. tag_gia: giả mạo (test)."""
     ban, nonce = ten.encode("utf-8"), bytes(nonce)
     tag = tag_gia or hmac.new(BI_MAT_V4, b"tdz4|ten|tag|" + nonce + ban, hashlib.sha256).digest()[:12]
     return _b64(nonce + tag + bytes(b ^ k for b, k in zip(ban, _dong_ten(nonce, tag, len(ban)))))
@@ -175,14 +215,14 @@ const dau = html.indexOf('// === MÃ HOÁ V4 BẮT ĐẦU ==='), cuoi = html.ind
 if (dau < 0 || cuoi < 0) throw new Error('Không thấy khối mã hoá v4 trong index.html');
 const taoMaDemo = new Function(html.slice(dau, cuoi) + 'return taoMaDemo;')();
 const cases = JSON.parse(fs.readFileSync(0, 'utf8'));
-console.log(JSON.stringify(cases.map(([ten, id, time, so, tb, nonce]) =>
-    taoMaDemo(ten, { id, time }, so, tb, [...Buffer.from(nonce, 'hex')]))));
+console.log(JSON.stringify(cases.map(([ten, id, time, so, tb, nonce, tuRoblox]) =>
+    taoMaDemo(ten, { id, time }, so, tb, [...Buffer.from(nonce, 'hex')], !!tuRoblox))));
 """
 
 
 def tao_ma_bang_index_html(cac_truong_hop):
     """Chạy đúng hàm taoMaDemo lấy từ index.html bằng Node.
-    Mỗi trường hợp: [tên, nhiệm vụ, thời điểm ms, số quay, mã thiết bị, nonce hex (24 ký tự)]."""
+    Mỗi trường hợp: [tên, nhiệm vụ, thời điểm ms, số quay, mã thiết bị, nonce hex (32 ký tự), cờ tên từ Roblox?]."""
     kq = subprocess.run(["node", "-e", NODE_TAO_MA, str(GOC / "index.html")],
                         input=json.dumps(cac_truong_hop), capture_output=True, text=True, check=True,
                         env={**os.environ, "TZ": "Asia/Ho_Chi_Minh"})  # giờ VN: bắt lỗi dùng giờ máy thay vì UTC
@@ -272,6 +312,8 @@ class Phien:
             kq["soQuay"] = t.soQuay
         if t.thietBi is not None:
             kq["thietBi"] = t.thietBi
+        if t.tuRoblox:
+            kq["tuRoblox"] = True
         return kq
 
     @property
@@ -367,8 +409,8 @@ class GiaoDienTest(unittest.TestCase):
         p.bam("NutLayKey")
         p.bam("NutLayKey")
         link = list(p.log.clipboard.values())[0]
-        self.assertTrue(link.startswith("https://mncuadaigmailcom.github.io/taodepzai/?tk="))
-        self.assertEqual(giai_ma_ten(link.split("?tk=")[1]), "Tester")
+        self.assertTrue(link.startswith("https://mncuadaigmailcom.github.io/taodepzai/?mahoa="))
+        self.assertEqual(giai_ma_ten(link.split("?mahoa=")[1]), "Tester")
 
     def test_nhan_lay_key_2_lan_moi_sao_chep(self):
         p = Phien(ten="Tao_Dep_01")
@@ -396,7 +438,7 @@ class GiaoDienTest(unittest.TestCase):
         ds = list(p.log.clipboard.values())
         self.assertEqual(len(ds), 2)
         self.assertNotEqual(ds[0], ds[1])
-        self.assertEqual({giai_ma_ten(x.split("?tk=")[1]) for x in ds}, {"Tao_Dep_01"})
+        self.assertEqual({giai_ma_ten(x.split("?mahoa=")[1]) for x in ds}, {"Tao_Dep_01"})
         self.assertEqual(p.so_lan_chay, 0, "Nút lấy key không chạy script")
 
     def test_nhan_2_lan_thu_tu_mo_trinh_duyet(self):
@@ -408,7 +450,7 @@ class GiaoDienTest(unittest.TestCase):
                 p.bam("NutLayKey")
                 mo = list(p.log.mo_web.values())
                 self.assertEqual(len(mo), 1)
-                self.assertEqual(giai_ma_ten(mo[0].split("?tk=")[1]), "Tester")
+                self.assertEqual(giai_ma_ten(mo[0].split("?mahoa=")[1]), "Tester")
                 self.assertEqual(list(p.log.clipboard.values()), mo, "Vẫn sao chép link để dự phòng")
                 self.assertIn("Đang mở trang lấy key", p.trang_thai)
         # Executor chặn (báo lỗi) hoặc không có dịch vụ -> chỉ sao chép, báo rõ
@@ -816,7 +858,7 @@ class GiaiMaTest(unittest.TestCase):
             with self.subTest(so=so):
                 self.assertEqual(p.giai_ma(tao_ma("Tester", thoi_diem_ms=ms, so_quay=so))["soQuay"], so)
         # Cùng tên + thời điểm + số quay nhưng nonce khác -> key khác hẳn, đều dùng được
-        cac_ma = {tao_ma("Tester", so_quay=5, nonce=bytes([i % 256, i // 256]) + b"\0" * 10) for i in range(300)}
+        cac_ma = {tao_ma("Tester", so_quay=5, nonce=bytes([i % 256, i // 256]) + b"\0" * 14) for i in range(300)}
         self.assertEqual(len(cac_ma), 300)
         for ma in list(cac_ma)[:5]:
             self.assertEqual(Phien().thu_key(ma).so_lan_chay, 1)
@@ -824,19 +866,19 @@ class GiaiMaTest(unittest.TestCase):
     def test_moi_mili_giay_cho_key_khac_hoan_toan(self):
         p = Phien()
         goc = (BAY_GIO - 60) * 1000
-        nonce = b"\x01" * 12
+        nonce = b"\x01" * 16
         cac_ma = []
         for lech in range(0, 2000, 37):  # cùng tên, cùng số quay, CÙNG nonce, chỉ khác mili-giây
             ma = tao_ma("Tester", thoi_diem_ms=goc + lech, so_quay=123, nonce=nonce)
             self.assertEqual(p.giai_ma(ma)["thoiDiem"], (goc + lech) // 1000)
-            cac_ma.append(ma[len(PREFIX) + 16:])  # bỏ phần nonce (16 ký tự)
+            cac_ma.append(ma[len(PREFIX_V5) + 22:])  # bỏ phần nonce (16 byte ~ 22 ký tự)
         for a, b in zip(cac_ma, cac_ma[1:]):
             khac = sum(1 for x, y in zip(a, b) if x != y)
             self.assertGreater(khac, len(a) * 0.8, "Khác 1 mili-giây -> gần như toàn bộ key khác")
 
     def test_ten_khac_mot_ky_tu_key_khac_hoan_toan(self):
-        a = tao_ma("Aester", so_quay=1, nonce=b"\x02" * 12)[len(PREFIX) + 16:]
-        b = tao_ma("Bester", so_quay=1, nonce=b"\x02" * 12)[len(PREFIX) + 16:]
+        a = tao_ma("Aester", so_quay=1, nonce=b"\x02" * 16)[len(PREFIX_V5) + 22:]
+        b = tao_ma("Bester", so_quay=1, nonce=b"\x02" * 16)[len(PREFIX_V5) + 22:]
         khac = sum(1 for x, y in zip(a, b) if x != y)
         self.assertGreater(khac, len(a) * 0.8)
 
@@ -867,7 +909,7 @@ class GiaiMaTest(unittest.TestCase):
         p = Phien(script=SCRIPT_KHONG_V2).thu_key(tao_ma_v2("Tester"))
         self.assertEqual(p.so_lan_chay, 0)
         self.assertIn("cũ không còn dùng được", p.trang_thai)
-        self.assertIn("Free_v4_", p.trang_thai)
+        self.assertIn("Free_v5_", p.trang_thai)
         self.assertEqual(Phien(script=SCRIPT_KHONG_V2).thu_key(tao_ma("Tester")).so_lan_chay, 1)
 
     def test_key_v3_cu_khong_con_dung(self):
@@ -971,12 +1013,12 @@ class ThietBiTest(unittest.TestCase):
         p.bam("NutLayKey")
         p.bam("NutLayKey")
         link = list(p.log.clipboard.values())[0]
-        self.assertEqual(giai_ma_ten(link.split("?tk=")[1]), "Tao_Dep_01")
+        self.assertEqual(giai_ma_ten(link.split("?mahoa=")[1]), "Tao_Dep_01")
         p2 = PhienMang(khong_clipboard=True)
         p2.bam("NutLayKey")
         p2.bam("NutLayKey")
-        self.assertIn("taodepzai/?tk=", p2.trang_thai)
-        self.assertEqual(giai_ma_ten(p2.trang_thai.split("?tk=")[1]), "Tester")
+        self.assertIn("taodepzai/?mahoa=", p2.trang_thai)
+        self.assertEqual(giai_ma_ten(p2.trang_thai.split("?mahoa=")[1]), "Tester")
 
 
 class DoiMangTest(unittest.TestCase):
@@ -1081,6 +1123,90 @@ class DoiMangTest(unittest.TestCase):
         self.assertEqual(PhienMang().thu_key(ma).so_lan_chay, 0, "Bật KIEM_TRA_THIET_BI thì bắt cùng mạng")
 
 
+SCRIPT_KHONG_V4 = SCRIPT.replace("CHAP_NHAN_KEY_V4   = true,", "CHAP_NHAN_KEY_V4   = false,")
+SCRIPT_CAN_TEN_ROBLOX = SCRIPT.replace("YEU_CAU_TEN_TU_ROBLOX = false,", "YEU_CAU_TEN_TU_ROBLOX = true,")
+
+
+class PhienBan5Test(unittest.TestCase):
+    def test_cau_hinh_mac_dinh(self):
+        self.assertIn('KEY_PREFIX         = "Free_v5_"', SCRIPT)
+        self.assertNotEqual(SCRIPT_KHONG_V4, SCRIPT)
+        self.assertNotEqual(SCRIPT_CAN_TEN_ROBLOX, SCRIPT)
+        self.assertIn("Free_v5_", Phien().phan_tu("OKey").PlaceholderText)
+
+    def test_key_v5_dung_duoc_va_dai_hon_v4(self):
+        ma5, ma4 = tao_ma("Tester"), tao_ma_v4("Tester")
+        self.assertTrue(ma5.startswith("Free_v5_"))
+        self.assertGreaterEqual(len(ma5), len(ma4) + 28, "v5: nonce 128 bit + tag 256 bit + cờ (thêm 21 byte)")
+        for ma in (ma5, tao_ma("Tester", tu_roblox=True)):
+            p = Phien().thu_key(ma)
+            self.assertEqual(p.so_lan_chay, 1)
+            self.assertTrue(p.da_an_gui)
+
+    def test_key_v4_cu_van_nhan_hoac_tat(self):
+        self.assertEqual(Phien().thu_key(tao_ma_v4("Tester")).so_lan_chay, 1, "Trang main đang chạy tạo v4")
+        p = Phien(script=SCRIPT_KHONG_V4).thu_key(tao_ma_v4("Tester"))
+        self.assertEqual(p.so_lan_chay, 0)
+        self.assertIn("cũ không còn dùng được", p.trang_thai)
+        self.assertIn("Free_v5_", p.trang_thai)
+        self.assertEqual(Phien(script=SCRIPT_KHONG_V4).thu_key(tao_ma("Tester")).so_lan_chay, 1)
+
+    def test_tag_du_256_bit(self):
+        p = Phien()
+        ban_ro = ban_ro_v5("Tester", "nv4", (BAY_GIO - 60) * 1000, 5, THAN_TB)
+        nonce = b"\x09" * 16
+        tag = tag_v5(nonce, ban_ro)
+        self.assertEqual(len(tag), 32)
+        self.assertIsNotNone(p.giai_ma(ma_v5_tu_ban_ro(ban_ro, nonce, tag)))
+        for vt in (0, 15, 16, 24, 31):  # v4 chỉ kiểm 16 byte đầu; v5 kiểm đủ 32
+            with self.subTest(vt=vt):
+                sai = bytearray(tag)
+                sai[vt] ^= 1
+                self.assertIsNone(p.giai_ma(ma_v5_tu_ban_ro(ban_ro, nonce, bytes(sai))))
+
+    def test_tron_lan_phien_ban_bi_tu_choi(self):
+        p = Phien()
+        ma5, ma4 = tao_ma("Tester"), tao_ma_v4("Tester")
+        self.assertIsNone(p.giai_ma("Free_v4_" + ma5[8:]), "Thân v5 gắn nhãn v4")
+        self.assertIsNone(p.giai_ma("Free_v5_" + ma4[8:]), "Thân v4 gắn nhãn v5")
+        ms = (BAY_GIO - 60) * 1000
+        self.assertIsNone(p.giai_ma(ma_v5_tu_ban_ro(ban_ro_v5("Tester", "nv4", ms, 5, THAN_TB, phien_ban=4))))
+        for co in (2, 7, 255):
+            self.assertIsNone(p.giai_ma(ma_v5_tu_ban_ro(ban_ro_v5("Tester", "nv4", ms, 5, THAN_TB, co))), co)
+        # Đổi cờ nhưng giữ tag cũ -> tag sai (cờ nằm trong chuỗi trộn và bản rõ)
+        nonce = b"\x03" * 16
+        goc = ban_ro_v5("Tester", "nv4", ms, 5, THAN_TB, 0)
+        doi = ban_ro_v5("Tester", "nv4", ms, 5, THAN_TB, 1)
+        self.assertIsNone(p.giai_ma(ma_v5_tu_ban_ro(doi, nonce, tag_v5(nonce, goc))))
+        self.assertNotEqual(chuoi_tron5(goc), chuoi_tron5(doi))
+
+    def test_yeu_cau_ten_tu_link_ma_hoa(self):
+        p = Phien(script=SCRIPT_CAN_TEN_ROBLOX).thu_key(tao_ma("Tester"))
+        self.assertEqual(p.so_lan_chay, 0)
+        self.assertIn("tên gõ tay", p.trang_thai)
+        self.assertIn("Lấy key", p.trang_thai)
+        self.assertEqual(Phien(script=SCRIPT_CAN_TEN_ROBLOX).thu_key(tao_ma_v4("Tester")).so_lan_chay, 0)
+        self.assertEqual(Phien(script=SCRIPT_CAN_TEN_ROBLOX).thu_key(tao_ma("Tester", tu_roblox=True)).so_lan_chay, 1)
+        # Mặc định (false): tên gõ tay vẫn được
+        self.assertEqual(Phien().thu_key(tao_ma("Tester")).so_lan_chay, 1)
+
+    def test_link_lay_key_co_duoi_mahoa(self):
+        p = Phien(ten="Tao_Dep_01")
+        p.bam("NutLayKey")
+        p.bam("NutLayKey")
+        link = list(p.log.clipboard.values())[0]
+        self.assertRegex(link, r"^https://mncuadaigmailcom\.github\.io/taodepzai/\?mahoa=[A-Za-z0-9_-]{28,}$")
+        self.assertEqual(giai_ma_ten(link.split("?mahoa=")[1]), "Tao_Dep_01")
+        # LINK_LAY_KEY đã có "?" -> nối bằng "&mahoa="
+        s = SCRIPT.replace('LINK_LAY_KEY = "https://mncuadaigmailcom.github.io/taodepzai/"',
+                           'LINK_LAY_KEY = "https://vd.com/key?src=rb"')
+        p2 = Phien(script=s)
+        p2.bam("NutLayKey")
+        p2.bam("NutLayKey")
+        link2 = list(p2.log.clipboard.values())[0]
+        self.assertTrue(link2.startswith("https://vd.com/key?src=rb&mahoa="), link2)
+
+
 @unittest.skipUnless(CO_NODE, "Cần Node.js để đối chiếu với index.html")
 class DoiChieuIndexHtmlTest(unittest.TestCase):
     def test_ma_tu_index_html_duoc_chap_nhan(self):
@@ -1089,15 +1215,18 @@ class DoiChieuIndexHtmlTest(unittest.TestCase):
         for i, ten in enumerate(ten_thu):
             for nv, so in (("nv1", 0), ("nv4", 999), ("nv2", 314)):
                 cases.append([ten, nv, (BAY_GIO - 120) * 1000 + 7 + i, so, MA_TB.lower().replace("-", ""),
-                              nonce_mac_dinh(ten, nv, so).hex()])
+                              nonce_mac_dinh(ten, nv, so).hex(), so == 314])
         cac_ma = tao_ma_bang_index_html(cases)
-        for (ten, nv, t, so, _tb, nonce), ma in zip(cases, cac_ma):
+        for (ten, nv, t, so, _tb, nonce, tu_roblox), ma in zip(cases, cac_ma):
             with self.subTest(ten=ten, nv=nv):
-                self.assertEqual(ma, tao_ma(ten, nv, t, so, nonce=bytes.fromhex(nonce)), "Bản Python phải giống index.html")
-                self.assertTrue(ma.startswith(PREFIX))
+                self.assertEqual(ma, tao_ma(ten, nv, t, so, nonce=bytes.fromhex(nonce), tu_roblox=tu_roblox),
+                                 "Bản Python phải giống index.html")
+                self.assertTrue(ma.startswith("Free_v5_"))
                 p = Phien(ten="Tester", ten_hien_thi=ten.strip())
-                self.assertEqual(p.giai_ma(ma), {"ten": ten.strip(), "nhiemVu": nv, "thoiDiem": t // 1000,
-                                                 "soQuay": so, "thietBi": THAN_TB})
+                mong = {"ten": ten.strip(), "nhiemVu": nv, "thoiDiem": t // 1000, "soQuay": so, "thietBi": THAN_TB}
+                if tu_roblox:
+                    mong["tuRoblox"] = True
+                self.assertEqual(p.giai_ma(ma), mong)
                 self.assertEqual(p.thu_key(ma).so_lan_chay, 1)
 
     def test_ten_ma_hoa_tu_script_giai_duoc_bang_index_html(self):
@@ -1107,7 +1236,7 @@ class DoiChieuIndexHtmlTest(unittest.TestCase):
             p = Phien(ten=ten)
             p.bam("NutLayKey")
             p.bam("NutLayKey")
-            cac_tk.append(list(p.log.clipboard.values())[0].split("?tk=")[1])
+            cac_tk.append(list(p.log.clipboard.values())[0].split("?mahoa=")[1])
             mong.append(ten)
         tk0 = cac_tk[0]
         cac_tk += [tk0[:12] + ("A" if tk0[12] != "A" else "B") + tk0[13:], tk0[:-1], "abc", tk0 + "A",
@@ -1147,11 +1276,20 @@ console.log(JSON.stringify(JSON.parse(fs.readFileSync(0, 'utf8')).map(giaiMaTen)
             ten = "".join(ngau_nhien.choice(ky_tu) for _ in range(ngau_nhien.randint(1, 34))).strip() or "x"
             than = THAN_TB if ngau_nhien.random() < 0.8 else than_thiet_bi(str(ngau_nhien.random()))
             ma = tao_ma(ten, ngau_nhien.choice(["nv1", "nv2", "nv3", "nv4"]), ngau_nhien.randint(1, 2 ** 48 - 1),
-                        so_quay=ngau_nhien.randint(0, 999), thiet_bi=than, nonce=ngau_nhien.randbytes(12))
+                        so_quay=ngau_nhien.randint(0, 999), thiet_bi=than, nonce=ngau_nhien.randbytes(16),
+                        tu_roblox=ngau_nhien.random() < 0.5)
             r = ngau_nhien.random()
-            if r < 0.15:
+            if r < 0.1:
+                ma = tao_ma_v4(ten, "nv2", ngau_nhien.randint(1, 2 ** 48 - 1), thiet_bi=than,
+                               nonce=ngau_nhien.randbytes(12))
+            elif r < 0.2:  # v5: bản rõ sai định dạng (cả cờ > 1) nhưng tag đúng
+                ban_ro = bytearray(ban_ro_v5(ten, "nv1", 123456789, 5, than, 1))
+                vt = ngau_nhien.choice([0, 1, ngau_nhien.randrange(len(ban_ro))])
+                ban_ro[vt] = ngau_nhien.randrange(256)
+                ma = ma_v5_tu_ban_ro(ban_ro, ngau_nhien.randbytes(16))
+            elif r < 0.3:
                 ma = tao_ma_v2(ten)
-            elif r < 0.3:  # bản rõ sai định dạng nhưng tag đúng
+            elif r < 0.4:  # bản rõ sai định dạng nhưng tag đúng
                 ban_ro = bytearray(ban_ro_v4(ten, "nv1", 123456789, 5, than))
                 vt = ngau_nhien.randrange(len(ban_ro))
                 ban_ro[vt] = ngau_nhien.randrange(256)
@@ -1173,6 +1311,8 @@ console.log(JSON.stringify(JSON.parse(fs.readFileSync(0, 'utf8')).map(giaiMaTen)
             for k in ("soQuay", "thietBi"):
                 if k in js:
                     mong_doi[k] = js[k]
+            if js.get("tuRoblox"):
+                mong_doi["tuRoblox"] = True
             self.assertEqual(lua, mong_doi, ma)
         self.assertGreater(so_hop_le, 80)
 

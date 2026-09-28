@@ -1,12 +1,13 @@
 #!/usr/bin/env node
-// Đọc mã Free_v4_ (và Free_v2_ cũ) của index.html bằng module crypto của Node
+// Đọc mã Free_v5_ (và Free_v4_ / Free_v2_ cũ) của index.html bằng module crypto của Node
 // (cài đặt độc lập với bản SHA-256 tự viết trong index.html / key-system.lua để đối chiếu).
 // Chỉ dành cho chủ trang: cần BI_MAT_V4. KHÔNG xác minh ai đã làm nhiệm vụ.
 const crypto = require('node:crypto');
 
 const PREFIX_V2 = 'Free_v2_';
 const PREFIX_V4 = 'Free_v4_';
-const INVALID = 'Mã không hợp lệ hoặc không thuộc bản Free_v4_/Free_v2_.';
+const PREFIX_V5 = 'Free_v5_';
+const INVALID = 'Mã không hợp lệ hoặc không thuộc bản Free_v5_/Free_v4_/Free_v2_.';
 
 // Phải khớp BI_MAT_V4 trong index.html và key-system.lua.
 const BI_MAT_V4 = 'z!V~~RO3mS2dCMvW-GE@#v2XYYuLsNoQKS5U0pGeAY5EOkd_';
@@ -28,6 +29,18 @@ function chuoiTron(p) {
 }
 // tag = HMAC(khoá con = HMAC(BI_MAT, chuỗi trộn), 'tdz4|tag|' + nonce + P)
 const tagV4 = (nonce, p) => hmacVoiKhoa(hmac(chuoiTron(p)), 'tdz4|tag|', nonce, p).subarray(0, 16);
+
+// v5: P = [5, cờ tên từ Roblox, số quay 2B, ms 6B, nv, thiết bị 10, tên]; nonce 16, tag 32 (đủ 256 bit)
+// chuỗi trộn = 'tdz5|tron|' + mã mạng + '|' + tên + '|' + ngày giờ UTC + '|' + số quay + '|' + cờ
+function chuoiTron5(p) {
+    const ms = p.readUIntBE(4, 6);
+    const d = new Date(ms), so = (n, dai = 2) => String(n).padStart(dai, '0');
+    const ngayGio = `${so(d.getUTCFullYear(), 4)}-${so(d.getUTCMonth() + 1)}-${so(d.getUTCDate())} ` +
+        `${so(d.getUTCHours())}:${so(d.getUTCMinutes())}:${so(d.getUTCSeconds())}.${so(d.getUTCMilliseconds(), 3)}`;
+    return Buffer.concat([Buffer.from('tdz5|tron|'), p.subarray(11, 21), Buffer.from('|'), p.subarray(21),
+        Buffer.from(`|${ngayGio}|${String(p[2] * 256 + p[3]).padStart(3, '0')}|${p[1]}`)]);
+}
+const tagV5 = (nonce, p) => hmacVoiKhoa(hmac(chuoiTron5(p)), 'tdz5|tag|', nonce, p);
 
 function layBit(bytes, tu, so) {
     let v = 0;
@@ -74,6 +87,37 @@ function taoMaV4(ten, nhiemVu, thoiDiem, soQuay, maThietBi, nonce = crypto.rando
     const dong = dongKhoa(hmac('tdz4|enc|', nonce, tag), p.length);
     const c = p.map((b, i) => b ^ dong[i]);
     return PREFIX_V4 + Buffer.concat([Buffer.from(nonce), tag, c]).toString('base64url');
+}
+
+// Bộ tạo key v5 độc lập (test đối chiếu với index.html / key-system.lua)
+function taoMaV5(ten, nhiemVu, thoiDiem, soQuay, maThietBi, tuRoblox = false, nonce = crypto.randomBytes(16)) {
+    const than = chuanHoaMaThietBi(maThietBi);
+    if (!than) throw new Error('Mã thiết bị không hợp lệ');
+    const ms = Buffer.alloc(6);
+    ms.writeUIntBE(thoiDiem, 0, 6);
+    const p = Buffer.concat([Buffer.from([5, tuRoblox ? 1 : 0, soQuay >> 8, soQuay & 255]), ms,
+        Buffer.from([Number(nhiemVu.slice(2))]), Buffer.from(than), Buffer.from(ten.trim(), 'utf8')]);
+    const tag = tagV5(nonce, p);
+    const dong = dongKhoa(hmac('tdz5|enc|', nonce, tag), p.length);
+    return PREFIX_V5 + Buffer.concat([Buffer.from(nonce), tag, p.map((b, i) => b ^ dong[i])]).toString('base64url');
+}
+
+function giaiMaV5(noiDung) {
+    const raw = docBase64Url(noiDung);
+    const coDinh = 16 + 32 + 21;
+    if (raw.length < coDinh + 1 || raw.length > coDinh + 128) throw new Error(INVALID);
+    const nonce = raw.subarray(0, 16), tag = raw.subarray(16, 48), c = raw.subarray(48);
+    const dong = dongKhoa(hmac('tdz5|enc|', nonce, tag), c.length);
+    const p = c.map((b, i) => b ^ dong[i]);
+    if (!crypto.timingSafeEqual(tagV5(nonce, p), tag) || p[0] !== 5 || p[1] > 1) throw new Error(INVALID);
+    const soQuay = p[2] * 256 + p[3];
+    const thoiDiem = p.readUIntBE(4, 6);
+    const nv = p[10];
+    const thietBi = p.subarray(11, 21).toString('latin1');
+    if (soQuay > 999 || thoiDiem <= 0 || thoiDiem > 8.64e15 || nv < 1 || nv > 4 ||
+        !/^[0-9A-HJKMNP-TV-Z]{10}$/.test(thietBi)) throw new Error(INVALID);
+    return { ten: kiemTraTen(p.subarray(21)), nhiemVu: `nv${nv}`, thoiDiem, soQuay, thietBi,
+        phienBan: 5, tuRoblox: p[1] === 1 };
 }
 
 function docBase64Url(noiDung) {
@@ -139,6 +183,7 @@ function giaiMaTen(tk) {
 function giaiMaDemo(ma) {
     if (typeof ma !== 'string') throw new Error(INVALID);
     try {
+        if (ma.startsWith(PREFIX_V5)) return giaiMaV5(ma.slice(PREFIX_V5.length));
         if (ma.startsWith(PREFIX_V4)) return giaiMaV4(ma.slice(PREFIX_V4.length));
         if (ma.startsWith(PREFIX_V2)) return giaiMaV2(ma.slice(PREFIX_V2.length));
     } catch {
@@ -149,11 +194,12 @@ function giaiMaDemo(ma) {
 
 if (require.main === module) {
     if (process.argv.length !== 3) {
-        console.error('Cách dùng: node tools/decode-demo.cjs "Free_v4_..."');
+        console.error('Cách dùng: node tools/decode-demo.cjs "Free_v5_..."');
         process.exitCode = 1;
     } else {
         try {
-            const { ten, nhiemVu, thoiDiem, soQuay, thietBi } = giaiMaDemo(process.argv[2]);
+            const { ten, nhiemVu, thoiDiem, soQuay, thietBi, tuRoblox } = giaiMaDemo(process.argv[2]);
+            if (tuRoblox !== undefined) console.log(`Tên lấy từ link mã hoá của Roblox: ${tuRoblox ? 'có' : 'không'}`);
             console.log(`Tên người chơi: ${JSON.stringify(ten)}`);
             console.log(`Nhiệm vụ hoàn thành cuối: ${nhiemVu}`);
             console.log(`Thời điểm hoàn thành (UTC): ${new Date(thoiDiem).toISOString()}`);
@@ -169,4 +215,4 @@ if (require.main === module) {
     }
 }
 
-module.exports = { taoMaTen, giaiMaTen, chuoiTron, giaiMaDemo, taoMaV4, maThietBiTuGoc, chuanHoaMaThietBi };
+module.exports = { taoMaTen, giaiMaTen, chuoiTron, chuoiTron5, giaiMaDemo, taoMaV4, taoMaV5, maThietBiTuGoc, chuanHoaMaThietBi };

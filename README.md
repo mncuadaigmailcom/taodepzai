@@ -2,7 +2,7 @@
 
 Trang HTML tĩnh tại `index.html`. Mở tệp trong trình duyệt hoặc chạy `python3 -m http.server 8000` để xem trên máy. Chạy kiểm thử bằng `node --test tests/portal.test.cjs`.
 
-## Mã Free_v4_ (mã hoá HMAC-SHA256 + mã thiết bị)
+## Mã Free_v5_ (mã hoá HMAC-SHA256 + mã thiết bị + tên mã hoá từ Roblox)
 
 Để tạo key, người dùng chỉ cần nhập **tên người chơi** và hoàn thành 4 nhiệm vụ. **Mã mạng được lấy ngầm theo IP của điện thoại** (4G, 5G hoặc wifi), không cần nhập và không hiện ở đâu:
 
@@ -12,27 +12,31 @@ Trang HTML tĩnh tại `index.html`. Mở tệp trong trình duyệt hoặc ch�
 - **Chuỗi trộn:** mã mạng + tên + ngày tháng năm giờ phút giây mili giây (UTC) + số quay ghép thành một chuỗi riêng, rồi băm thành **khoá con** để mã hoá key (xem bên dưới).
 - **Đổi mạng vẫn dùng được:** mặc định script Roblox **không** bắt cùng mạng (`KIEM_TRA_THIET_BI = false`) và không gọi dịch vụ IP nào. Lấy key xong chuyển từ wifi sang 4G/5G (hoặc ngược lại) vẫn xác nhận được, key đã lưu vẫn tự điền.
   - Muốn bắt buộc cùng mạng thì đặt `KIEM_TRA_THIET_BI = true`: script sẽ tự lấy IP và từ chối key tạo ở mạng khác.
-- Nhấn nút **Lấy key** trong game **2 lần (trong 3 giây)** để sao chép link trang kèm `?tk=...`: **tên người chơi đã mã hoá** (nonce ngẫu nhiên 8 byte + tag HMAC-SHA256 12 byte + tên XOR dòng khoá SHA-256), nên link không lộ tên và mỗi lần nhấn cho một link khác. Nhấn 1 lần chỉ nhắc nhấn thêm lần nữa. Script **thử tự mở trang** (`GuiService`/`BrowserService:OpenBrowserWindow`, tắt bằng `TU_MO_TRINH_DUYET = false`), nhưng Roblox chỉ cho script lõi dùng các hàm này và đa số executor chặn chúng, nên thường không tự mở được: khi đó link đã được sao chép, dán vào trình duyệt.
-- Trang giải mã `?tk=`: nếu **hợp lệ** (tag khớp, UTF-8 đúng, 1–32 ký tự) thì tự điền tên và **ẩn luôn phần nhập tên** (chỉ báo "Đã tự nhập tên người chơi từ Roblox"). Tên cũng được ẩn trong hộp thoại key. F5 vẫn giữ ẩn. Link bị sửa / bịa thì không điền tên, vẫn hiện ô nhập tên và báo lỗi. Tên đang khoá (đã lấy key cho tên khác) thì link `?tk=` tên khác bị bỏ qua. Link cũ `?ten=...` (tên thường) vẫn tự điền nhưng không ẩn ô nhập tên. Nếu trình duyệt không tự mở: vào trang lấy key rồi **dán link (hoặc tên mã hoá) vào ô tên người chơi**, hoặc nhấn nút **📋 Dán tên mã hoá từ Roblox**. Hợp lệ thì trang cũng tự điền tên và ẩn phần nhập tên. Sau khi tạo link, bảng script cũng ẩn tên người chơi (hiện "🔒 đã mã hoá"). Trang đọc xong thì xoá tham số khỏi thanh địa chỉ.
+- Nhấn nút **Lấy key** trong game **2 lần (trong 3 giây)** để sao chép link trang có đuôi `?mahoa=...`: phần sau `mahoa=` là **tên người chơi đã mã hoá** (nonce ngẫu nhiên 8 byte + tag HMAC-SHA256 12 byte + tên XOR dòng khoá SHA-256), nên link không lộ tên và mỗi lần nhấn cho một link khác. Nhấn 1 lần chỉ nhắc nhấn thêm lần nữa. Script **thử tự mở trang** (`GuiService`/`BrowserService:OpenBrowserWindow`, tắt bằng `TU_MO_TRINH_DUYET = false`), nhưng Roblox chỉ cho script lõi dùng các hàm này và đa số executor chặn chúng, nên thường không tự mở được: khi đó link đã được sao chép, dán vào trình duyệt.
+- Trang giải mã `?mahoa=` (link cũ `?tk=` vẫn nhận): nếu **hợp lệ** (tag khớp, UTF-8 đúng, 1–32 ký tự) thì tự điền tên và **ẩn luôn phần nhập tên** (chỉ báo "Đã tự nhập tên người chơi từ Roblox"). Tên cũng được ẩn trong hộp thoại key. F5 vẫn giữ ẩn. Link bị sửa / bịa thì không điền tên, vẫn hiện ô nhập tên và báo lỗi. Tên đang khoá (đã lấy key cho tên khác) thì link `?mahoa=` tên khác bị bỏ qua. Link cũ `?ten=...` (tên thường) vẫn tự điền nhưng không ẩn ô nhập tên. Nếu trình duyệt không tự mở: vào trang lấy key rồi **dán link (hoặc tên mã hoá) vào ô tên người chơi**, hoặc nhấn nút **📋 Dán tên mã hoá từ Roblox**. Hợp lệ thì trang cũng tự điền tên và ẩn phần nhập tên. Sau khi tạo link, bảng script cũng ẩn tên người chơi (hiện "🔒 đã mã hoá"). Trang đọc xong thì xoá tham số khỏi thanh địa chỉ.
+- **Link lấy key của bạn:** trang tự biết địa chỉ của chính nó (github.io, githack...) và hiện ô **🔗 Link lấy key của bạn** = địa chỉ trang + `?mahoa=<tên đã mã hoá>`, có nút Sao chép. Lưu link này: lần sau mở là tên tự điền và phần nhập tên được ẩn. Link chỉ tạo lại khi đổi tên.
 - **Không hiện ngày giờ ở đâu cả.** Dòng dưới vòng quay chỉ còn chữ mô tả cố định. Thời điểm, tên và mã thiết bị chỉ nằm trong key ở dạng đã mã hoá.
-- **Vòng quay 3 số:** mỗi lần quay sẽ đổi số và đổi **nonce ngẫu nhiên 96 bit** (`crypto.getRandomValues`), nên key luôn khác, kể cả khi trùng số. Key vẫn giữ nguyên sau F5; làm mới phiên thì đổi nonce.
+- **Vòng quay 3 số:** mỗi lần quay sẽ đổi số và đổi **nonce ngẫu nhiên 128 bit** (`crypto.getRandomValues`), nên key luôn khác, kể cả khi trùng số. Key vẫn giữ nguyên sau F5; làm mới phiên thì đổi nonce.
 
 Cấu trúc key (`taoMaDemo`, nằm giữa hai dòng `// === MÃ HOÁ V4 ... ===` trong `index.html`). Phần này giống hệt `key-system.lua`, `tools/decode-demo.cjs` (dùng `node:crypto`) và bản Python trong test:
 
 ```
-Free_v4_ + base64url( nonce 12 byte | tag 16 byte | bản mã )
-bản rõ = [4, số quay (2 byte), thời điểm ms (6 byte), nhiệm vụ 1–4, mã thiết bị (10 ký tự), tên UTF-8]
-chuỗi trộn = "tdz4|tron|" + mã mạng + "|" + tên + "|" + "YYYY-MM-DD HH:MM:SS.mmm" (UTC) + "|" + số quay (3 chữ số)
+Free_v5_ + base64url( nonce 16 byte | tag 32 byte | bản mã )
+bản rõ = [5, cờ tên từ link mã hoá Roblox (0/1), số quay (2 byte), thời điểm ms (6 byte), nhiệm vụ 1–4,
+          mã thiết bị (10 ký tự), tên UTF-8]
+chuỗi trộn = "tdz5|tron|" + mã mạng + "|" + tên + "|" + "YYYY-MM-DD HH:MM:SS.mmm" (UTC) + "|" + số quay (3 chữ số) + "|" + cờ
 khoá con   = HMAC-SHA256(BI_MAT_V4, chuỗi trộn)
-tag    = HMAC-SHA256(khoá con, "tdz4|tag|" + nonce + bản rõ)[0..16]
-khoá   = HMAC-SHA256(BI_MAT_V4, "tdz4|enc|" + nonce + tag)
+tag    = HMAC-SHA256(khoá con, "tdz5|tag|" + nonce + bản rõ)          (đủ 32 byte = 256 bit)
+khoá   = HMAC-SHA256(BI_MAT_V4, "tdz5|enc|" + nonce + tag)
 bản mã = bản rõ XOR SHA256(khoá + 0) SHA256(khoá + 1) ...
 ```
 
+Bản `Free_v4_` cũ (trang main đang chạy): nonce 12 byte, tag 16 byte, nhãn `tdz4`, không có cờ. Script vẫn nhận (`CHAP_NHAN_KEY_V4 = true`; đặt `false` khi trang đã lên v5). Đặt `YEU_CAU_TEN_TU_ROBLOX = true` nếu chỉ muốn nhận key v5 tạo bằng tên lấy từ link `?mahoa=` (không nhận tên gõ tay).
+
 - **Không đọc được bằng mắt:** nhìn key không biết tên, ngày giờ hay mã thiết bị.
 - **Thay đổi nhỏ làm key khác hẳn:** chỉ khác 1 mili-giây hay 1 chữ trong tên thì gần như toàn bộ key đổi.
-- **Không sửa hay bịa được bằng tay:** tag có 128 bit, nên sửa 1 ký tự hoặc tự bịa key đều bị phát hiện.
-- **Độ dài:** key dài khoảng 75–240 ký tự, tuỳ độ dài tên.
+- **Không sửa hay bịa được bằng tay:** tag có 256 bit, nên sửa 1 ký tự hoặc tự bịa key đều bị phát hiện.
+- **Độ dài:** key dài khoảng 105–270 ký tự, tuỳ độ dài tên.
 
 **Giới hạn:** `BI_MAT_V4` vẫn nằm trong mã nguồn trang (trang tĩnh không giấu được bí mật). Người đọc code vẫn có thể tự viết chương trình tạo key. Muốn chặn hẳn cần máy chủ cấp key giữ bí mật riêng.
 
@@ -54,15 +58,15 @@ Bốn nhiệm vụ xếp thành một cột. Người dùng **phải nhập tên
 - Giới hạn: khoá lưu trong trình duyệt (localStorage). Xoá dữ liệu trang, dùng tab ẩn danh hoặc trình duyệt khác thì không còn khoá.
 - Chưa nhập tên: không mở khoá được key; phải chờ hết phiên (hoặc làm mới phiên) rồi nhập tên và làm lại nhiệm vụ.
 
-Khi một nhiệm vụ hoàn thành, thời điểm hoàn thành được lưu trong trình duyệt. Sau 4/4, trang lấy **thời điểm của nhiệm vụ hoàn thành cuối cùng** và ID nhiệm vụ đó cùng tên người chơi để tạo mã `Free_v4_...` (đã mã hoá, xem trên). Mã ổn định sau F5 nếu vẫn cùng tên, phiên và số vòng quay; đổi tên, bấm **🎰 Quay số mới** hoặc tạo phiên mới sẽ tạo mã khác. Tên được lưu trong trình duyệt và giữ lại khi reset phiên, còn trạng thái nhiệm vụ và mốc thời gian được reset sau 3 phút hoặc khi bấm nút làm mới. Bản sao của mã đã gửi đi vẫn có thể đọc được sau khi reset.
+Khi một nhiệm vụ hoàn thành, thời điểm hoàn thành được lưu trong trình duyệt. Sau 4/4, trang lấy **thời điểm của nhiệm vụ hoàn thành cuối cùng** và ID nhiệm vụ đó cùng tên người chơi để tạo mã `Free_v5_...` (đã mã hoá, xem trên). Mã ổn định sau F5 nếu vẫn cùng tên, phiên và số vòng quay; đổi tên, bấm **🎰 Quay số mới** hoặc tạo phiên mới sẽ tạo mã khác. Tên được lưu trong trình duyệt và giữ lại khi reset phiên, còn trạng thái nhiệm vụ và mốc thời gian được reset sau 3 phút hoặc khi bấm nút làm mới. Bản sao của mã đã gửi đi vẫn có thể đọc được sau khi reset.
 
 Để đọc tên từ **mã demo mới**, tại thư mục repo chạy:
 
 ```bash
-node tools/decode-demo.cjs 'Free_v4_...'
+node tools/decode-demo.cjs 'Free_v5_...'
 ```
 
-Công cụ này chỉ dành cho chủ trang (cần `BI_MAT_V4`). Nó in ra tên gốc, ID nhiệm vụ cuối, thời điểm hoàn thành dạng UTC, số vòng quay và mã thiết bị. Mã `Free_v2_` cũ vẫn đọc được. Các mã cũ có **14 ký tự sau `Free_`** là hash một chiều, **không thể đọc ngược tên**; hãy dùng bản trang mới để tạo mã `Free_v4_...` (nếu phiên cũ đã hết hạn, cần làm lại bốn nhiệm vụ). Công cụ không xác nhận được mã có thật hoặc người chơi đã làm nhiệm vụ: ai đọc mã nguồn cũng có thể tự tạo mã giả.
+Công cụ này chỉ dành cho chủ trang (cần `BI_MAT_V4`). Nó in ra tên gốc, ID nhiệm vụ cuối, thời điểm hoàn thành dạng UTC, số vòng quay và mã thiết bị. Mã `Free_v4_` / `Free_v2_` cũ vẫn đọc được; với v5 còn in có phải tên lấy từ link mã hoá không. Các mã cũ có **14 ký tự sau `Free_`** là hash một chiều, **không thể đọc ngược tên**; hãy dùng bản trang mới để tạo mã `Free_v5_...` (nếu phiên cũ đã hết hạn, cần làm lại bốn nhiệm vụ). Công cụ không xác nhận được mã có thật hoặc người chơi đã làm nhiệm vụ: ai đọc mã nguồn cũng có thể tự tạo mã giả.
 
 Trang vẫn có đếm ngược, reset thủ công/tự động, thông báo, hiệu ứng 3D, sao chép mã demo và sao chép script cũ. Tên trên cửa sổ nhận mã được thu gọn theo mặc định để không lộ ngay khi chia sẻ ảnh; trường tên trong trang chính vẫn hiển thị khi người dùng nhập.
 
@@ -70,7 +74,7 @@ Trang vẫn có đếm ngược, reset thủ công/tự động, thông báo, hi
 
 ## Script nhập key cho Roblox (`key-system.lua`)
 
-Script mở bảng nhập key trong game. Nó giải mã key `Free_v4_...` bằng cùng thuật toán (SHA-256 dùng `bit32` của Roblox; không có `bit32` thì tự tính) rồi kiểm tra các điều dưới đây.
+Script mở bảng nhập key trong game. Nó giải mã key `Free_v5_...` (và `Free_v4_` cũ) bằng cùng thuật toán (SHA-256 dùng `bit32` của Roblox; không có `bit32` thì tự tính) rồi kiểm tra các điều dưới đây.
 
 Mặc định script nhận **cả key `Free_v2_`** của trang đang chạy trên GitHub Pages trước khi merge bản mới. Key v2 **không có mã thiết bị**, nhưng vẫn phải đúng tên và còn hạn. Khi trang đã lên bản v4, hãy đặt `CHAP_NHAN_KEY_V2 = false` để bắt buộc mã thiết bị. Key `Free_v3_` cũ không còn được nhận.
 
@@ -86,7 +90,7 @@ Mặc định script nhận **cả key `Free_v2_`** của trang đang chạy tr�
 
 **Lưu key:** key xác nhận thành công được lưu vào file của executor (`writefile`), mỗi tài khoản một file `taodepzai_key_<UserId>.txt`. Lần sau mở script, key còn hạn được **tự điền vào ô nhập** (vẫn cần bấm Xác nhận). Khi key hết hạn 24 giờ (tính từ lúc hoàn thành nhiệm vụ cuối), key **tự bị xoá** khỏi file: ngay lúc hết hạn nếu game còn mở (xoá cả trong ô nhập nếu bảng đang hiện), hoặc lúc mở lại script. Key sai không ghi đè key đã lưu. Executor không có `writefile` thì script vẫn chạy, chỉ không lưu được.
 
-Khi hợp lệ, bảng báo thời gian còn lại, **xoá giao diện nhập key** rồi tải và chạy `https://mncuadaigmailcom.github.io/aiaiaitao2/script.js`. Nếu tải lỗi hoặc script lỗi cú pháp, bảng vẫn giữ lại để thử lại. Có thể nhấn Enter để xác nhận. Nhấn nút “Lấy key” 2 lần để sao chép link trang tạo mã kèm tên người chơi đã mã hoá (`?tk=`); trang tự điền tên và ẩn phần nhập tên.
+Khi hợp lệ, bảng báo thời gian còn lại, **xoá giao diện nhập key** rồi tải và chạy `https://mncuadaigmailcom.github.io/aiaiaitao2/script.js`. Nếu tải lỗi hoặc script lỗi cú pháp, bảng vẫn giữ lại để thử lại. Có thể nhấn Enter để xác nhận. Nhấn nút “Lấy key” 2 lần để sao chép link trang tạo mã có đuôi `?mahoa=<tên người chơi đã mã hoá>`; trang tự điền tên và ẩn phần nhập tên.
 
 Sau khi GitHub Pages cập nhật, chạy trong executor:
 

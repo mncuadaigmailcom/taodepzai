@@ -3,7 +3,7 @@
 
 - Key Free_v2_: sinh bằng hàm taoMaDemo của trang v2 cũ (commit 4a1f602).
 - Key Free_v4_ của trang đang chạy (nhánh origin/main, nếu đã lên v4).
-- Key Free_v4_: sinh bằng hàm taoMaDemo của index.html hiện tại (SHA-256 dùng bit32 thật của Luau).
+- Key Free_v5_: sinh bằng hàm taoMaDemo của index.html hiện tại (SHA-256 dùng bit32 thật của Luau).
 
 Cần: binary `luau` (đặt biến môi trường LUAU=/đường/dẫn/luau hoặc có trong PATH), Node.js, git.
 Build Luau: git clone https://github.com/luau-lang/luau && cd luau && make config=release luau
@@ -63,11 +63,13 @@ def tao_v4_trang_main(cases):
     return json.loads(ra.stdout)
 
 
-def tao_v4(cases):
-    """[tên, nhiệm vụ, ms, số quay, mã thiết bị?] -> key từ index.html (nonce ngẫu nhiên nhưng cố định theo seed)."""
+def tao_v5(cases):
+    """[tên, nhiệm vụ, ms, số quay, mã thiết bị?, cờ tên từ Roblox?] -> key Free_v5_ từ index.html hiện tại
+    (nonce 16 byte ngẫu nhiên nhưng cố định theo seed)."""
     ngau_nhien = random.Random(len(cases))
     return k.tao_ma_bang_index_html([[c[0], c[1], c[2], c[3], c[4] if len(c) > 4 else k.MA_TB,
-                                      ngau_nhien.randbytes(12).hex()] for c in cases])
+                                      ngau_nhien.randbytes(16).hex(), c[5] if len(c) > 5 else False]
+                                     for c in cases])
 
 
 def chuoi_luau(s):
@@ -144,7 +146,7 @@ class LuauThatTest(unittest.TestCase):
         t = (NOW - 120) * 1000 + 345
         v2 = tao_ma_trang_main([["Tester", "nv4", t], ["NguoiKhac", "nv4", t],
                                 ["Tester", "nv1", (NOW - k.NGAY - 5) * 1000]])
-        v3 = tao_v4([["Tester", "nv4", t, 58], ["NguoiKhac", "nv2", t, 999],
+        v3 = tao_v5([["Tester", "nv4", t, 58], ["NguoiKhac", "nv2", t, 999],
                      ["Tester", "nv3", (NOW - k.NGAY - 5) * 1000, 0], ["tester", "nv1", t, 0],
                      ["Tester", "nv4", t, 1, k.ma_thiet_bi("ip:14.232.7.9")]])
         sua = v3[0][:20] + ("A" if v3[0][20] != "A" else "B") + v3[0][21:]
@@ -177,16 +179,39 @@ class LuauThatTest(unittest.TestCase):
         if cac_ma is None:
             self.skipTest("origin/main chưa có trang v4")
         for c, ma in zip(cases, cac_ma):
-            self.assertEqual(ma, k.tao_ma(c[0], c[1], c[2], c[3], thiet_bi=k.than_thiet_bi("ip:14.232.7.9")
+            self.assertEqual(ma, k.tao_ma_v4(c[0], c[1], c[2], c[3], thiet_bi=k.than_thiet_bi("ip:14.232.7.9")
                                           if c[4] != k.MA_TB else k.THAN_TB, nonce=bytes.fromhex(c[5])),
                              "Trang main phải cùng thuật toán với script")
         kq = chay_luau("\n".join(f"do local n, tt = thu({chuoi_luau(ma)}) ra({json.dumps(str(i))}, n, tt) end"
                                  for i, ma in enumerate(cac_ma)))
         self.assertEqual([kq[str(i)][0] for i in range(3)], ["1", "1", "0"], kq)
 
+    def test_key_v5_co_ten_tu_roblox_trong_luau(self):
+        t = (NOW - 60) * 1000
+        ma_co, ma_khong = tao_v5([["Tester", "nv4", t, 7, k.MA_TB, True], ["Tester", "nv3", t, 8, k.MA_TB, False]])
+        # Sửa byte cuối của tag 256 bit (v4 không kiểm phần này)
+        ban_ro = k.ban_ro_v5("Tester", "nv4", t, 7, k.THAN_TB, 1)
+        nonce = b"\x05" * 16
+        tag = bytearray(k.tag_v5(nonce, ban_ro))
+        tag[31] ^= 0x80
+        sua_tag = k.ma_v5_tu_ban_ro(ban_ro, nonce, bytes(tag))
+        than = f"""
+local p = mo({{ ten = "Tester", gio_may = {NOW} }})
+local a, b = p.api.GiaiMaKey({chuoi_luau(ma_co)}), p.api.GiaiMaKey({chuoi_luau(ma_khong)})
+ra("co", a.phienBan, tostring(a.tuRoblox), a.soQuay)
+ra("khong", b.phienBan, tostring(b.tuRoblox), b.soQuay)
+ra("sua_tag", tostring(p.api.GiaiMaKey({chuoi_luau(sua_tag)})))
+do local n, tt = thu({chuoi_luau(ma_co)}) ra("chay", n) end
+"""
+        kq = chay_luau(than)
+        self.assertEqual(kq["co"], ["5", "true", "7"])
+        self.assertEqual(kq["khong"], ["5", "false", "8"])
+        self.assertEqual(kq["sua_tag"], ["nil"])
+        self.assertEqual(kq["chay"], ["1"])
+
     def test_luu_key_tu_dien_va_tu_xoa(self):
         t = (NOW - k.NGAY + 600) * 1000  # còn 10 phút
-        ma = tao_v4([["Tester", "nv4", t, 314]])[0]
+        ma = tao_v5([["Tester", "nv4", t, 314]])[0]
         than = f"""
 local o_dia = {{}}
 local n = thu({chuoi_luau(ma)}, nil, o_dia)
@@ -204,7 +229,7 @@ ra("tu_xoa", p.o.Text, o_dia["taodepzai_key_12345.txt"] or "<đã xoá>", p.tt.T
         self.assertIn("tự xoá", kq["tu_xoa"][2])
 
     def test_gio_may_chu_trong_luau(self):
-        ma = tao_v4([["Tester", "nv4", (NOW - 2 * k.NGAY) * 1000, 1]])[0]
+        ma = tao_v5([["Tester", "nv4", (NOW - 2 * k.NGAY) * 1000, 1]])[0]
         than = (f"do local n, tt = thu({chuoi_luau(ma)}, {{ ten = 'Tester', gio_may = {NOW - 2 * k.NGAY + 30}, "
                 f"gio_may_chu = {NOW}.5 }}) ra('x', n, tt) end")
         kq = chay_luau(than)
@@ -219,7 +244,7 @@ ra("tu_xoa", p.o.Text, o_dia["taodepzai_key_12345.txt"] or "<đã xoá>", p.tt.T
             t = ngau_nhien.randint(1, 4_000_000_000_000)
             cases.append([ten, ngau_nhien.choice(["nv1", "nv2", "nv3", "nv4"]), t, ngau_nhien.randint(0, 999)])
             v2_cases.append([ten, "nv2", t])
-        cac_ma = tao_v4(cases) + tao_ma_trang_main(v2_cases)
+        cac_ma = tao_v5(cases) + tao_ma_trang_main(v2_cases)
         for i in range(0, len(cac_ma), 5):  # thêm vài key bị sửa
             ma = cac_ma[i]
             cac_ma.append(ma[:12] + ("x" if ma[12] != "x" else "y") + ma[13:])
@@ -271,15 +296,15 @@ ra("ten_co_dinh", p.api.MaHoaTen("Tester", {1, 2, 3, 4, 5, 6, 7, 8}),
         self.assertEqual(kq["mat_mang"][0], "nil")
         self.assertIn("chưa lấy được", kq["mat_mang"][1])
         self.assertEqual(kq["link1"], ["nil"], "Nhấn 1 lần chưa sao chép link")
-        self.assertTrue(kq["link"][0].startswith("https://mncuadaigmailcom.github.io/taodepzai/?tk="))
-        self.assertEqual(k.giai_ma_ten(kq["link"][0].split("?tk=")[1]), "Tester")
+        self.assertTrue(kq["link"][0].startswith("https://mncuadaigmailcom.github.io/taodepzai/?mahoa="))
+        self.assertEqual(k.giai_ma_ten(kq["link"][0].split("?mahoa=")[1]), "Tester")
         self.assertEqual(kq["ten_co_dinh"], [k.tao_ma_ten("Tester", bytes(range(1, 9))),
                                              k.tao_ma_ten("Nguyễn Văn Tèo 🎮 abcdefghijklmnopqrstuvwxyz",
                                                           bytes([255, 0, 128, 7, 9, 200, 3, 64]))])
 
     def test_key_mang_khac_trong_luau(self):
         t = (NOW - 60) * 1000
-        ma = tao_v4([["Tester", "nv4", t, 5, k.ma_thiet_bi("ip:14.232.7.9")]])[0]
+        ma = tao_v5([["Tester", "nv4", t, 5, k.ma_thiet_bi("ip:14.232.7.9")]])[0]
         than = f"""
 do local n, tt = thu({chuoi_luau(ma)}) ra("khac", n, tt) end
 do local n, tt = thu({chuoi_luau(ma)}, {{ ten = "Tester", gio_may = {NOW}, ip = "14.232.7.9" }}) ra("dung", n, tt) end
