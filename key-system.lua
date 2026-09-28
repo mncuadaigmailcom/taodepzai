@@ -541,7 +541,7 @@ end
 -- tk = base64url( nonce 8 byte | tag 12 byte | tên XOR dòng khoá )
 --   tag  = HMAC-SHA256(BI_MAT, "tdz4|ten|tag|" .. nonce .. tên) lấy 12 byte đầu
 --   khoá = HMAC-SHA256(BI_MAT, "tdz4|ten|enc|" .. nonce .. tag); dòng khoá = SHA256(khoá .. 0) .. SHA256(khoá .. 1) ...
--- Trang web giải mã (giaiMaTen trong index.html): hợp lệ thì tự điền tên và ẩn phần nhập tên.
+-- Trang web giải mã (giaiMaTen trong index.html): hợp lệ thì tự điền tên vào ô tên người chơi.
 local B64_BANG = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_"
 local function MaHoaBase64Url(ds)
     local kq = {}
@@ -1049,7 +1049,7 @@ local function SaoChep(noiDung)
     end)
 end
 
--- Link lấy key kèm tên người chơi ĐÃ MÃ HOÁ (đuôi ?mahoa=...) -> trang web tự điền tên và ẩn phần nhập tên
+-- Link lấy key kèm tên người chơi ĐÃ MÃ HOÁ (đuôi ?mahoa=...) -> trang web tự đọc link, điền tên vào ô tên
 local function LinkLayKey()
     local noi = CAU_HINH.LINK_LAY_KEY:find("?", 1, true) and "&" or "?"
     return CAU_HINH.LINK_LAY_KEY .. noi .. "mahoa=" .. MaHoaTen(tostring(player.Name))

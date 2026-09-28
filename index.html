@@ -242,9 +242,6 @@
         .my-link-btn { padding: 9px 12px; border: 0; border-radius: 10px; background: var(--primary); color: #fff;
             font: inherit; font-size: 13px; font-weight: 700; cursor: pointer; }
         .my-link-help { margin: 6px 0 0; }
-        .paste-name-btn { margin-top: 8px; width: 100%; padding: 9px 12px; border: 1px dashed #34d399; border-radius: 10px;
-            background: rgba(52, 211, 153, .08); color: #34d399; font: inherit; font-size: 13px; font-weight: 700; cursor: pointer; }
-        .paste-name-btn:hover { background: rgba(52, 211, 153, .16); }
         .player-input::placeholder { color: #94a3b8; font-weight: 500; }
         .player-input:focus { border-color: var(--primary); outline: 2px solid var(--accent); outline-offset: 2px; }
         .player-help { margin: 9px 0 0; color: var(--text-muted); font-size: 11px; line-height: 1.5; }
@@ -573,8 +570,7 @@
                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="8" r="4"/><path d="M4 21a8 8 0 0 1 16 0"/></svg>
                 Tên người chơi
             </label>
-            <input class="player-input" id="player-name" name="playerName" type="text" maxlength="400" autocomplete="nickname" spellcheck="false" required placeholder="Tên Roblox hoặc dán link / tên mã hoá từ script" aria-describedby="player-help">
-            <button class="paste-name-btn" id="nut-dan-ten" type="button">📋 Dán tên mã hoá từ Roblox</button>
+            <input class="player-input" id="player-name" name="playerName" type="text" maxlength="400" autocomplete="nickname" spellcheck="false" required placeholder="Tên Roblox (tự điền từ link Lấy key của script)" aria-describedby="player-help">
             <p class="player-help" id="player-help">Nhập <strong>đúng tên tài khoản Roblox</strong> (hoặc tên hiển thị) của bạn: script chỉ nhận key có tên trùng với tài khoản đang chơi, và key chỉ dùng được <strong>24 giờ</strong>. Tên được lưu trên trình duyệt và được mã hoá bên trong key. <strong>Hãy nhập tên trước khi xong nhiệm vụ cuối:</strong> xong đủ 4 nhiệm vụ là tên bị khoá; <strong>lấy key rồi thì tên khoá luôn đến khi key hết hạn (24 giờ)</strong>.</p>
             <p class="player-help name-lock" id="name-lock" role="status" aria-live="polite" hidden></p>
             </div>
@@ -720,7 +716,8 @@
             return 'https://mncuadaigmailcom.github.io/taodepzai/';
         })();
         let linkCuaBan = { ten: null, link: '' };
-        const TEN_AN_KEY = 'taodepzai_ten_an';     // tên lấy từ link Roblox (?mahoa=, đã mã hoá) -> ẩn phần nhập tên
+        const TEN_AN_KEY = 'taodepzai_ten_an';     // tên lấy từ link Roblox (?mahoa=, mã hoá hợp lệ) -> cờ trong key v5
+        const TK_DA_DUNG_KEY = 'taodepzai_tk_da_dung'; // link mã hoá đã dùng: tự đọc bộ nhớ tạm không điền lại đè lên tên đã sửa
         const KHOA_TEN_KEY = 'taodepzai_khoa_ten'; // {ten, den}: tên đã lấy key, khoá đến khi key hết hạn
         const HAN_KEY_MS = 24 * 60 * 60 * 1000;    // key có hạn 24 giờ (giống HAN_KEY_GIAY trong key-system.lua)
         const boNhoTam = new Map();
@@ -953,6 +950,7 @@
 
         scriptField.value = SCRIPT_CUA_BAN;
         let loiLinkTen = null; // 'sai' | 'khoa' khi link ?mahoa= không dùng được
+        let tenTuLinkMaHoa = null; // tên giải được từ link ?mahoa= và đã điền
         // Link "Lấy key" trong script Roblox: ?ten=<tên> -> tự điền tên, rồi xoá khỏi thanh địa chỉ.
         try {
             const thamSo = new URLSearchParams(location.search);
@@ -961,14 +959,17 @@
                 luu.set(PLAYER_NAME_KEY, tenTuLink);
                 luu.remove(TEN_AN_KEY);
             }
-            // ?mahoa= (bản cũ ?tk=): tên đã mã hoá từ nút "Lấy key" trong Roblox -> tự điền và ẩn phần nhập tên
+            // ?mahoa= (bản cũ ?tk=): tên đã mã hoá từ nút "Lấy key" trong Roblox -> tự điền tên vào ô tên
             const thamSoMaHoa = thamSo.has('mahoa') ? 'mahoa' : thamSo.has('tk') ? 'tk' : null;
             if (thamSoMaHoa) {
-                const tenMaHoa = giaiMaTen((thamSo.get(thamSoMaHoa) || '').trim());
+                const tkLink = (thamSo.get(thamSoMaHoa) || '').trim();
+                if (tkLink) luu.set(TK_DA_DUNG_KEY, tkLink);
+                const tenMaHoa = giaiMaTen(tkLink);
                 if (!tenMaHoa) loiLinkTen = 'sai';
                 else if (!tenDangKhoa()) {
                     luu.set(PLAYER_NAME_KEY, tenMaHoa);
                     luu.set(TEN_AN_KEY, tenMaHoa);
+                    tenTuLinkMaHoa = tenMaHoa;
                 } else if ((luu.get(PLAYER_NAME_KEY) || '') === tenMaHoa) luu.set(TEN_AN_KEY, tenMaHoa);
                 else loiLinkTen = 'khoa';
             }
@@ -976,40 +977,67 @@
         } catch { /* Không có location/history (môi trường test). */ }
         playerNameInput.value = luu.get(PLAYER_NAME_KEY) || '';
         capNhatIp(true).catch(() => {}); // Tự lấy mã mạng ngay khi mở trang.
-        // Tên mã hoá dán vào ô tên (hoặc cả link có ?mahoa= / ?tk=) -> giải mã; hợp lệ thì điền tên và ẩn phần nhập tên.
+        // Link / tên mã hoá (?mahoa= hoặc ?tk=) -> giải mã; hợp lệ thì điền tên vào ô tên người chơi.
+        // tuDong = true: đọc ngầm từ bộ nhớ tạm -> không báo lỗi, mỗi link chỉ dùng 1 lần (không đè tên bạn đã sửa).
         // Trả về true nếu chuỗi là tên mã hoá / link (đã xử lý, dù hợp lệ hay không).
-        function thuTenMaHoa(chuoi) {
+        function thuTenMaHoa(chuoi, tuDong = false) {
             chuoi = String(chuoi || '').trim();
             const trongLink = chuoi.match(/[?&](?:mahoa|tk)=([A-Za-z0-9_-]+)/);
             const tk = trongLink ? trongLink[1] : chuoi;
             if (!trongLink && !/^[A-Za-z0-9_-]{28,}$/.test(chuoi)) return false; // tên thường (tên Roblox tối đa 20 ký tự)
+            if (tuDong && tk === luu.get(TK_DA_DUNG_KEY)) return true; // link này đã dùng rồi
+            luu.set(TK_DA_DUNG_KEY, tk);
             const ten = giaiMaTen(tk);
             const tenCu = luu.get(PLAYER_NAME_KEY) || '';
             if (!ten) {
-                notify('Tên mã hoá không hợp lệ. Hãy nhấn "Lấy key" 2 lần trong Roblox để lấy link mới.', 'error');
+                if (!tuDong) notify('Tên mã hoá không hợp lệ. Hãy nhấn "Lấy key" 2 lần trong Roblox để lấy link mới.', 'error');
             } else if (tenDangKhoa() && ten !== tenCu) {
                 notify('Tên đang bị khoá (đã lấy key / đã xong nhiệm vụ), không đổi sang tên khác được.', 'error');
             } else {
                 luu.set(PLAYER_NAME_KEY, ten);
                 luu.set(TEN_AN_KEY, ten);
-                notify('✓ Đã nhập tên người chơi từ Roblox (đã mã hoá).', 'success');
+                notify(`✓ Đã tự nhập tên người chơi: ${ten}`, 'success');
             }
             playerNameInput.value = luu.get(PLAYER_NAME_KEY) || '';
             kiemTraMoKhoa();
             return true;
         }
 
-        document.getElementById('nut-dan-ten').addEventListener('click', async () => {
-            let chuoi = '';
+        // Tự dán link vừa sao chép trong script Roblox (chạy ngầm, không có nút):
+        //  - trình duyệt đã cho quyền đọc bộ nhớ tạm: đọc khi mở trang và mỗi lần quay lại trang;
+        //  - chưa cho quyền: thử khi bạn chạm vào trang lần đầu / chạm vào ô tên (trình duyệt có thể hỏi quyền
+        //    hoặc hiện nút "Dán"). Bị chặn thì bỏ qua; vẫn dán tay vào ô tên được.
+        let quyenDocClipboard = 'prompt';
+        let dangDocClipboard = false;
+        async function tuDanLinkTuClipboard() {
+            if (dangDocClipboard || !navigator.clipboard || !navigator.clipboard.readText) return;
+            dangDocClipboard = true;
             try {
-                if (!navigator.clipboard || !navigator.clipboard.readText) throw new Error('khong-ho-tro');
-                chuoi = await navigator.clipboard.readText();
-            } catch {
-                notify('Trình duyệt không cho đọc bộ nhớ tạm: hãy nhấn giữ ô tên và chọn "Dán".', 'error');
-                playerNameInput.focus();
-                return;
-            }
-            if (!thuTenMaHoa(chuoi)) notify('Bộ nhớ tạm không có tên mã hoá. Hãy nhấn "Lấy key" 2 lần trong Roblox trước.', 'error');
+                const chuoi = String(await navigator.clipboard.readText() || '').trim();
+                if (chuoi && chuoi.length <= 2000) thuTenMaHoa(chuoi, true);
+            } catch { /* bị chặn hoặc không cho quyền: im lặng */ }
+            finally { dangDocClipboard = false; }
+        }
+        function tuDanNeuDaCoQuyen() { if (quyenDocClipboard === 'granted') tuDanLinkTuClipboard(); }
+        (async () => {
+            try {
+                const quyen = await navigator.permissions.query({ name: 'clipboard-read' });
+                quyenDocClipboard = quyen.state;
+                quyen.onchange = () => { quyenDocClipboard = quyen.state; };
+            } catch { /* trình duyệt không hỗ trợ hỏi quyền này */ }
+            tuDanNeuDaCoQuyen();
+        })();
+        let daThuKhiCham = false;
+        document.addEventListener('click', () => {
+            if (daThuKhiCham) return;
+            daThuKhiCham = true;
+            tuDanLinkTuClipboard();
+        });
+        let daThuKhiVaoOTen = false;
+        playerNameInput.addEventListener('focus', () => {
+            if (daThuKhiVaoOTen || playerNameInput.readOnly) return;
+            daThuKhiVaoOTen = true;
+            tuDanLinkTuClipboard();
         });
 
         playerNameInput.addEventListener('input', () => {
@@ -1192,7 +1220,7 @@
 
         function tenDangKhoa() { return !!docKhoaTen() || khoaTheoPhien(); }
 
-        function tenDangAn() {
+        function tenTuRoblox() {
             const ten = luu.get(TEN_AN_KEY);
             return ten !== null && ten !== '' && ten === luu.get(PLAYER_NAME_KEY);
         }
@@ -1219,13 +1247,12 @@
                 playerNameInput.value = luu.get(PLAYER_NAME_KEY) || '';
             } else playerNameInput.removeAttribute('aria-readonly');
             const coTen = !!playerNameInput.value.trim();
-            // Tên từ link Roblox (đã mã hoá, hợp lệ) -> ẩn cả phần nhập tên, chỉ báo đã nhận tên
-            const an = tenDangAn();
-            document.getElementById('name-section').hidden = an;
+            // Tên từ link Roblox (mã hoá hợp lệ) -> hiện ngay trong ô tên; vẫn sửa được đến khi xong 4 nhiệm vụ
+            const tuRoblox = tenTuRoblox();
             const oTuDong = document.getElementById('name-auto');
-            oTuDong.hidden = !an;
-            oTuDong.textContent = !an ? '' : '✓ Đã tự nhập tên người chơi từ Roblox (tên được mã hoá, không hiển thị).' +
-                (khoaKey ? ' Tên đã khoá đến khi key hết hạn (24 giờ).' : '');
+            oTuDong.hidden = !tuRoblox;
+            oTuDong.textContent = !tuRoblox ? '' : '✓ Tên được tự nhập từ link lấy key của Roblox (mã hoá hợp lệ).' +
+                (khoa ? '' : ' Bạn vẫn sửa được tên đến khi xong 4 nhiệm vụ.');
             capNhatLinkCuaBan();
             oKhoa.hidden = !khoa;
             oKhoa.className = `player-help name-lock ${khoa && !coTen ? 'loi' : 'ok'}`;
@@ -1381,7 +1408,7 @@
             const so = laySoQuay();
             hienThiSoQuay(so);
             // Không hiện ngày/giờ ở đâu cả: mọi thông tin chỉ nằm (đã mã hoá) trong key.
-            keyField.value = taoMaDemo(playerNameInput.value, lanCuoi, so, dinhDangMaThietBi(thanThietBi), layNonce(), tenDangAn());
+            keyField.value = taoMaDemo(playerNameInput.value, lanCuoi, so, dinhDangMaThietBi(thanThietBi), layNonce(), tenTuRoblox());
             return true;
         }
 
@@ -1420,7 +1447,7 @@
 
         function hienThiTenNguoiChoi() {
             const ten = playerNameInput.value.trim();
-            playerSummary.textContent = !ten ? '' : tenDangAn() ? 'Người chơi: ✓ tên từ Roblox (đã ẩn)' : `Người chơi: ${ten}`;
+            playerSummary.textContent = !ten ? '' : `Người chơi: ${ten}` + (tenTuRoblox() ? ' ✓ (từ Roblox)' : '');
             playerSummary.hidden = !ten;
         }
 
@@ -1487,10 +1514,10 @@
         });
 
         window.addEventListener('blur', ghiNhanRoiTrang);
-        window.addEventListener('focus', () => { kiemTraTienTrinhNhiemVu(); capNhatIp(); });
+        window.addEventListener('focus', () => { kiemTraTienTrinhNhiemVu(); capNhatIp(); tuDanNeuDaCoQuyen(); });
         document.addEventListener('visibilitychange', () => {
             if (document.visibilityState === 'hidden') ghiNhanRoiTrang();
-            else { kiemTraTienTrinhNhiemVu(); capNhatIp(); }
+            else { kiemTraTienTrinhNhiemVu(); capNhatIp(); tuDanNeuDaCoQuyen(); }
         });
         window.addEventListener('storage', event => {
             if (event.key === PLAYER_NAME_KEY || event.key === KHOA_TEN_KEY) {
@@ -1567,6 +1594,7 @@
         }
 
         kiemTraMoKhoa();
+        if (tenTuLinkMaHoa) notify(`✓ Đã tự nhập tên người chơi: ${tenTuLinkMaHoa}`, 'success');
         if (loiLinkTen === 'sai') notify('Link lấy key không hợp lệ (tên mã hoá bị sai). Hãy nhập tên người chơi hoặc lấy lại link trong Roblox.', 'error');
         if (loiLinkTen === 'khoa') notify('Bạn đã lấy key cho tên khác, tên đang bị khoá đến khi key hết hạn.', 'error');
     </script>
