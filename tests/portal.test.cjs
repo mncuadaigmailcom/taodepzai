@@ -142,7 +142,11 @@ function createPortal(sharedStore = new Map(), now = 1_000_000, tuyChon = {}) {
             if (!/^[A-Za-z0-9+/]*={0,2}$/.test(b64) || b64.length % 4) throw new Error('InvalidCharacterError');
             return Buffer.from(b64, 'base64').toString('latin1');
         },
-        navigator: { clipboard: { writeText: text => { copies.push(text); return Promise.resolve(); } } },
+        navigator: { clipboard: {
+            writeText: text => { copies.push(text); return Promise.resolve(); },
+            readText: () => tuyChon.docClipboard === undefined ? Promise.reject(new Error('NotAllowedError'))
+                : Promise.resolve(tuyChon.docClipboard),
+        } },
         setTimeout: (fn, ms) => schedule(fn, ms),
         clearTimeout: id => timers.delete(id),
         setInterval: (fn, ms) => schedule(fn, ms, true),
@@ -847,4 +851,60 @@ test('link ?tk= đổi tên khi chưa khoá; ?ten= thường thì hiện lại p
     const sau = createPortal(storage, 1_060_000, { search: `?tk=${taoMaTen('TenNam')}` });
     assert.equal(storage.get('taodepzai_player_name'), 'TenBon');
     assert.match(sau.elements.get('notification-box').textContent, /khoá/);
+});
+
+test('dán tên mã hoá / link vào ô tên hoặc nút "Dán tên mã hoá": hợp lệ thì điền tên và ẩn phần nhập tên', async () => {
+    const tk = taoMaTen('RobloxUser_77');
+    const link = `https://mncuadaigmailcom.github.io/taodepzai/?tk=${tk}`;
+    for (const dan of [tk, link, `  ${link}  `]) {
+        const storage = new Map();
+        const site = createPortal(storage, 1_000_000, { search: '' });
+        assert.equal(site.elements.get('name-section').hidden, false);
+        await enterName(site, dan);
+        assert.equal(storage.get('taodepzai_player_name'), 'RobloxUser_77', dan);
+        assert.equal(site.elements.get('player-name').value, 'RobloxUser_77');
+        assert.equal(site.elements.get('name-section').hidden, true);
+        assert.match(site.elements.get('notification-box').textContent, /Đã nhập tên người chơi từ Roblox/);
+    }
+    // Dán chuỗi sai -> không lưu chuỗi đó làm tên, báo lỗi, vẫn hiện ô nhập tên
+    for (const sai of [tk.slice(0, 12) + (tk[12] === 'A' ? 'B' : 'A') + tk.slice(13), `${link.slice(0, -2)}xx`,
+        taoMaTen('KeGiaMao', Buffer.alloc(8, 9), Buffer.alloc(12, 1))]) {
+        const storage = new Map([['taodepzai_player_name', 'TenCu']]);
+        const site = createPortal(storage, 1_000_000, { search: '' });
+        await enterName(site, sai);
+        assert.equal(storage.get('taodepzai_player_name'), 'TenCu', sai);
+        assert.equal(site.elements.get('player-name').value, 'TenCu');
+        assert.equal(site.elements.get('name-section').hidden, false);
+        assert.match(site.elements.get('notification-box').textContent, /không hợp lệ/);
+    }
+    // Tên thường vẫn nhập được, quá 32 ký tự thì cắt
+    const thuong = createPortal(new Map(), 1_000_000, { search: '' });
+    await enterName(thuong, 'Tao Dep Zai');
+    assert.equal(thuong.elements.get('name-section').hidden, false);
+    await enterName(thuong, 'a b'.repeat(20));
+    assert.equal(thuong.elements.get('player-name').value.length, 32);
+    // Nút "Dán tên mã hoá từ Roblox" đọc bộ nhớ tạm
+    const storage = new Map();
+    const nut = createPortal(storage, 1_000_000, { search: '', docClipboard: link });
+    await nut.click('nut-dan-ten');
+    await nut.flush();
+    assert.equal(storage.get('taodepzai_player_name'), 'RobloxUser_77');
+    assert.equal(nut.elements.get('name-section').hidden, true);
+    const rong = createPortal(new Map(), 1_000_000, { search: '', docClipboard: 'abc' });
+    await rong.click('nut-dan-ten');
+    await rong.flush();
+    assert.match(rong.elements.get('notification-box').textContent, /không có tên mã hoá/);
+    const cam = createPortal(new Map(), 1_000_000, { search: '' });
+    await cam.click('nut-dan-ten');
+    await cam.flush();
+    assert.match(cam.elements.get('notification-box').textContent, /Dán/);
+    // Tên đang khoá (đã xong nhiệm vụ) -> dán tên mã hoá của người khác không đổi được
+    const khoa = createPortal(new Map(), 1_000_000, { search: '' });
+    await enterName(khoa, 'ChuKey');
+    for (const number of [1, 2, 3, 4]) await completeTask(khoa, number);
+    await enterName(khoa, taoMaTen('NguoiKhac'));
+    assert.equal(khoa.elements.get('player-name').value, 'ChuKey');
+    assert.match(khoa.elements.get('notification-box').textContent, /khoá/);
+    await enterName(khoa, taoMaTen('ChuKey')); // đúng tên đang khoá -> ẩn phần nhập tên
+    assert.equal(khoa.elements.get('name-section').hidden, true);
 });

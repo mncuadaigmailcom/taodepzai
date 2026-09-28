@@ -375,6 +375,7 @@ class GiaoDienTest(unittest.TestCase):
         p.bam("NutLayKey")
         self.assertEqual(list(p.log.clipboard.values()), [], "Nhấn 1 lần chưa sao chép")
         self.assertIn("thêm 1 lần nữa", p.trang_thai)
+        self.assertIn("Tao_Dep_01", p.phan_tu("MoTa").Text, "Chưa gửi tên mã hoá thì vẫn hiện tên")
         p.tua(4)  # quá 3 giây -> tính lại từ đầu
         p.bam("NutLayKey")
         self.assertEqual(list(p.log.clipboard.values()), [])
@@ -383,6 +384,9 @@ class GiaoDienTest(unittest.TestCase):
         ds = list(p.log.clipboard.values())
         self.assertEqual(len(ds), 1)
         self.assertIn("tên đã mã hoá", p.trang_thai)
+        self.assertNotIn("Tao_Dep_01", p.phan_tu("MoTa").Text, "Đã mã hoá tên -> ẩn tên trên bảng script")
+        self.assertIn("đã mã hoá", p.phan_tu("MoTa").Text)
+        self.assertNotIn("Tao_Dep_01", p.trang_thai)
         self.assertNotIn("Tao_Dep_01", ds[0], "Link không chứa tên dạng đọc được")
         self.assertNotIn("ten=", ds[0])
         # Nhấn tiếp 1 lần: phải nhấn đủ 2 lần mới sao chép lại; link mới khác (nonce ngẫu nhiên) nhưng cùng tên

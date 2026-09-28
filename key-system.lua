@@ -783,7 +783,7 @@ New("TextLabel", {
     TextXAlignment = Enum.TextXAlignment.Left,
 }, khung)
 
-New("TextLabel", {
+local nhanTen = New("TextLabel", {
     Name = "MoTa",
     BackgroundTransparency = 1,
     Position = UDim2.new(0, 16, 0, 36),
@@ -1059,6 +1059,8 @@ if nutLayKey then
         end
         lanNhanLayKey = nil
         local link = LinkLayKey()
+        -- Tên đã được mã hoá vào link (hợp lệ, trang web tự điền) -> ẩn tên người chơi trên bảng
+        nhanTen.Text = "Tên người chơi: 🔒 đã mã hoá, gửi sang trang lấy key"
         local daChep = SaoChep(link)
         if MoTrinhDuyet(link) then
             BaoTrangThai("Đang mở trang lấy key (tên đã mã hoá, tự điền)."
