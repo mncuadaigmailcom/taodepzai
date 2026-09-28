@@ -202,11 +202,30 @@ test('chỉ tạo mã demo khi đã nhập tên và hoàn thành đủ bốn nhi
     assert.equal(site.elements.get('unlocked-count').textContent, '4 / 4 hoàn thành');
     assert.equal(site.store.has('completedAtnv4'), true);
     assert.equal(button.disabled, true);
-    assert.match(button.children.get('span').textContent, /Nhập tên người chơi/);
+    assert.match(button.children.get('span').textContent, /Chưa nhập tên: chờ hết phiên/);
     await site.click('nut-giai-bai');
     assert.equal(site.modalOpen(), false);
 
+    // Xong 4 nhiệm vụ mà chưa nhập tên -> ô tên bị khoá, không mở được key
+    const oTen = site.elements.get('player-name');
+    const thongBaoKhoa = site.elements.get('name-lock');
+    assert.equal(oTen.readOnly, true);
+    assert.equal(thongBaoKhoa.hidden, false);
+    assert.match(thongBaoKhoa.textContent, /chưa nhập tên/);
     await enterName(site);
+    assert.equal(oTen.value, '', 'Không nhập được tên sau khi xong 4 nhiệm vụ');
+    assert.equal(site.store.has('taodepzai_player_name'), false);
+    assert.equal(button.disabled, true);
+
+    // Hết thời gian phiên -> mở khoá ô tên, nhiệm vụ làm lại
+    site.advance(3 * 60 * 1000);
+    assert.equal(site.status(1), 'idle');
+    assert.equal(oTen.readOnly, false);
+    assert.equal(thongBaoKhoa.hidden, true);
+    await enterName(site);
+    for (const number of [1, 2, 3, 4]) await completeTask(site, number);
+    assert.equal(oTen.readOnly, true, 'Nhập tên rồi xong 4 nhiệm vụ -> tên bị khoá');
+    assert.match(thongBaoKhoa.textContent, /Tên đã khoá/);
     assert.equal(button.disabled, false);
     assert.equal(site.elements.get('device-box'), undefined, 'Không còn khung / ô mã thiết bị');
     for (const [id, el] of site.elements) {
@@ -318,13 +337,28 @@ test('tên người chơi nằm trên nhiệm vụ, lưu sau F5 và hiển thị
     afterReload.elements.get('player-details').open = true;
     await afterReload.click('back-btn');
     assert.equal(afterReload.elements.get('player-details').open, false);
+    // Tên đã khoá: xoá hay đổi tên đều không được, key giữ nguyên
     afterReload.elements.get('player-name').value = '   ';
     await afterReload.elements.get('player-name').fire('input');
-    assert.equal(storage.has('taodepzai_player_name'), false);
-    assert.equal(afterReload.elements.get('nut-giai-bai').disabled, true);
-    await afterReload.click('nut-giai-bai');
-    assert.equal(afterReload.modalOpen(), false);
+    assert.equal(storage.get('taodepzai_player_name'), 'HoiAnPlayer_09');
+    assert.equal(afterReload.elements.get('player-name').value, 'HoiAnPlayer_09');
     await enterName(afterReload, 'AnotherPlayer');
+    assert.equal(storage.get('taodepzai_player_name'), 'HoiAnPlayer_09');
+    await afterReload.click('nut-giai-bai');
+    assert.equal(summary.textContent, 'Người chơi: HoiAnPlayer_09');
+    assert.equal(giaiMaDemo(afterReload.elements.get('key-value').value).ten, 'HoiAnPlayer_09');
+    await afterReload.click('back-btn');
+    // F5 vẫn khoá
+    const f5 = createPortal(storage);
+    assert.equal(f5.elements.get('player-name').readOnly, true);
+    await enterName(f5, 'AnotherPlayer');
+    assert.equal(storage.get('taodepzai_player_name'), 'HoiAnPlayer_09');
+    // Hết thời gian phiên -> đổi được tên, làm lại nhiệm vụ
+    afterReload.advance(3 * 60 * 1000);
+    assert.equal(afterReload.elements.get('player-name').readOnly, false);
+    assert.equal(afterReload.elements.get('nut-giai-bai').disabled, true);
+    await enterName(afterReload, 'AnotherPlayer');
+    for (const number of [1, 2, 3, 4]) await completeTask(afterReload, number);
     await afterReload.click('nut-giai-bai');
     assert.equal(summary.textContent, 'Người chơi: AnotherPlayer');
     assert.notEqual(afterReload.elements.get('key-value').value, originalCode);
@@ -649,4 +683,40 @@ test('HTML: không có khung / ô ID thiết bị, trang không nhắc IP hay m�
     const body = html.slice(html.indexOf('<body'), html.indexOf('<script'));
     const chu = body.replace(/<!--[\s\S]*?-->/g, '').replace(/<[^>]+>/g, ' ');
     assert.doesNotMatch(chu, /\bIP\b|mã mạng|mã thiết bị|mạng bạn đang dùng/i, 'Không nhắc tới IP / mã mạng');
+});
+
+test('khoá tên: link ?ten= từ Roblox không đổi được tên đã khoá; làm mới phiên thì mở khoá', async () => {
+    const storage = new Map();
+    const site = createPortal(storage, 1_000_000);
+    await enterName(site, 'ChuKey');
+    for (const number of [1, 2, 3, 4]) await completeTask(site, number);
+    assert.equal(site.elements.get('player-name').readOnly, true);
+    const quaLink = createPortal(storage, 1_010_000, { search: '?ten=KeKhac' });
+    assert.equal(quaLink.elements.get('player-name').value, 'ChuKey');
+    assert.equal(storage.get('taodepzai_player_name'), 'ChuKey');
+    await quaLink.click('nut-reset-thu-cong');
+    assert.equal(quaLink.elements.get('player-name').readOnly, false);
+    await enterName(quaLink, 'TenMoi');
+    assert.equal(storage.get('taodepzai_player_name'), 'TenMoi');
+    // Chưa xong đủ 4 nhiệm vụ thì vẫn sửa tên thoải mái
+    for (const number of [1, 2, 3]) await completeTask(quaLink, number);
+    assert.equal(quaLink.elements.get('player-name').readOnly, false);
+    await enterName(quaLink, 'TenCuoi');
+    await completeTask(quaLink, 4);
+    assert.equal(quaLink.elements.get('player-name').readOnly, true);
+    await quaLink.click('nut-giai-bai');
+    assert.equal(giaiMaDemo(quaLink.elements.get('key-value').value).ten, 'TenCuoi');
+});
+
+test('khoá tên: mở lại trang khi phiên đã hết giờ (qua link ?ten=) thì tên không còn khoá', async () => {
+    const storage = new Map();
+    const site = createPortal(storage, 1_000_000);
+    await enterName(site, 'ChuKey');
+    for (const number of [1, 2, 3, 4]) await completeTask(site, number);
+    assert.equal(site.elements.get('player-name').readOnly, true);
+    // Đóng trang, 5 phút sau mở lại bằng link "Lấy key" trong Roblox với tên khác
+    const sau = createPortal(storage, 1_000_000 + 5 * 60 * 1000, { search: '?ten=TenMoi' });
+    assert.equal(sau.elements.get('player-name').value, 'TenMoi');
+    assert.equal(sau.elements.get('player-name').readOnly, false);
+    assert.equal(storage.get('taodepzai_player_name'), 'TenMoi');
 });

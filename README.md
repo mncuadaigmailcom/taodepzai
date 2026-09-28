@@ -47,6 +47,10 @@ Tìm mảng `NHIEM_VU` ở cuối `index.html`:
 
 Bốn nhiệm vụ xếp thành một cột. Người dùng **phải nhập tên** (mã mạng tự lấy ngầm) và hoàn thành **đủ cả bốn nhiệm vụ** trong phiên 3 phút, không cần theo thứ tự. Mỗi nhiệm vụ theo dõi riêng 5 giây rời tab; quay lại sớm chỉ báo lỗi nhiệm vụ đó.
 
+**Khoá tên:** xong đủ 4 nhiệm vụ là ô tên bị khoá (chỉ đọc) cho đến khi hết thời gian phiên hoặc bấm “Làm mới phiên”.
+- Đã nhập tên trước đó: mở khoá được key; không xoá / đổi tên được nữa (kể cả F5, dán, hay mở link `?ten=` khác).
+- Chưa nhập tên: không mở khoá được key; phải chờ hết phiên (hoặc làm mới phiên) rồi nhập tên và làm lại nhiệm vụ.
+
 Khi một nhiệm vụ hoàn thành, thời điểm hoàn thành được lưu trong trình duyệt. Sau 4/4, trang lấy **thời điểm của nhiệm vụ hoàn thành cuối cùng** và ID nhiệm vụ đó cùng tên người chơi để tạo mã `Free_v4_...` (đã mã hoá, xem trên). Mã ổn định sau F5 nếu vẫn cùng tên, phiên và số vòng quay; đổi tên, bấm **🎰 Quay số mới** hoặc tạo phiên mới sẽ tạo mã khác. Tên được lưu trong trình duyệt và giữ lại khi reset phiên, còn trạng thái nhiệm vụ và mốc thời gian được reset sau 3 phút hoặc khi bấm nút làm mới. Bản sao của mã đã gửi đi vẫn có thể đọc được sau khi reset.
 
 Để đọc tên từ **mã demo mới**, tại thư mục repo chạy:
