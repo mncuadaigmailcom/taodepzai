@@ -3,13 +3,18 @@ const test = require('node:test');
 const fs = require('node:fs');
 const path = require('node:path');
 const vm = require('node:vm');
-const { TextEncoder } = require('node:util');
+const { TextEncoder, TextDecoder } = require('node:util');
 const { execFileSync } = require('node:child_process');
-const { giaiMaDemo } = require('../tools/decode-demo.cjs');
+const { giaiMaDemo, giaiMaKey } = require('../tools/decode-demo.cjs');
 
-const html = fs.readFileSync(path.join(__dirname, '..', 'index.html'), 'utf8');
+const REPO = path.join(__dirname, '..');
+const html = fs.readFileSync(path.join(REPO, 'index.html'), 'utf8');
+const kuLua = fs.readFileSync(path.join(REPO, 'script.js'), 'utf8');
 const script = html.split('<script>')[1]?.split('</script>')[0];
 assert.ok(script, 'Trang phải có JavaScript');
+const css = html.split('<style>')[1].split('</style>')[0];
+
+const BI_MAT = 'z!V~~RO3mS2dCMvW-GE@#v2XYYuLsNoQKS5U0pGeAY5EOkd_';
 
 class Element {
     constructor(id = '') {
@@ -55,7 +60,8 @@ class Element {
     getBoundingClientRect() { return { left: 0, top: 0, width: 300, height: 200 }; }
 }
 
-function createPortal(sharedStore = new Map(), now = 1_000_000) {
+// DOM giả đủ để chạy script của trang trong vm; nhận `search` để thử link ?mahoa= / ?ten=
+function createPortal(sharedStore = new Map(), now = 1_000_000, search = '') {
     const ids = [...html.matchAll(/\bid="([^"]+)"/g)].map(match => match[1]);
     const elements = new Map(ids.map(id => [id, new Element(id)]));
     const docEvents = new Map();
@@ -65,7 +71,7 @@ function createPortal(sharedStore = new Map(), now = 1_000_000) {
         visibilityState: 'visible',
         body: { style: {} },
         getElementById: id => elements.get(id) || null,
-        querySelectorAll: () => [elements.get('giao-dien-chinh'), ...[1,2,3,4].map(i => elements.get(`khung-nv${i}`))],
+        querySelectorAll: () => [elements.get('giao-dien-chinh'), ...[1, 2, 3, 4].map(i => elements.get(`khung-nv${i}`))],
         addEventListener(type, fn) { docEvents.set(type, fn); },
         execCommand: () => true
     };
@@ -105,6 +111,8 @@ function createPortal(sharedStore = new Map(), now = 1_000_000) {
         addEventListener(type, fn) { windowEvents.set(type, fn); },
         matchMedia: () => ({ matches: false })
     };
+    const location = { search, pathname: '/taodepzai/', hash: '' };
+    const history = { last: null, replaceState(_state, _title, url) { this.last = url; } };
     const localStorage = {
         getItem: key => sharedStore.get(key) ?? null,
         setItem: (key, value) => sharedStore.set(key, String(value)),
@@ -112,21 +120,28 @@ function createPortal(sharedStore = new Map(), now = 1_000_000) {
     };
     class ClockDate extends Date { static now() { return clock.now; } }
     vm.runInNewContext(script, {
-        document, window, localStorage, Date: ClockDate, TextEncoder,
+        document, window, localStorage, location, history, Date: ClockDate, TextEncoder, TextDecoder,
+        URLSearchParams,
         btoa: binary => Buffer.from(binary, 'latin1').toString('base64'),
+        atob: base64 => Buffer.from(base64, 'base64').toString('latin1'),
         navigator: { clipboard: { writeText: text => { copies.push(text); return Promise.resolve(); } } },
+        crypto: { getRandomValues: arr => { for (let i = 0; i < arr.length; i++) arr[i] = Math.floor(Math.random() * 256); return arr; } },
+        fetch: () => Promise.reject(new Error('không có mạng trong test')),
         setTimeout: (fn, ms) => schedule(fn, ms),
         clearTimeout: id => timers.delete(id),
         setInterval: (fn, ms) => schedule(fn, ms, true),
-        console, Map
+        clearInterval: id => timers.delete(id),
+        console, Map, Uint8Array, Uint32Array, TextDecoder
     });
     return {
-        elements, copies, store: sharedStore, advance,
+        elements, copies, store: sharedStore, advance, history,
         click: id => elements.get(id).fire('click'),
         blur: () => windowEvents.get('blur')(),
         focus: () => windowEvents.get('focus')(),
         status: i => sharedStore.get(`statusnv${i}`) || 'idle',
-        modalOpen: () => elements.get('white-screen').classList.contains('show')
+        modalOpen: () => elements.get('white-screen').classList.contains('show'),
+        ten: () => elements.get('player-name').value,
+        nhanKey: () => elements.get('key-value').value
     };
 }
 
@@ -142,7 +157,50 @@ async function enterName(site, name = 'HoiAnPlayer_09') {
     await site.elements.get('player-name').fire('input');
 }
 
-test('chỉ tạo mã demo khi đã nhập tên và hoàn thành đủ bốn nhiệm vụ', async () => {
+async function duBonNhiemVu(site) {
+    for (const number of [1, 2, 3, 4]) await completeTask(site, number);
+}
+
+// Mã hoá tên y hệt MaHoaTen trong script.js (nhãn 'tdz4|ten|…'), để thử link "Lấy key"
+function maHoaTen(ten, nonce = Buffer.from([1, 2, 3, 4, 5, 6, 7, 8])) {
+    const hmac = (khoa, thongDiep) => require('node:crypto').createHmac('sha256', khoa).update(thongDiep).digest();
+    const ban = Buffer.from(ten, 'utf8');
+    const biMat = Buffer.from(BI_MAT, 'utf8');
+    const tag = hmac(biMat, Buffer.concat([Buffer.from('tdz4|ten|tag|'), nonce, ban])).subarray(0, 12);
+    const khoa = hmac(biMat, Buffer.concat([Buffer.from('tdz4|ten|enc|'), nonce, tag]));
+    const dong = Buffer.concat([0, 1].map(j => require('node:crypto').createHash('sha256')
+        .update(Buffer.concat([khoa, Buffer.from([j])])).digest()));
+    const ma = Buffer.from(ban.map((b, i) => b ^ dong[i]));
+    return Buffer.concat([nonce, tag, ma]).toString('base64url');
+}
+
+test('trang chỉ có một khối script/style, không còn khối chèn lạ hay mã quảng cáo giả', () => {
+    assert.equal((html.match(/<script>/g) || []).length, 1, 'index.html chỉ được có 1 khối <script>');
+    assert.equal((html.match(/<style>/g) || []).length, 1, 'index.html chỉ được có 1 khối <style>');
+    assert.doesNotMatch(html, /window\.parent\.postMessage|fake-ad|video-ad-overlay/);
+    assert.match(html, /<meta charset="UTF-8">\n {4}<meta name="description"/);
+    assert.doesNotMatch(html, /tdz4\|tron\||Free_v4_'|MA_DEMO_PREFIX = 'Free_v4_'/);
+});
+
+test('mật khẩu, nhãn miền và cấu trúc v5 phải khớp giữa trang và script.js', () => {
+    assert.equal(script.includes(`const BI_MAT = '${BI_MAT}'`), true, 'index.html phải dùng đúng BI_MAT');
+    assert.equal(kuLua.includes(`"${BI_MAT}"`), true, 'script.js phải dùng đúng BI_MAT');
+    assert.equal(script.includes("const MA_DEMO_PREFIX = 'Free_v5_'"), true);
+    assert.equal(kuLua.includes('KEY_PREFIX         = "Free_v5_"'), true);
+    assert.equal(script.includes("[...utf8('tdz5|tron|')"), true);
+    assert.equal(kuLua.includes('"tdz5|tron|"'), true);
+    // Cấu trúc v5 trong script.js: nonce 16, tag 32, lệch 1 byte (cờ tên-từ-Roblox)
+    assert.match(kuLua, /\[5\] = \{ nonce = 16, tag = 32, lech = 1, nhan = "tdz5" \}/);
+    // Trang phải dùng nonce 16 byte và tag đủ 32 byte
+    assert.match(script, /function taoNonce\(so = 16\)/);
+    assert.match(script, /const tag = hmacSha256\(khoaCon, \[\.\.\.utf8\('tdz5\|tag\|'\), \.\.\.nonce, \.\.\.banRo\]\)/);
+    assert.match(script, /luu\.set\(NONCE_KEY, sangHex\(moi\)\)/);
+    assert.equal(script.includes('/^[0-9a-f]{32}$/'), true, 'nonce lưu trong phiên phải là 32 ký tự hex (16 byte)');
+    assert.equal(/Lấy key" trong script Roblox: \?mahoa=/.test(script) || script.includes("thamSo.get('mahoa')"), true);
+    assert.equal(kuLua.includes('"mahoa=" .. MaHoaTen'), true, 'script.js phải phát link ?mahoa=');
+});
+
+test('chỉ tạo key v5 khi đã nhập tên và hoàn thành đủ bốn nhiệm vụ', async () => {
     const site = createPortal();
     const button = site.elements.get('nut-giai-bai');
     assert.equal(button.disabled, true);
@@ -166,7 +224,7 @@ test('chỉ tạo mã demo khi đã nhập tên và hoàn thành đủ bốn nhi
         assert.match(button.children.get('span').textContent, new RegExp(`Còn ${4 - completed} nhiệm vụ`));
         await site.click('nut-giai-bai');
         assert.equal(site.modalOpen(), false);
-        assert.equal(site.elements.get('key-value').value, '');
+        assert.equal(site.nhanKey(), '');
     }
 
     await completeTask(site, 4);
@@ -181,12 +239,15 @@ test('chỉ tạo mã demo khi đã nhập tên và hoàn thành đủ bốn nhi
     assert.equal(button.disabled, false);
     await site.click('nut-giai-bai');
     assert.equal(site.modalOpen(), true);
-    const code = site.elements.get('key-value').value;
-    assert.match(code, /^Free_v2_[A-Za-z0-9_-]+$/);
+    const code = site.nhanKey();
+    assert.match(code, /^Free_v5_[A-Za-z0-9_-]+$/);
     assert.equal(code.includes('HoiAnPlayer_09'), false);
-    assert.deepEqual(giaiMaDemo(code), {
-        ten: 'HoiAnPlayer_09', nhiemVu: 'nv4', thoiDiem: Number(site.store.get('completedAtnv4'))
-    });
+    const tt = giaiMaKey(code);
+    assert.equal(tt.phienBan, 'Free_v5_');
+    assert.equal(tt.tuRoblox, false);
+    assert.equal(tt.ten, 'HoiAnPlayer_09');
+    assert.equal(tt.nhiemVu, 'nv4');
+    assert.equal(tt.thoiDiemMs, Number(site.store.get('completedAtnv4')));
     assert.equal(site.elements.get('player-details').open, false);
     await site.click('copy-key-btn');
     assert.deepEqual(site.copies, [code]);
@@ -216,10 +277,10 @@ test('không tự hoàn thành nếu chưa rời trang, bốn cổng dùng trạ
     assert.equal(site.elements.get('unlocked-count').textContent, '1 / 4 hoàn thành');
 });
 
-test('hết phiên 3 phút xóa mã demo và mốc hoàn thành; reset thủ công giữ tên', async () => {
+test('hết phiên 3 phút xóa key và mốc hoàn thành; reset thủ công giữ tên', async () => {
     const site = createPortal();
     await enterName(site);
-    for (const number of [1, 2, 3, 4]) await completeTask(site, number);
+    await duBonNhiemVu(site);
     await site.click('nut-giai-bai');
     assert.equal(site.modalOpen(), true);
     site.advance(160000); // 20 giây làm nhiệm vụ + 160 giây còn lại của phiên.
@@ -228,7 +289,7 @@ test('hết phiên 3 phút xóa mã demo và mốc hoàn thành; reset thủ cô
         assert.equal(site.store.has(`completedAtnv${number}`), false);
     }
     assert.equal(site.modalOpen(), false);
-    assert.equal(site.elements.get('key-value').value, '');
+    assert.equal(site.nhanKey(), '');
     assert.equal(site.elements.get('nut-giai-bai').disabled, true);
     assert.equal(site.elements.get('countdown-text').textContent, 'Phiên chưa bắt đầu');
     await site.click('link-nv1');
@@ -247,7 +308,7 @@ test('F5 giữ tên/mốc nhiệm vụ, vẫn cần đủ bốn và giữ chức
     const firstTime = storage.get('completedAtnv1');
     const second = createPortal(storage, 1_005_000);
     assert.equal(second.status(1), 'success');
-    assert.equal(second.elements.get('player-name').value, 'HoiAnPlayer_09');
+    assert.equal(second.ten(), 'HoiAnPlayer_09');
     assert.equal(storage.get('completedAtnv1'), firstTime);
     assert.equal(second.status(2), 'idle');
     assert.equal(second.elements.get('nut-giai-bai').disabled, true);
@@ -258,7 +319,7 @@ test('F5 giữ tên/mốc nhiệm vụ, vẫn cần đủ bốn và giữ chức
     assert.match(second.copies[0], /loadstring\(game:HttpGet/);
 });
 
-test('tên người chơi nằm trên nhiệm vụ, lưu sau F5 và hiển thị khi nhận mã demo', async () => {
+test('tên người chơi nằm trên nhiệm vụ, lưu sau F5 và hiển thị kèm nguồn tên', async () => {
     assert.ok(html.indexOf('id="player-name"') < html.indexOf('id="task-heading"'));
     const storage = new Map();
     const first = createPortal(storage);
@@ -266,18 +327,20 @@ test('tên người chơi nằm trên nhiệm vụ, lưu sau F5 và hiển thị
     name.value = '  HoiAnPlayer_09  ';
     await name.fire('input');
     assert.equal(storage.get('taodepzai_player_name'), 'HoiAnPlayer_09');
+    assert.equal(storage.get('taodepzai_ten_tu_link'), '0', 'gõ tay phải tắt cờ tên-từ-Roblox');
     await first.click('nut-reset-thu-cong');
     assert.equal(storage.get('taodepzai_player_name'), 'HoiAnPlayer_09');
 
     const afterReload = createPortal(storage);
-    assert.equal(afterReload.elements.get('player-name').value, 'HoiAnPlayer_09');
-    for (const number of [1, 2, 3, 4]) await completeTask(afterReload, number);
+    assert.equal(afterReload.ten(), 'HoiAnPlayer_09');
+    await duBonNhiemVu(afterReload);
     await afterReload.click('nut-giai-bai');
     const summary = afterReload.elements.get('player-summary');
-    assert.equal(summary.textContent, 'Người chơi: HoiAnPlayer_09');
+    assert.equal(summary.textContent, 'Người chơi: HoiAnPlayer_09 · ✍️ tên gõ tay trên web');
     assert.equal(summary.hidden, false);
     assert.equal(afterReload.elements.get('player-details').open, false);
-    const originalCode = afterReload.elements.get('key-value').value;
+    assert.equal(giaiMaKey(afterReload.nhanKey()).tuRoblox, false);
+    const originalCode = afterReload.nhanKey();
     afterReload.elements.get('player-details').open = true;
     await afterReload.click('back-btn');
     assert.equal(afterReload.elements.get('player-details').open, false);
@@ -289,14 +352,14 @@ test('tên người chơi nằm trên nhiệm vụ, lưu sau F5 và hiển thị
     assert.equal(afterReload.modalOpen(), false);
     await enterName(afterReload, 'AnotherPlayer');
     await afterReload.click('nut-giai-bai');
-    assert.equal(summary.textContent, 'Người chơi: AnotherPlayer');
-    assert.notEqual(afterReload.elements.get('key-value').value, originalCode);
-    assert.equal(giaiMaDemo(originalCode).ten, 'HoiAnPlayer_09');
-    assert.equal(giaiMaDemo(afterReload.elements.get('key-value').value).ten, 'AnotherPlayer');
+    assert.equal(summary.textContent, 'Người chơi: AnotherPlayer · ✍️ tên gõ tay trên web');
+    assert.notEqual(afterReload.nhanKey(), originalCode);
+    assert.equal(giaiMaKey(originalCode).ten, 'HoiAnPlayer_09');
+    assert.equal(giaiMaKey(afterReload.nhanKey()).ten, 'AnotherPlayer');
     await afterReload.click('back-btn');
 });
 
-test('mã Free_ dùng thời điểm nhiệm vụ hoàn thành cuối, ổn định sau F5 và đổi khi tạo phiên mới', async () => {
+test('key v5 dùng thời điểm nhiệm vụ hoàn thành cuối, ổn định sau F5 và đổi khi tạo phiên mới', async () => {
     const storage = new Map();
     const first = createPortal(storage);
     await enterName(first, 'Player_01');
@@ -306,49 +369,94 @@ test('mã Free_ dùng thời điểm nhiệm vụ hoàn thành cuối, ổn đ�
         assert.ok(lastTime > Number(storage.get(`completedAtnv${number}`)));
     }
     await first.click('nut-giai-bai');
-    const originalCode = first.elements.get('key-value').value;
-    assert.match(originalCode, /^Free_v2_[A-Za-z0-9_-]+$/);
-    assert.equal(giaiMaDemo(originalCode).nhiemVu, 'nv2');
-    assert.equal(giaiMaDemo(originalCode).thoiDiem, lastTime);
+    const originalCode = first.nhanKey();
+    assert.match(originalCode, /^Free_v5_[A-Za-z0-9_-]+$/);
+    assert.equal(giaiMaKey(originalCode).nhiemVu, 'nv2');
+    assert.equal(giaiMaKey(originalCode).thoiDiemMs, lastTime);
 
     const afterReload = createPortal(storage, 1_020_000);
     await afterReload.click('nut-giai-bai');
-    assert.equal(afterReload.elements.get('key-value').value, originalCode);
+    assert.equal(afterReload.nhanKey(), originalCode, 'cùng phiên + cùng tên thì key phải ổn định sau F5');
     await afterReload.click('back-btn');
     await afterReload.click('nut-reset-thu-cong');
     assert.equal(storage.has('completedAtnv2'), false);
     for (const number of [4, 1, 3, 2]) await completeTask(afterReload, number);
     await afterReload.click('nut-giai-bai');
-    assert.notEqual(afterReload.elements.get('key-value').value, originalCode);
-    assert.equal(giaiMaDemo(originalCode).thoiDiem, lastTime); // Reset không thu hồi mã đã sao chép.
+    assert.notEqual(afterReload.nhanKey(), originalCode);
+    assert.equal(giaiMaKey(originalCode).thoiDiemMs, lastTime); // Reset không thu hồi key đã sao chép.
 });
 
-test('giải lại đúng tên có dấu, chữ hoa và ký tự đặc biệt từ mã mà không lộ tên khi nhìn mã', async () => {
+test('mã hoá đúng tên có dấu, chữ hoa và ký tự đặc biệt mà không lộ tên khi nhìn key', async () => {
     const site = createPortal();
     const name = 'Nguyễn Thị Ánh 🍃 | Δ';
     await enterName(site, name);
-    for (const number of [3, 2, 4, 1]) await completeTask(site, number);
+    await duBonNhiemVu(site);
     await site.click('nut-giai-bai');
-    const code = site.elements.get('key-value').value;
+    const code = site.nhanKey();
     assert.equal(code.includes('Nguyễn'), false);
-    assert.deepEqual(giaiMaDemo(code), {
-        ten: name, nhiemVu: 'nv1', thoiDiem: Number(site.store.get('completedAtnv1'))
-    });
+    const tt = giaiMaKey(code);
+    assert.equal(tt.ten, name);
+    assert.equal(tt.nhiemVu, 'nv4');
+    assert.equal(tt.thoiDiemMs, Number(site.store.get('completedAtnv4')));
     const output = execFileSync(process.execPath, ['tools/decode-demo.cjs', code], {
-        cwd: path.join(__dirname, '..'), encoding: 'utf8'
+        cwd: REPO, encoding: 'utf8'
     });
     assert.match(output, /Nguyễn Thị Ánh 🍃 \| Δ/);
-    assert.match(output, /nv1/);
-    assert.match(output, /có thể bị giả mạo/);
+    assert.match(output, /nv4/);
+    assert.match(output, /Free_v5_/);
+    assert.match(output, /có thể bị giả mạo|không chứng minh/);
 });
 
-test('không giả vờ giải được mã hash cũ hoặc mã v2 hỏng', () => {
-    for (const code of ['Free_ABCDEFGH123456', 'Free_v2_ab c', 'Free_v2_abcd', 'Free_v2_##########']) {
-        assert.throws(() => giaiMaDemo(code), /không hợp lệ|không thuộc bản/);
+test('link ?mahoa= của script Roblox tự điền tên và bật cờ tên-từ-Roblox', async () => {
+    const site = createPortal(new Map(), 1_000_000, `?mahoa=${maHoaTen('Nguyễn Văn Ánh')}`);
+    assert.equal(site.ten(), 'Nguyễn Văn Ánh');
+    assert.equal(site.store.get('taodepzai_ten_tu_link'), '1');
+    assert.equal(site.history.last, '/taodepzai/', 'phải xoá tham số khỏi thanh địa chỉ sau khi đọc');
+    await duBonNhiemVu(site);
+    await site.click('nut-giai-bai');
+    const tt = giaiMaKey(site.nhanKey());
+    assert.equal(tt.ten, 'Nguyễn Văn Ánh');
+    assert.equal(tt.tuRoblox, true, 'key phải mang cờ tên lấy từ link Roblox');
+    assert.equal(site.elements.get('player-summary').textContent,
+        'Người chơi: Nguyễn Văn Ánh · ✅ tên lấy từ link Roblox');
+});
+
+test('link ?mahoa= hỏng thì báo lỗi, không điền tên; ?ten= cũ vẫn dùng được nhưng không bật cờ', async () => {
+    const hong = createPortal(new Map(), 1_000_000, '?mahoa=@@khong-phai-base64@@');
+    assert.equal(hong.ten(), '');
+    assert.match(hong.elements.get('notification-box').textContent, /không hợp lệ|đã hỏng/);
+
+    const thieuByte = createPortal(new Map(), 1_000_000, `?mahoa=${Buffer.alloc(12).toString('base64url')}`);
+    assert.equal(thieuByte.ten(), '');
+
+    const doiTag = Buffer.from(maHoaTen('KeGian'), 'base64url');
+    doiTag[10] ^= 0xff;
+    const gia = createPortal(new Map(), 1_000_000, `?mahoa=${doiTag.toString('base64url')}`);
+    assert.equal(gia.ten(), '', 'tag sai thì không được điền tên');
+
+    const cu = createPortal(new Map(), 1_000_000, '?ten=Player_09');
+    assert.equal(cu.ten(), 'Player_09');
+    assert.equal(cu.store.get('taodepzai_ten_tu_link'), '0');
+    cu.elements.get('player-name').value = 'Player_09';
+    await cu.elements.get('player-name').fire('input');
+    await duBonNhiemVu(cu);
+    await cu.click('nut-giai-bai');
+    assert.equal(giaiMaKey(cu.nhanKey()).tuRoblox, false);
+});
+
+test('không giả vờ giải được mã hash cũ hoặc key hỏng', () => {
+    for (const code of ['Free_ABCDEFGH123456', 'Free_v5_ab c', 'Free_v5_abcd', 'Free_v5_##########', 'Free_v9_abcdabcd']) {
+        assert.throws(() => giaiMaKey(code), /không hợp lệ|không thuộc bản|hỗ trợ/i);
     }
+    // Key v5 bị sửa 1 ký tự phải bị bắt nhờ tag 256 bit
+    const that = require('node:crypto');
+    const keyBytes = Buffer.concat([Buffer.alloc(16, 7), Buffer.alloc(32, 9), Buffer.alloc(40, 3)]);
+    const ma = `Free_v5_${keyBytes.toString('base64url')}`;
+    assert.throws(() => giaiMaKey(ma), /không hợp lệ/);
+    assert.equal(that.timingSafeEqual(Buffer.from('a'), Buffer.from('a')), true); // chỗ dựa cho việc so tag
 });
 
-test('phiên cũ không có mốc hoàn thành phải làm mới thay vì tạo mã sai', async () => {
+test('phiên cũ không có mốc hoàn thành phải làm mới thay vì tạo key sai', async () => {
     const storage = new Map([
         ['session_expire', '1180000'],
         ['taodepzai_player_name', 'Player_01'],
@@ -361,12 +469,101 @@ test('phiên cũ không có mốc hoàn thành phải làm mới thay vì tạo 
     await site.click('nut-giai-bai');
     assert.equal(site.modalOpen(), false);
     await site.click('nut-reset-thu-cong');
-    for (const number of [1, 2, 3, 4]) await completeTask(site, number);
+    await duBonNhiemVu(site);
     assert.equal(site.elements.get('nut-giai-bai').disabled, false);
 });
 
+test('đổi tên sau khi lấy key thì key đổi theo và mã cũ vẫn đọc được tên cũ', async () => {
+    const site = createPortal();
+    await enterName(site, 'Player_Mot');
+    await duBonNhiemVu(site);
+    await site.click('nut-giai-bai');
+    const maMot = site.nhanKey();
+    await site.click('back-btn');
+    site.elements.get('player-name').value = 'Player_Hai';
+    await site.elements.get('player-name').fire('input');
+    await site.click('nut-giai-bai');
+    const maHai = site.nhanKey();
+    assert.notEqual(maMot, maHai);
+    assert.equal(giaiMaKey(maMot).ten, 'Player_Mot');
+    assert.equal(giaiMaKey(maHai).ten, 'Player_Hai');
+});
+
+test('bốn cặp key liên tiếp đều hợp lệ với bộ giải mã dùng chung thuật toán Luau', async () => {
+    const crypto = require('node:crypto');
+    const site = createPortal();
+    await enterName(site, 'Test_Vong_Lap');
+    await duBonNhiemVu(site);
+    await site.click('nut-giai-bai');
+    const maLanDau = site.nhanKey();
+    for (const soQuay of [7, 128, 999, 0]) {
+        site.store.set('taodepzai_so_quay', String(soQuay));
+        site.store.set('taodepzai_nonce', crypto.randomBytes(16).toString('hex'));
+        await site.click('back-btn');
+        await site.click('nut-giai-bai');
+        const tt = giaiMaKey(site.nhanKey());
+        assert.equal(tt.soQuay, soQuay, `số quay ${soQuay} phải đọc lại đúng`);
+        assert.equal(tt.ten, 'Test_Vong_Lap');
+        assert.equal(tt.thietBi.length, 10);
+        assert.equal(giaiMaDemo(site.nhanKey()).phienBan, 'Free_v5_');
+    }
+    // Key đầu tiên vẫn hợp lệ sau khi đổi nonce (tag phải đúng)
+    assert.equal(giaiMaKey(maLanDau).ten, 'Test_Vong_Lap');
+});
+
+test('công cụ kiểm tra key mô phỏng đúng KiemTraKey của script.js', async () => {
+    const { kiemTraKey, docCauHinh, thanMaThietBi } = require('../tools/kiem-tra-key.cjs');
+    const cauHinh = docCauHinh();
+    assert.equal(cauHinh.KEY_PREFIX, 'Free_v5_');
+    assert.equal(cauHinh.HAN_KEY_GIAY, 24 * 60 * 60);
+
+    const site = createPortal();
+    await enterName(site, 'Player_01');
+    await duBonNhiemVu(site);
+    await site.click('nut-giai-bai');
+    const ma = site.nhanKey();
+    const bayGio = Math.floor(Number(site.store.get('completedAtnv4')) / 1000);
+
+    const ok = kiemTraKey(ma, { cauHinh, tenRoblox: 'Player_01', bayGio });
+    assert.equal(ok.ok, true);
+    assert.equal(ok.conLai, cauHinh.HAN_KEY_GIAY);
+    assert.equal(ok.thongTin.tuRoblox, false);
+
+    const saiTen = kiemTraKey(ma, { cauHinh, tenRoblox: 'Nguoi_Khac', bayGio });
+    assert.equal(saiTen.ok, false);
+    assert.match(saiTen.loi, /không phải của tài khoản Nguoi_Khac/);
+    assert.equal(kiemTraKey(ma, { cauHinh, tenRoblox: '  player_01  ', bayGio }).ok, true, 'tên so không phân biệt hoa thường');
+
+    const hetHan = kiemTraKey(ma, { cauHinh, tenRoblox: 'Player_01', bayGio: bayGio + cauHinh.HAN_KEY_GIAY + 1 });
+    assert.match(hetHan.loi, /hết hạn/);
+    const tuongLai = kiemTraKey(ma, { cauHinh, tenRoblox: 'Player_01', bayGio: bayGio - 3600 });
+    assert.match(tuongLai.loi, /tương lai/);
+
+    // KIEM_TRA_THIET_BI: trong test trang không lấy được IP nên mã mạng là 0.0.0.0
+    const cauHinhMang = { ...cauHinh, KIEM_TRA_THIET_BI: true };
+    assert.equal(kiemTraKey(ma, {
+        cauHinh: cauHinhMang, tenRoblox: 'Player_01', bayGio, maThietBiHienTai: thanMaThietBi('0.0.0.0')
+    }).ok, true);
+    assert.match(kiemTraKey(ma, {
+        cauHinh: cauHinhMang, tenRoblox: 'Player_01', bayGio, maThietBiHienTai: thanMaThietBi('198.51.100.9')
+    }).loi, /mạng khác/);
+
+    // YEU_CAU_TEN_TU_ROBLOX: key gõ tay bị từ chối khi script bật cờ này
+    assert.match(kiemTraKey(ma, {
+        cauHinh: { ...cauHinh, YEU_CAU_TEN_TU_ROBLOX: true }, tenRoblox: 'Player_01', bayGio
+    }).loi, /tên gõ tay/);
+
+    // Key v2 cũ: chỉ được nhận khi còn bật CHAP_NHAN_KEY_V2 (và không có mã kiểm tra)
+    const banRo = JSON.stringify(['Player_01', 'nv4', Number(site.store.get('completedAtnv4'))]);
+    const maV2 = 'Free_v2_' + Buffer.from([...Buffer.from(banRo, 'utf8')]
+        .map((b, i) => b ^ ((i * 73 + 0xA5) & 255))).toString('base64url');
+    const cauHinhV2 = { ...cauHinh, CHAP_NHAN_KEY_V2: true, KIEM_TRA_THIET_BI: false };
+    assert.equal(kiemTraKey(maV2, { cauHinh: cauHinhV2, tenRoblox: 'Player_01', bayGio }).ok, true);
+    assert.match(kiemTraKey(maV2, { cauHinh: { ...cauHinhV2, CHAP_NHAN_KEY_V2: false }, tenRoblox: 'Player_01', bayGio }).loi,
+        /cũ không còn dùng được/);
+});
+
 test('bốn nhiệm vụ xếp thành một cột từ trên xuống dưới ở mọi màn hình', () => {
-    const css = html.split('<style>')[1].split('</style>')[0];
     assert.equal((html.match(/<article class="task-placeholder"/g) || []).length, 4);
     assert.match(css, /\.main-container\s*\{[^}]*max-width:\s*460px;/);
     assert.match(css, /\.task-grid\s*\{[^}]*display:\s*grid;[^}]*grid-template-columns:\s*minmax\(0,\s*1fr\);/);
