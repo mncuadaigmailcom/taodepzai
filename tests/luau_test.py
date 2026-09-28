@@ -1,7 +1,8 @@
 #!/usr/bin/env python3
 """Chạy key-system.lua trong Luau THẬT (ngôn ngữ của Roblox) với key lấy từ code trang web.
 
-- Key Free_v2_: sinh bằng hàm taoMaDemo của trang đang chạy (nhánh origin/main).
+- Key Free_v2_: sinh bằng hàm taoMaDemo của trang v2 cũ (commit 4a1f602).
+- Key Free_v4_ của trang đang chạy (nhánh origin/main, nếu đã lên v4).
 - Key Free_v4_: sinh bằng hàm taoMaDemo của index.html hiện tại (SHA-256 dùng bit32 thật của Luau).
 
 Cần: binary `luau` (đặt biến môi trường LUAU=/đường/dẫn/luau hoặc có trong PATH), Node.js, git.
@@ -26,9 +27,12 @@ LUAU = os.environ.get("LUAU") or shutil.which("luau")
 NOW = k.BAY_GIO
 
 
+TRANG_V2 = "4a1f602"  # trang web bản Free_v2_ (main trước khi lên v4)
+
+
 def tao_ma_trang_main(cases):
-    """Sinh key bằng taoMaDemo của trang web đang chạy (origin/main)."""
-    html = subprocess.run(["git", "show", "origin/main:index.html"], cwd=GOC,
+    """Sinh key bằng taoMaDemo của trang web bản v2 cũ."""
+    html = subprocess.run(["git", "show", f"{TRANG_V2}:index.html"], cwd=GOC,
                           capture_output=True, text=True, check=True).stdout
     code = r"""
 const fs = require('fs');
@@ -41,6 +45,22 @@ console.log(JSON.stringify(JSON.parse(html[1]).map(([ten, id, time]) => taoMaDem
     kq = subprocess.run(["node", "-e", code], input=html + "\u0000" + json.dumps(cases),
                         capture_output=True, text=True, check=True)
     return json.loads(kq.stdout)
+
+
+def tao_v4_trang_main(cases):
+    """Key v4 từ khối mã hoá của index.html trên origin/main (trang đang chạy). None nếu main chưa có v4."""
+    kq = subprocess.run(["git", "show", "origin/main:index.html"], cwd=GOC, capture_output=True, text=True)
+    if kq.returncode != 0 or "// === MÃ HOÁ V4 BẮT ĐẦU ===" not in kq.stdout:
+        return None
+    with tempfile.NamedTemporaryFile("w", suffix=".html", delete=False, encoding="utf-8") as f:
+        f.write(kq.stdout)
+        duong_dan = f.name
+    try:
+        ra = subprocess.run(["node", "-e", k.NODE_TAO_MA, duong_dan], input=json.dumps(cases),
+                            capture_output=True, text=True, check=True)
+    finally:
+        os.unlink(duong_dan)
+    return json.loads(ra.stdout)
 
 
 def tao_v4(cases):
@@ -146,6 +166,23 @@ class LuauThatTest(unittest.TestCase):
         self.assertIn("hết hạn", kq["v2_het_han"][1])
         self.assertIn("không hợp lệ", kq["v3_bi_sua"][1])
         self.assertIn("Key hợp lệ", kq["v4_mang_khac"][1], "Lấy key ở mạng khác rồi đổi mạng vẫn nhận")
+
+    def test_key_tu_trang_main_dang_chay(self):
+        t = (NOW - 90) * 1000 + 17
+        ngau_nhien = random.Random(3)
+        cases = [["Tester", "nv4", t, 123, k.MA_TB, ngau_nhien.randbytes(12).hex()],
+                 ["Tester", "nv2", t, 0, k.ma_thiet_bi("ip:14.232.7.9"), ngau_nhien.randbytes(12).hex()],
+                 ["NguoiKhac", "nv1", t, 5, k.MA_TB, ngau_nhien.randbytes(12).hex()]]
+        cac_ma = tao_v4_trang_main(cases)
+        if cac_ma is None:
+            self.skipTest("origin/main chưa có trang v4")
+        for c, ma in zip(cases, cac_ma):
+            self.assertEqual(ma, k.tao_ma(c[0], c[1], c[2], c[3], thiet_bi=k.than_thiet_bi("ip:14.232.7.9")
+                                          if c[4] != k.MA_TB else k.THAN_TB, nonce=bytes.fromhex(c[5])),
+                             "Trang main phải cùng thuật toán với script")
+        kq = chay_luau("\n".join(f"do local n, tt = thu({chuoi_luau(ma)}) ra({json.dumps(str(i))}, n, tt) end"
+                                 for i, ma in enumerate(cac_ma)))
+        self.assertEqual([kq[str(i)][0] for i in range(3)], ["1", "1", "0"], kq)
 
     def test_luu_key_tu_dien_va_tu_xoa(self):
         t = (NOW - k.NGAY + 600) * 1000  # còn 10 phút
