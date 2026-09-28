@@ -134,6 +134,32 @@ def tao_ma(ten, nhiem_vu="nv4", thoi_diem_ms=None, so_quay=472, thiet_bi=THAN_TB
     return ma_v4_tu_ban_ro(ban_ro_v4(ten, nhiem_vu, thoi_diem_ms, so_quay, thiet_bi), nonce)
 
 
+def _dong_ten(nonce, tag, dai):
+    khoa = hmac.new(BI_MAT_V4, b"tdz4|ten|enc|" + nonce + tag, hashlib.sha256).digest()
+    return b"".join(hashlib.sha256(khoa + bytes([j])).digest() for j in range((dai + 31) // 32))
+
+
+def tao_ma_ten(ten, nonce, tag_gia=None):
+    """Bản Python của MaHoaTen (key-system.lua): tên người chơi mã hoá cho link ?tk=. tag_gia: giả mạo (test)."""
+    ban, nonce = ten.encode("utf-8"), bytes(nonce)
+    tag = tag_gia or hmac.new(BI_MAT_V4, b"tdz4|ten|tag|" + nonce + ban, hashlib.sha256).digest()[:12]
+    return _b64(nonce + tag + bytes(b ^ k for b, k in zip(ban, _dong_ten(nonce, tag, len(ban)))))
+
+
+def giai_ma_ten(tk):
+    try:
+        raw = base64.urlsafe_b64decode(tk + "=" * (-len(tk) % 4))
+    except Exception:
+        return None
+    if len(raw) < 21 or _b64(raw) != tk:
+        return None
+    nonce, tag, ma = raw[:8], raw[8:20], raw[20:]
+    ban = bytes(b ^ k for b, k in zip(ma, _dong_ten(nonce, tag, len(ma))))
+    if not hmac.compare_digest(hmac.new(BI_MAT_V4, b"tdz4|ten|tag|" + nonce + ban, hashlib.sha256).digest()[:12], tag):
+        return None
+    return ban.decode("utf-8")
+
+
 def tao_ma_v2(ten, nhiem_vu="nv4", thoi_diem_ms=None):
     """Mã v2 cũ (XOR theo vị trí)."""
     if thoi_diem_ms is None:
@@ -339,7 +365,48 @@ class GiaoDienTest(unittest.TestCase):
     def test_nut_lay_key_sao_chep_link(self):
         p = Phien()
         p.bam("NutLayKey")
-        self.assertEqual(list(p.log.clipboard.values()), ["https://mncuadaigmailcom.github.io/taodepzai/?ten=Tester"])
+        p.bam("NutLayKey")
+        link = list(p.log.clipboard.values())[0]
+        self.assertTrue(link.startswith("https://mncuadaigmailcom.github.io/taodepzai/?tk="))
+        self.assertEqual(giai_ma_ten(link.split("?tk=")[1]), "Tester")
+
+    def test_nhan_lay_key_2_lan_moi_sao_chep(self):
+        p = Phien(ten="Tao_Dep_01")
+        p.bam("NutLayKey")
+        self.assertEqual(list(p.log.clipboard.values()), [], "Nhấn 1 lần chưa sao chép")
+        self.assertIn("thêm 1 lần nữa", p.trang_thai)
+        p.tua(4)  # quá 3 giây -> tính lại từ đầu
+        p.bam("NutLayKey")
+        self.assertEqual(list(p.log.clipboard.values()), [])
+        p.tua(2)
+        p.bam("NutLayKey")
+        ds = list(p.log.clipboard.values())
+        self.assertEqual(len(ds), 1)
+        self.assertIn("tên đã mã hoá", p.trang_thai)
+        self.assertNotIn("Tao_Dep_01", ds[0], "Link không chứa tên dạng đọc được")
+        self.assertNotIn("ten=", ds[0])
+        # Nhấn tiếp 1 lần: phải nhấn đủ 2 lần mới sao chép lại; link mới khác (nonce ngẫu nhiên) nhưng cùng tên
+        p.bam("NutLayKey")
+        self.assertEqual(len(list(p.log.clipboard.values())), 1)
+        p.bam("NutLayKey")
+        ds = list(p.log.clipboard.values())
+        self.assertEqual(len(ds), 2)
+        self.assertNotEqual(ds[0], ds[1])
+        self.assertEqual({giai_ma_ten(x.split("?tk=")[1]) for x in ds}, {"Tao_Dep_01"})
+        self.assertEqual(p.so_lan_chay, 0, "Nút lấy key không chạy script")
+
+    def test_ma_hoa_ten_giong_python(self):
+        p = Phien()
+        for ten in ("Tester", "a", "x" * 20, "Nguyễn Văn 🎮", "y" * 40):
+            with self.subTest(ten=ten):
+                nonce = hashlib.sha256(ten.encode()).digest()[:8]
+                tk = p.api.MaHoaTen(ten, p.lua.table_from(list(nonce)))
+                self.assertEqual(tk, tao_ma_ten(ten, nonce))
+                self.assertEqual(giai_ma_ten(tk), ten)
+        tk = tao_ma_ten("Tester", b"\x01" * 8)
+        for vt in (0, 10, len(tk) - 2):
+            sai = tk[:vt] + ("A" if tk[vt] != "A" else "B") + tk[vt + 1:]
+            self.assertIsNone(giai_ma_ten(sai))
 
     def test_nut_dong(self):
         p = Phien()
@@ -870,12 +937,16 @@ class ThietBiTest(unittest.TestCase):
         self.assertEqual(PhienMang(ip_loi="offline").thu_key(tao_ma_v2("Tester")).so_lan_chay, 1)
 
     def test_link_lay_key_kem_ten(self):
-        p = PhienMang(ten="Tao Dep_01")
+        p = PhienMang(ten="Tao_Dep_01")
         p.bam("NutLayKey")
-        self.assertEqual(list(p.log.clipboard.values()), ["https://mncuadaigmailcom.github.io/taodepzai/?ten=Tao%20Dep_01"])
+        p.bam("NutLayKey")
+        link = list(p.log.clipboard.values())[0]
+        self.assertEqual(giai_ma_ten(link.split("?tk=")[1]), "Tao_Dep_01")
         p2 = PhienMang(khong_clipboard=True)
         p2.bam("NutLayKey")
-        self.assertIn("taodepzai/?ten=Tester", p2.trang_thai)
+        p2.bam("NutLayKey")
+        self.assertIn("taodepzai/?tk=", p2.trang_thai)
+        self.assertEqual(giai_ma_ten(p2.trang_thai.split("?tk=")[1]), "Tester")
 
 
 class DoiMangTest(unittest.TestCase):
@@ -998,6 +1069,32 @@ class DoiChieuIndexHtmlTest(unittest.TestCase):
                 self.assertEqual(p.giai_ma(ma), {"ten": ten.strip(), "nhiemVu": nv, "thoiDiem": t // 1000,
                                                  "soQuay": so, "thietBi": THAN_TB})
                 self.assertEqual(p.thu_key(ma).so_lan_chay, 1)
+
+    def test_ten_ma_hoa_tu_script_giai_duoc_bang_index_html(self):
+        # Link "Lấy key" của script (Lua) -> hàm giaiMaTen thật trong index.html phải đọc ra đúng tên
+        cac_tk, mong = [], []
+        for ten in ("Tester", "Tao_Dep_01", "a", "abcdefghijklmnopqrst"):
+            p = Phien(ten=ten)
+            p.bam("NutLayKey")
+            p.bam("NutLayKey")
+            cac_tk.append(list(p.log.clipboard.values())[0].split("?tk=")[1])
+            mong.append(ten)
+        tk0 = cac_tk[0]
+        cac_tk += [tk0[:12] + ("A" if tk0[12] != "A" else "B") + tk0[13:], tk0[:-1], "abc", tk0 + "A",
+                   tao_ma_ten(" Tester", b"\x02" * 8), tao_ma_ten("x" * 33, b"\x03" * 8),
+                   tao_ma_ten("Người chơi 🎮", b"\x04" * 8), tao_ma_ten("KeGiaMao", b"\x05" * 8, b"\x01" * 12)]
+        mong += [None, None, None, None, None, None, "Người chơi 🎮", None]
+        self.assertIsNone(giai_ma_ten(cac_tk[-1]))
+        code = r"""
+const fs = require('fs');
+const html = fs.readFileSync(process.argv[1], 'utf8');
+const dau = html.indexOf('// === MÃ HOÁ V4 BẮT ĐẦU ==='), cuoi = html.indexOf('// === MÃ HOÁ V4 KẾT THÚC ===');
+const giaiMaTen = new Function(html.slice(dau, cuoi) + 'return giaiMaTen;')();
+console.log(JSON.stringify(JSON.parse(fs.readFileSync(0, 'utf8')).map(giaiMaTen)));
+"""
+        kq = subprocess.run(["node", "-e", code, str(GOC / "index.html")], input=json.dumps(cac_tk),
+                            capture_output=True, text=True, check=True)
+        self.assertEqual(json.loads(kq.stdout), mong)
 
     def test_ngay_gio_moi_moc_lich_giong_index_html(self):
         # Chuỗi trộn có ngày giờ ms: index.html (Date UTC), Python (lịch đếm ngày) và Lua phải ra cùng key

@@ -255,7 +255,11 @@ ra("du_phong", p2.api.MaThietBi())
 local p3 = mo({ ten = "Tester", gio_may = %d, ip_loi = "offline" })
 ra("mat_mang", tostring(p3.api.MaThietBi()), p3.gui:FindFirstChildDeep("MaThietBi").Text)
 p.gui:FindFirstChildDeep("NutLayKey").MouseButton1Click:Fire()
+ra("link1", tostring(p.log.clipboard[1]))
+p.gui:FindFirstChildDeep("NutLayKey").MouseButton1Click:Fire()
 ra("link", p.log.clipboard[1] or "")
+ra("ten_co_dinh", p.api.MaHoaTen("Tester", {1, 2, 3, 4, 5, 6, 7, 8}),
+    p.api.MaHoaTen("Nguyễn Văn Tèo 🎮 abcdefghijklmnopqrstuvwxyz", {255, 0, 128, 7, 9, 200, 3, 64}))
 """ % (NOW, NOW, NOW)
         kq = chay_luau(than, kiem_tra_mang=True)
         ma = k.ma_thiet_bi("ip:14.232.7.9")
@@ -266,7 +270,12 @@ ra("link", p.log.clipboard[1] or "")
         self.assertEqual(kq["du_phong"], [ma])
         self.assertEqual(kq["mat_mang"][0], "nil")
         self.assertIn("chưa lấy được", kq["mat_mang"][1])
-        self.assertEqual(kq["link"], ["https://mncuadaigmailcom.github.io/taodepzai/?ten=Tester"])
+        self.assertEqual(kq["link1"], ["nil"], "Nhấn 1 lần chưa sao chép link")
+        self.assertTrue(kq["link"][0].startswith("https://mncuadaigmailcom.github.io/taodepzai/?tk="))
+        self.assertEqual(k.giai_ma_ten(kq["link"][0].split("?tk=")[1]), "Tester")
+        self.assertEqual(kq["ten_co_dinh"], [k.tao_ma_ten("Tester", bytes(range(1, 9))),
+                                             k.tao_ma_ten("Nguyễn Văn Tèo 🎮 abcdefghijklmnopqrstuvwxyz",
+                                                          bytes([255, 0, 128, 7, 9, 200, 3, 64]))])
 
     def test_key_mang_khac_trong_luau(self):
         t = (NOW - 60) * 1000

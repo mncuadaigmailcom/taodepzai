@@ -116,6 +116,26 @@ function giaiMaV4(noiDung) {
     return { ten: kiemTraTen(p.subarray(20)), nhiemVu: `nv${nv}`, thoiDiem, soQuay, thietBi };
 }
 
+// Tên người chơi mã hoá trong link "Lấy key" (?tk=), giống MaHoaTen (key-system.lua) / giaiMaTen (index.html)
+function dongTen(nonce, tag, dai) { return dongKhoa(hmac('tdz4|ten|enc|', nonce, tag), dai); }
+function taoMaTen(ten, nonce = crypto.randomBytes(8), tagGia = null) { // tagGia: chỉ để test (giả mạo tag)
+    const ban = Buffer.from(ten, 'utf8');
+    const tag = tagGia ? Buffer.from(tagGia) : hmac('tdz4|ten|tag|', nonce, ban).subarray(0, 12);
+    const dong = dongTen(nonce, tag, ban.length);
+    return Buffer.concat([Buffer.from(nonce), tag, ban.map((b, i) => b ^ dong[i])]).toString('base64url');
+}
+function giaiMaTen(tk) {
+    try {
+        if (!/^[A-Za-z0-9_-]{28,200}$/.test(tk)) return null;
+        const raw = docBase64Url(tk);
+        const nonce = raw.subarray(0, 8), tag = raw.subarray(8, 20);
+        const dong = dongTen(nonce, tag, raw.length - 20);
+        const ban = raw.subarray(20).map((b, i) => b ^ dong[i]);
+        if (!crypto.timingSafeEqual(hmac('tdz4|ten|tag|', nonce, ban).subarray(0, 12), tag)) return null;
+        return kiemTraTen(ban);
+    } catch { return null; }
+}
+
 function giaiMaDemo(ma) {
     if (typeof ma !== 'string') throw new Error(INVALID);
     try {
@@ -149,4 +169,4 @@ if (require.main === module) {
     }
 }
 
-module.exports = { chuoiTron, giaiMaDemo, taoMaV4, maThietBiTuGoc, chuanHoaMaThietBi };
+module.exports = { taoMaTen, giaiMaTen, chuoiTron, giaiMaDemo, taoMaV4, maThietBiTuGoc, chuanHoaMaThietBi };

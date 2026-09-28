@@ -12,7 +12,8 @@ Trang HTML tĩnh tại `index.html`. Mở tệp trong trình duyệt hoặc ch�
 - **Chuỗi trộn:** mã mạng + tên + ngày tháng năm giờ phút giây mili giây (UTC) + số quay ghép thành một chuỗi riêng, rồi băm thành **khoá con** để mã hoá key (xem bên dưới).
 - **Đổi mạng vẫn dùng được:** mặc định script Roblox **không** bắt cùng mạng (`KIEM_TRA_THIET_BI = false`) và không gọi dịch vụ IP nào. Lấy key xong chuyển từ wifi sang 4G/5G (hoặc ngược lại) vẫn xác nhận được, key đã lưu vẫn tự điền.
   - Muốn bắt buộc cùng mạng thì đặt `KIEM_TRA_THIET_BI = true`: script sẽ tự lấy IP và từ chối key tạo ở mạng khác.
-- Nút **Lấy key** trong game sao chép link trang kèm `?ten=...` để trang tự điền tên. Trang đọc xong thì xoá tham số khỏi thanh địa chỉ.
+- Nhấn nút **Lấy key** trong game **2 lần (trong 3 giây)** để sao chép link trang kèm `?tk=...`: **tên người chơi đã mã hoá** (nonce ngẫu nhiên 8 byte + tag HMAC-SHA256 12 byte + tên XOR dòng khoá SHA-256), nên link không lộ tên và mỗi lần nhấn cho một link khác. Nhấn 1 lần chỉ nhắc nhấn thêm lần nữa. Roblox không cho script tự mở trình duyệt, nên cần dán link vào trình duyệt.
+- Trang giải mã `?tk=`: nếu **hợp lệ** (tag khớp, UTF-8 đúng, 1–32 ký tự) thì tự điền tên và **ẩn luôn phần nhập tên** (chỉ báo "Đã tự nhập tên người chơi từ Roblox"). Tên cũng được ẩn trong hộp thoại key. F5 vẫn giữ ẩn. Link bị sửa / bịa thì không điền tên, vẫn hiện ô nhập tên và báo lỗi. Tên đang khoá (đã lấy key cho tên khác) thì link `?tk=` tên khác bị bỏ qua. Link cũ `?ten=...` (tên thường) vẫn tự điền nhưng không ẩn ô nhập tên. Trang đọc xong thì xoá tham số khỏi thanh địa chỉ.
 - **Không hiện ngày giờ ở đâu cả.** Dòng dưới vòng quay chỉ còn chữ mô tả cố định. Thời điểm, tên và mã thiết bị chỉ nằm trong key ở dạng đã mã hoá.
 - **Vòng quay 3 số:** mỗi lần quay sẽ đổi số và đổi **nonce ngẫu nhiên 96 bit** (`crypto.getRandomValues`), nên key luôn khác, kể cả khi trùng số. Key vẫn giữ nguyên sau F5; làm mới phiên thì đổi nonce.
 
@@ -85,7 +86,7 @@ Mặc định script nhận **cả key `Free_v2_`** của trang đang chạy tr�
 
 **Lưu key:** key xác nhận thành công được lưu vào file của executor (`writefile`), mỗi tài khoản một file `taodepzai_key_<UserId>.txt`. Lần sau mở script, key còn hạn được **tự điền vào ô nhập** (vẫn cần bấm Xác nhận). Khi key hết hạn 24 giờ (tính từ lúc hoàn thành nhiệm vụ cuối), key **tự bị xoá** khỏi file: ngay lúc hết hạn nếu game còn mở (xoá cả trong ô nhập nếu bảng đang hiện), hoặc lúc mở lại script. Key sai không ghi đè key đã lưu. Executor không có `writefile` thì script vẫn chạy, chỉ không lưu được.
 
-Khi hợp lệ, bảng báo thời gian còn lại, **xoá giao diện nhập key** rồi tải và chạy `https://mncuadaigmailcom.github.io/aiaiaitao2/script.js`. Nếu tải lỗi hoặc script lỗi cú pháp, bảng vẫn giữ lại để thử lại. Có thể nhấn Enter để xác nhận. Nút “Lấy key” sao chép link trang tạo mã kèm sẵn tên.
+Khi hợp lệ, bảng báo thời gian còn lại, **xoá giao diện nhập key** rồi tải và chạy `https://mncuadaigmailcom.github.io/aiaiaitao2/script.js`. Nếu tải lỗi hoặc script lỗi cú pháp, bảng vẫn giữ lại để thử lại. Có thể nhấn Enter để xác nhận. Nhấn nút “Lấy key” 2 lần để sao chép link trang tạo mã kèm tên người chơi đã mã hoá (`?tk=`); trang tự điền tên và ẩn phần nhập tên.
 
 Sau khi GitHub Pages cập nhật, chạy trong executor:
 

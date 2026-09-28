@@ -36,6 +36,7 @@ local CAU_HINH = {
     TEN_FILE_KEY       = "taodepzai_key_", -- + UserId + ".txt" (mỗi tài khoản một file)
     SCRIPT_URL   = "https://mncuadaigmailcom.github.io/aiaiaitao2/script.js",
     LINK_LAY_KEY = "https://mncuadaigmailcom.github.io/taodepzai/", -- để "" nếu muốn ẩn nút
+    THOI_GIAN_NHAN_DUP = 3,               -- nhấn "Lấy key" 2 lần trong 3 giây mới sao chép link
     TIEU_DE      = "taodepzai · Key System",
     TEN_GUI      = "Taodepzai_KeySystem",
 }
@@ -513,6 +514,54 @@ local function GiaiMaV4(noiDung)
     }
 end
 
+-- ================= Tên người chơi mã hoá (link "Lấy key") =================
+-- tk = base64url( nonce 8 byte | tag 12 byte | tên XOR dòng khoá )
+--   tag  = HMAC-SHA256(BI_MAT, "tdz4|ten|tag|" .. nonce .. tên) lấy 12 byte đầu
+--   khoá = HMAC-SHA256(BI_MAT, "tdz4|ten|enc|" .. nonce .. tag); dòng khoá = SHA256(khoá .. 0) .. SHA256(khoá .. 1) ...
+-- Trang web giải mã (giaiMaTen trong index.html): hợp lệ thì tự điền tên và ẩn phần nhập tên.
+local B64_BANG = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_"
+local function MaHoaBase64Url(ds)
+    local kq = {}
+    for i = 1, #ds, 3 do
+        local a, b, c = ds[i], ds[i + 1], ds[i + 2]
+        local n = a * 65536 + (b or 0) * 256 + (c or 0)
+        local so = b == nil and 2 or (c == nil and 3 or 4)
+        for k = 1, so do
+            local v = math.floor(n / 2 ^ (18 - 6 * (k - 1))) % 64
+            kq[#kq + 1] = B64_BANG:sub(v + 1, v + 1)
+        end
+    end
+    return table.concat(kq)
+end
+
+local NHAN_TEN_TAG, NHAN_TEN_KHOA = ByteCua("tdz4|ten|tag|"), ByteCua("tdz4|ten|enc|")
+
+local function NonceNgauNhien(so)
+    local rng
+    pcall(function() rng = Random.new() end)
+    local kq = {}
+    for i = 1, so do
+        kq[i] = rng and rng:NextInteger(0, 255) or math.random(0, 255)
+    end
+    return kq
+end
+
+local function MaHoaTen(ten, nonce)
+    nonce = nonce or NonceNgauNhien(8)
+    local ban = ByteCua(ten)
+    local tagDu = HmacSha256(BI_MAT_V4, Noi(NHAN_TEN_TAG, nonce, ban))
+    local tag = {}
+    for i = 1, 12 do tag[i] = tagDu[i] end
+    local khoa = HmacSha256(BI_MAT_V4, Noi(NHAN_TEN_KHOA, nonce, tag))
+    local ma, dong = {}, nil
+    for i = 1, #ban do
+        local viTri = (i - 1) % 32
+        if viTri == 0 then dong = Sha256(Noi(khoa, { (i - 1) / 32 })) end
+        ma[i] = BXor(ban[i], dong[viTri + 1])
+    end
+    return MaHoaBase64Url(Noi(nonce, tag, ma))
+end
+
 -- Trả về { ten, nhiemVu, thoiDiem (giây, UTC), soQuay?, thietBi?, phienBan } hoặc nil
 local function GiaiMaKey(ma)
     if type(ma) ~= "string" then return nil end
@@ -971,21 +1020,35 @@ local function SaoChep(noiDung)
     end)
 end
 
-local function MaHoaUrl(s)
-    return (tostring(s):gsub("[^%w%-_%.~]", function(c) return string.format("%%%02X", c:byte()) end))
-end
-
--- Link lấy key kèm sẵn tên -> trang web tự điền (mã thiết bị trang tự lấy theo IP)
+-- Link lấy key kèm tên người chơi ĐÃ MÃ HOÁ (?tk=...) -> trang web tự điền tên và ẩn phần nhập tên
 local function LinkLayKey()
     local noi = CAU_HINH.LINK_LAY_KEY:find("?", 1, true) and "&" or "?"
-    return CAU_HINH.LINK_LAY_KEY .. noi .. "ten=" .. MaHoaUrl(player.Name)
+    return CAU_HINH.LINK_LAY_KEY .. noi .. "tk=" .. MaHoaTen(tostring(player.Name))
 end
 
+-- Đồng hồ cho nhấn đúp: os.clock (có phần lẻ) nếu có, không thì giờ máy chủ
+local function DongHoNhan()
+    local ok, t = pcall(function() return os.clock() end)
+    if ok and type(t) == "number" then return t end
+    return BayGio()
+end
+
+-- Nhấn "Lấy key" 2 lần (trong 3 giây) -> sao chép link. Roblox không cho script tự mở trình duyệt,
+-- nên người chơi dán link vào trình duyệt.
+local lanNhanLayKey = nil
 if nutLayKey then
     nutLayKey.MouseButton1Click:Connect(function()
+        local bayGio = DongHoNhan()
+        if not lanNhanLayKey or bayGio - lanNhanLayKey > CAU_HINH.THOI_GIAN_NHAN_DUP then
+            lanNhanLayKey = bayGio
+            BaoTrangThai("Nhấn \"Lấy key\" thêm 1 lần nữa để sao chép link lấy key.", MAU.VANG)
+            return
+        end
+        lanNhanLayKey = nil
         local link = LinkLayKey()
         if SaoChep(link) then
-            BaoTrangThai("Đã sao chép link lấy key, dán vào trình duyệt trên máy này (cùng mạng).", MAU.VANG)
+            BaoTrangThai("Đã sao chép link lấy key (tên đã mã hoá). Dán vào trình duyệt để mở trang lấy key, "
+                .. "tên sẽ tự điền.", MAU.VANG)
         else
             BaoTrangThai("Link lấy key: " .. link, MAU.VANG)
         end
@@ -1018,4 +1081,5 @@ if CAU_HINH.LUU_KEY then
 end
 
 -- Trả về các hàm kiểm tra (để test; không ảnh hưởng khi chạy bằng loadstring)
-return { GiaiMaKey = GiaiMaKey, KiemTraKey = KiemTraKey, MaThietBi = function() return MA_THIET_BI end }
+return { GiaiMaKey = GiaiMaKey, KiemTraKey = KiemTraKey, MaThietBi = function() return MA_THIET_BI end,
+    MaHoaTen = MaHoaTen }

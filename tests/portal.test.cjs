@@ -4,9 +4,9 @@ const test = require('node:test');
 const fs = require('node:fs');
 const path = require('node:path');
 const vm = require('node:vm');
-const { TextEncoder } = require('node:util');
+const { TextEncoder, TextDecoder } = require('node:util');
 const { execFileSync } = require('node:child_process');
-const { giaiMaDemo, taoMaV4, maThietBiTuGoc, chuanHoaMaThietBi, chuoiTron } = require('../tools/decode-demo.cjs');
+const { giaiMaDemo, taoMaV4, maThietBiTuGoc, chuanHoaMaThietBi, chuoiTron, taoMaTen, giaiMaTen } = require('../tools/decode-demo.cjs');
 
 // IP mạng giả lập của điện thoại -> mã thiết bị (script Roblox tính ra cùng mã khi cùng IP)
 const IP = '113.161.10.20';
@@ -136,8 +136,12 @@ function createPortal(sharedStore = new Map(), now = 1_000_000, tuyChon = {}) {
     };
     vm.runInNewContext(script, {
         ...extra,
-        document, window, localStorage, Date: ClockDate, TextEncoder,
+        document, window, localStorage, Date: ClockDate, TextEncoder, TextDecoder,
         btoa: binary => Buffer.from(binary, 'latin1').toString('base64'),
+        atob: b64 => {
+            if (!/^[A-Za-z0-9+/]*={0,2}$/.test(b64) || b64.length % 4) throw new Error('InvalidCharacterError');
+            return Buffer.from(b64, 'base64').toString('latin1');
+        },
         navigator: { clipboard: { writeText: text => { copies.push(text); return Promise.resolve(); } } },
         setTimeout: (fn, ms) => schedule(fn, ms),
         clearTimeout: id => timers.delete(id),
@@ -773,4 +777,74 @@ test('khoá tên sau khi lấy key: ?ten= khác, dữ liệu khoá hỏng / quá
         assert.equal(s2.elements.get('player-name').readOnly, false, hong);
         assert.equal(m.has('taodepzai_khoa_ten'), false, hong);
     }
+});
+
+test('link ?tk= (tên đã mã hoá từ Roblox): tự điền tên, ẩn phần nhập tên, không hiện tên ở đâu', async () => {
+    const storage = new Map();
+    const tk = taoMaTen('RobloxUser_77');
+    assert.equal(giaiMaTen(tk), 'RobloxUser_77');
+    assert.equal(tk.includes('RobloxUser'), false);
+    const site = createPortal(storage, 1_000_000, { search: `?tk=${tk}` });
+    assert.equal(site.replaced.length, 1, 'Xoá ?tk= khỏi thanh địa chỉ');
+    assert.equal(storage.get('taodepzai_player_name'), 'RobloxUser_77');
+    assert.equal(site.elements.get('name-section').hidden, true, 'Ẩn phần nhập tên');
+    assert.equal(site.elements.get('name-auto').hidden, false);
+    assert.match(site.elements.get('name-auto').textContent, /Đã tự nhập tên người chơi từ Roblox/);
+    for (const number of [1, 2, 3, 4]) await completeTask(site, number);
+    await site.click('nut-giai-bai');
+    const code = site.elements.get('key-value').value;
+    assert.equal(giaiMaDemo(code).ten, 'RobloxUser_77', 'Key mang đúng tên từ Roblox');
+    assert.equal(site.elements.get('player-summary').textContent, 'Người chơi: ✓ tên từ Roblox (đã ẩn)');
+    for (const [id, el] of site.elements) {
+        if (id === 'key-value' || id === 'player-name') continue; // ô tên bị ẩn cùng phần nhập tên
+        assert.equal(String(el.textContent).includes('RobloxUser'), false, `#${id} không hiện tên`);
+    }
+    assert.match(site.elements.get('name-auto').textContent, /khoá đến khi key hết hạn/);
+    await site.click('back-btn');
+    // F5: vẫn ẩn
+    const f5 = createPortal(storage, 1_020_000);
+    assert.equal(f5.elements.get('name-section').hidden, true);
+    // Link khác (tên khác) khi tên đang khoá vì đã lấy key -> không đổi, báo lỗi, hiện tên đã khoá
+    const khac = createPortal(storage, 1_030_000, { search: `?tk=${taoMaTen('NguoiKhac')}` });
+    assert.equal(storage.get('taodepzai_player_name'), 'RobloxUser_77');
+    assert.match(khac.elements.get('notification-box').textContent, /tên khác/);
+    // Cùng tên (link mới, nonce khác) -> vẫn ẩn
+    const lai = createPortal(storage, 1_040_000, { search: `?tk=${taoMaTen('RobloxUser_77')}` });
+    assert.equal(lai.elements.get('name-section').hidden, true);
+});
+
+test('link ?tk= sai (bị sửa / bịa / tên không hợp lệ) thì không điền tên, hiện ô nhập tên và báo lỗi', async () => {
+    const tk = taoMaTen('RobloxUser_77');
+    const sai = [tk.slice(0, 12) + (tk[12] === 'A' ? 'B' : 'A') + tk.slice(13), tk.slice(0, -1), 'abc', tk + 'AAAA',
+        '', 'RobloxUser_77', taoMaTen(' coKhoangTrang'), taoMaTen('x'.repeat(33)),
+        taoMaTen('KeGiaMao', Buffer.alloc(8, 9), Buffer.alloc(12, 1))]; // mã hoá đúng nhưng tag giả
+    for (const x of sai) {
+        const storage = new Map([['taodepzai_player_name', 'TenCu']]);
+        const site = createPortal(storage, 1_000_000, { search: `?tk=${encodeURIComponent(x)}` });
+        assert.equal(storage.get('taodepzai_player_name'), 'TenCu', x);
+        assert.equal(site.elements.get('name-section').hidden, false, x);
+        assert.equal(site.elements.get('name-auto').hidden, true, x);
+        assert.match(site.elements.get('notification-box').textContent, /không hợp lệ/, x);
+    }
+});
+
+test('link ?tk= đổi tên khi chưa khoá; ?ten= thường thì hiện lại phần nhập tên', async () => {
+    const storage = new Map();
+    createPortal(storage, 1_000_000, { search: `?tk=${taoMaTen('TenMot')}` });
+    const hai = createPortal(storage, 1_010_000, { search: `?tk=${taoMaTen('TenHai')}` });
+    assert.equal(storage.get('taodepzai_player_name'), 'TenHai');
+    assert.equal(hai.elements.get('name-section').hidden, true);
+    const thuong = createPortal(storage, 1_020_000, { search: '?ten=TenBa' });
+    assert.equal(storage.get('taodepzai_player_name'), 'TenBa');
+    assert.equal(thuong.elements.get('name-section').hidden, false);
+    // ?ten= trùng tên đã từng ẩn -> vẫn hiện ô nhập tên (link thường không được ẩn)
+    const thuong2 = createPortal(storage, 1_025_000, { search: '?ten=TenHai' });
+    assert.equal(thuong2.elements.get('name-section').hidden, false);
+    // Xong 4 nhiệm vụ (chưa lấy key) mà mở link ?tk= tên khác -> không đổi
+    const site = createPortal(storage, 1_030_000, { search: `?tk=${taoMaTen('TenBon')}` });
+    assert.equal(site.elements.get('name-section').hidden, true);
+    for (const number of [1, 2, 3, 4]) await completeTask(site, number);
+    const sau = createPortal(storage, 1_060_000, { search: `?tk=${taoMaTen('TenNam')}` });
+    assert.equal(storage.get('taodepzai_player_name'), 'TenBon');
+    assert.match(sau.elements.get('notification-box').textContent, /khoá/);
 });
