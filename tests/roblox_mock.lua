@@ -136,6 +136,20 @@ return function(tuy_chon)
         },
     }
 
+    -- Mở web: tuy_chon.mo_web = "GuiService" / "BrowserService" (executor cho phép dịch vụ đó),
+    -- "chan" (có dịch vụ nhưng bị chặn -> báo lỗi); nil = không có dịch vụ. Lượt mở ghi vào log.mo_web
+    log.mo_web = {}
+    for _, ten_dv in ipairs({ "GuiService", "BrowserService" }) do
+        if tuy_chon.mo_web then
+            dich_vu[ten_dv] = {
+                OpenBrowserWindow = function(_, url)
+                    if tuy_chon.mo_web ~= ten_dv then error("Hàm này bị executor chặn") end
+                    table.insert(log.mo_web, url)
+                end,
+            }
+        end
+    end
+
     local game = {}
     function game:GetService(ten)
         local s = dich_vu[ten]

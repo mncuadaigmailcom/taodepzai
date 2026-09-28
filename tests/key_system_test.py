@@ -395,6 +395,32 @@ class GiaoDienTest(unittest.TestCase):
         self.assertEqual({giai_ma_ten(x.split("?tk=")[1]) for x in ds}, {"Tao_Dep_01"})
         self.assertEqual(p.so_lan_chay, 0, "Nút lấy key không chạy script")
 
+    def test_nhan_2_lan_thu_tu_mo_trinh_duyet(self):
+        for dv in ("GuiService", "BrowserService"):
+            with self.subTest(dv=dv):
+                p = Phien(mo_web=dv)
+                p.bam("NutLayKey")
+                self.assertEqual(list(p.log.mo_web.values()), [], "Nhấn 1 lần chưa mở")
+                p.bam("NutLayKey")
+                mo = list(p.log.mo_web.values())
+                self.assertEqual(len(mo), 1)
+                self.assertEqual(giai_ma_ten(mo[0].split("?tk=")[1]), "Tester")
+                self.assertEqual(list(p.log.clipboard.values()), mo, "Vẫn sao chép link để dự phòng")
+                self.assertIn("Đang mở trang lấy key", p.trang_thai)
+        # Executor chặn (báo lỗi) hoặc không có dịch vụ -> chỉ sao chép, báo rõ
+        for tc in ({"mo_web": "chan"}, {}):
+            p = Phien(**tc)
+            p.bam("NutLayKey")
+            p.bam("NutLayKey")
+            self.assertEqual(list(p.log.mo_web.values()), [])
+            self.assertEqual(len(list(p.log.clipboard.values())), 1)
+            self.assertIn("không cho tự mở web", p.trang_thai)
+        # Tắt tự mở trong cấu hình
+        p = Phien(mo_web="GuiService", script=SCRIPT.replace("TU_MO_TRINH_DUYET = true,", "TU_MO_TRINH_DUYET = false,"))
+        p.bam("NutLayKey")
+        p.bam("NutLayKey")
+        self.assertEqual(list(p.log.mo_web.values()), [])
+
     def test_ma_hoa_ten_giong_python(self):
         p = Phien()
         for ten in ("Tester", "a", "x" * 20, "Nguyễn Văn 🎮", "y" * 40):

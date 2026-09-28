@@ -37,6 +37,7 @@ local CAU_HINH = {
     SCRIPT_URL   = "https://mncuadaigmailcom.github.io/aiaiaitao2/script.js",
     LINK_LAY_KEY = "https://mncuadaigmailcom.github.io/taodepzai/", -- để "" nếu muốn ẩn nút
     THOI_GIAN_NHAN_DUP = 3,               -- nhấn "Lấy key" 2 lần trong 3 giây mới sao chép link
+    TU_MO_TRINH_DUYET = true,             -- thử tự mở trang lấy key (chỉ được nếu executor cho phép)
     TIEU_DE      = "taodepzai · Key System",
     TEN_GUI      = "Taodepzai_KeySystem",
 }
@@ -1033,8 +1034,20 @@ local function DongHoNhan()
     return BayGio()
 end
 
--- Nhấn "Lấy key" 2 lần (trong 3 giây) -> sao chép link. Roblox không cho script tự mở trình duyệt,
--- nên người chơi dán link vào trình duyệt.
+-- Thử tự mở trình duyệt. Roblox chỉ cho script lõi (CoreScript) mở web; đa số executor chặn các hàm này,
+-- nên lỗi thì bỏ qua (link vẫn được sao chép). Trả về true nếu có hàm nào chạy không báo lỗi.
+local function MoTrinhDuyet(link)
+    if not CAU_HINH.TU_MO_TRINH_DUYET then return false end
+    for _, cach in ipairs({
+        function() game:GetService("GuiService"):OpenBrowserWindow(link) end,
+        function() game:GetService("BrowserService"):OpenBrowserWindow(link) end,
+    }) do
+        if pcall(cach) then return true end
+    end
+    return false
+end
+
+-- Nhấn "Lấy key" 2 lần (trong 3 giây) -> thử tự mở trang lấy key + sao chép link (dán vào trình duyệt nếu không tự mở)
 local lanNhanLayKey = nil
 if nutLayKey then
     nutLayKey.MouseButton1Click:Connect(function()
@@ -1046,9 +1059,13 @@ if nutLayKey then
         end
         lanNhanLayKey = nil
         local link = LinkLayKey()
-        if SaoChep(link) then
-            BaoTrangThai("Đã sao chép link lấy key (tên đã mã hoá). Dán vào trình duyệt để mở trang lấy key, "
-                .. "tên sẽ tự điền.", MAU.VANG)
+        local daChep = SaoChep(link)
+        if MoTrinhDuyet(link) then
+            BaoTrangThai("Đang mở trang lấy key (tên đã mã hoá, tự điền)."
+                .. (daChep and " Nếu trang không hiện, link đã được sao chép: dán vào trình duyệt." or ""), MAU.VANG)
+        elseif daChep then
+            BaoTrangThai("Executor không cho tự mở web. Đã sao chép link lấy key (tên đã mã hoá): "
+                .. "dán vào trình duyệt để mở trang, tên sẽ tự điền.", MAU.VANG)
         else
             BaoTrangThai("Link lấy key: " .. link, MAU.VANG)
         end
