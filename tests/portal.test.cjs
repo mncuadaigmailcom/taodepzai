@@ -353,9 +353,25 @@ test('tên người chơi nằm trên nhiệm vụ, lưu sau F5 và hiển thị
     assert.equal(f5.elements.get('player-name').readOnly, true);
     await enterName(f5, 'AnotherPlayer');
     assert.equal(storage.get('taodepzai_player_name'), 'HoiAnPlayer_09');
-    // Hết thời gian phiên -> đổi được tên, làm lại nhiệm vụ
+    // Đã lấy key: hết phiên / làm mới phiên vẫn KHÔNG đổi được tên
     afterReload.advance(3 * 60 * 1000);
+    assert.equal(afterReload.status(1), 'idle', 'Phiên đã hết, nhiệm vụ làm lại');
+    assert.equal(afterReload.elements.get('player-name').readOnly, true);
+    assert.match(afterReload.elements.get('name-lock').textContent, /đã lấy key.*key hết hạn \(24 giờ\)/);
+    await afterReload.click('nut-reset-thu-cong');
+    await enterName(afterReload, 'AnotherPlayer');
+    assert.equal(storage.get('taodepzai_player_name'), 'HoiAnPlayer_09');
+    // Làm lại nhiệm vụ trong 24 giờ -> key mới vẫn đúng tên cũ
+    for (const number of [1, 2, 3, 4]) await completeTask(afterReload, number);
+    await afterReload.click('nut-giai-bai');
+    assert.equal(giaiMaDemo(afterReload.elements.get('key-value').value).ten, 'HoiAnPlayer_09');
+    await afterReload.click('back-btn');
+    // Key hết hạn (24 giờ kể từ lúc xong nhiệm vụ của key đầu) -> đổi được tên
+    const f5b = createPortal(storage, 1_000_000 + 23 * 60 * 60 * 1000);
+    assert.equal(f5b.elements.get('player-name').readOnly, true, 'Trước 24 giờ vẫn khoá (kể cả F5)');
+    afterReload.advance(24 * 60 * 60 * 1000);
     assert.equal(afterReload.elements.get('player-name').readOnly, false);
+    assert.equal(storage.has('taodepzai_khoa_ten'), false);
     assert.equal(afterReload.elements.get('nut-giai-bai').disabled, true);
     await enterName(afterReload, 'AnotherPlayer');
     for (const number of [1, 2, 3, 4]) await completeTask(afterReload, number);
@@ -719,4 +735,42 @@ test('khoá tên: mở lại trang khi phiên đã hết giờ (qua link ?ten=) 
     assert.equal(sau.elements.get('player-name').value, 'TenMoi');
     assert.equal(sau.elements.get('player-name').readOnly, false);
     assert.equal(storage.get('taodepzai_player_name'), 'TenMoi');
+});
+
+test('khoá tên sau khi lấy key: ?ten= khác, dữ liệu khoá hỏng / quá hạn, không lộ giờ hết hạn', async () => {
+    const storage = new Map();
+    const site = createPortal(storage, 1_790_000_000_000);
+    await enterName(site, 'ChuKey');
+    for (const number of [1, 2, 3, 4]) await completeTask(site, number);
+    site.advance(40_000); // mở key sau khi xong nhiệm vụ 40 giây
+    await site.click('nut-giai-bai');
+    const code = site.elements.get('key-value').value;
+    const khoa = JSON.parse(storage.get('taodepzai_khoa_ten'));
+    assert.equal(khoa.ten, 'ChuKey');
+    assert.equal(khoa.den, giaiMaDemo(code).thoiDiem + 24 * 60 * 60 * 1000, 'Khoá đúng bằng hạn key');
+    const text = site.elements.get('name-lock').textContent;
+    assert.doesNotMatch(text, /\d{1,2}:\d{2}|\d{1,2}\/\d{1,2}|giờ \d|\d+ phút/, 'Không lộ giờ hết hạn');
+    // Không lúc nào ghi tên khác vào bộ nhớ (kể cả thoáng qua) khi tên đang khoá
+    const daGhi = [];
+    const setGoc = storage.set.bind(storage);
+    storage.set = (k, v) => { if (k === 'taodepzai_player_name') daGhi.push(v); return setGoc(k, v); };
+    await enterName(site, 'KeKhacGo');
+    // Mở lại bằng link Roblox tên khác, sau khi phiên đã hết -> vẫn tên cũ
+    const quaLink = createPortal(storage, 1_790_000_000_000 + 10 * 60 * 1000, { search: '?ten=KeKhac' });
+    assert.equal(quaLink.elements.get('player-name').value, 'ChuKey');
+    assert.equal(quaLink.elements.get('player-name').readOnly, true);
+    assert.deepEqual(daGhi.filter(v => v !== 'ChuKey'), [], 'Không ghi tên khác vào bộ nhớ');
+    storage.set = setGoc;
+    // Xoá tên trong bộ nhớ (không xoá khoá) -> trang tự điền lại tên đã khoá
+    storage.delete('taodepzai_player_name');
+    const f5 = createPortal(storage, 1_790_000_000_000 + 20 * 60 * 1000);
+    await f5.flush();
+    assert.equal(f5.elements.get('player-name').value, 'ChuKey');
+    // Dữ liệu khoá hỏng hoặc hạn quá xa (bị sửa tay) -> bỏ qua
+    for (const hong of ['{', '{"ten":"","den":9e15}', JSON.stringify({ ten: 'X', den: 1_790_000_000_000 + 9 * 86400000 })]) {
+        const m = new Map([['taodepzai_khoa_ten', hong]]);
+        const s2 = createPortal(m, 1_790_000_000_000);
+        assert.equal(s2.elements.get('player-name').readOnly, false, hong);
+        assert.equal(m.has('taodepzai_khoa_ten'), false, hong);
+    }
 });

@@ -49,6 +49,8 @@ Bốn nhiệm vụ xếp thành một cột. Người dùng **phải nhập tên
 
 **Khoá tên:** xong đủ 4 nhiệm vụ là ô tên bị khoá (chỉ đọc) cho đến khi hết thời gian phiên hoặc bấm “Làm mới phiên”.
 - Đã nhập tên trước đó: mở khoá được key; không xoá / đổi tên được nữa (kể cả F5, dán, hay mở link `?ten=` khác).
+- **Đã lấy key** (mở hộp thoại key): tên khoá luôn **đến khi key đó hết hạn (24 giờ** kể từ lúc xong nhiệm vụ cuối). Hết phiên, làm mới phiên hay F5 đều không mở khoá; làm lại nhiệm vụ trong 24 giờ thì key mới vẫn mang tên cũ. Trang không hiện giờ hết hạn.
+- Giới hạn: khoá lưu trong trình duyệt (localStorage). Xoá dữ liệu trang, dùng tab ẩn danh hoặc trình duyệt khác thì không còn khoá.
 - Chưa nhập tên: không mở khoá được key; phải chờ hết phiên (hoặc làm mới phiên) rồi nhập tên và làm lại nhiệm vụ.
 
 Khi một nhiệm vụ hoàn thành, thời điểm hoàn thành được lưu trong trình duyệt. Sau 4/4, trang lấy **thời điểm của nhiệm vụ hoàn thành cuối cùng** và ID nhiệm vụ đó cùng tên người chơi để tạo mã `Free_v4_...` (đã mã hoá, xem trên). Mã ổn định sau F5 nếu vẫn cùng tên, phiên và số vòng quay; đổi tên, bấm **🎰 Quay số mới** hoặc tạo phiên mới sẽ tạo mã khác. Tên được lưu trong trình duyệt và giữ lại khi reset phiên, còn trạng thái nhiệm vụ và mốc thời gian được reset sau 3 phút hoặc khi bấm nút làm mới. Bản sao của mã đã gửi đi vẫn có thể đọc được sau khi reset.

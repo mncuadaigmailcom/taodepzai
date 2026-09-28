@@ -559,7 +559,7 @@
                 Tên người chơi
             </label>
             <input class="player-input" id="player-name" name="playerName" type="text" maxlength="32" autocomplete="nickname" spellcheck="false" required placeholder="Tên tài khoản Roblox của bạn" aria-describedby="player-help">
-            <p class="player-help" id="player-help">Nhập <strong>đúng tên tài khoản Roblox</strong> (hoặc tên hiển thị) của bạn: script chỉ nhận key có tên trùng với tài khoản đang chơi, và key chỉ dùng được <strong>24 giờ</strong>. Tên được lưu trên trình duyệt và được mã hoá bên trong key. <strong>Hãy nhập tên trước khi xong nhiệm vụ cuối:</strong> xong đủ 4 nhiệm vụ là tên bị khoá, không sửa được cho đến khi hết thời gian phiên.</p>
+            <p class="player-help" id="player-help">Nhập <strong>đúng tên tài khoản Roblox</strong> (hoặc tên hiển thị) của bạn: script chỉ nhận key có tên trùng với tài khoản đang chơi, và key chỉ dùng được <strong>24 giờ</strong>. Tên được lưu trên trình duyệt và được mã hoá bên trong key. <strong>Hãy nhập tên trước khi xong nhiệm vụ cuối:</strong> xong đủ 4 nhiệm vụ là tên bị khoá; <strong>lấy key rồi thì tên khoá luôn đến khi key hết hạn (24 giờ)</strong>.</p>
             <p class="player-help name-lock" id="name-lock" role="status" aria-live="polite" hidden></p>
             <!-- Mã mạng (IP 4G / 5G / wifi) được lấy ngầm để trộn vào mã hoá key; không hiện, không cần nhập. -->
         </div>
@@ -686,6 +686,8 @@
         const PLAYER_NAME_KEY = 'taodepzai_player_name';
         const SO_QUAY_KEY = 'taodepzai_so_quay';
         const NONCE_KEY = 'taodepzai_nonce';
+        const KHOA_TEN_KEY = 'taodepzai_khoa_ten'; // {ten, den}: tên đã lấy key, khoá đến khi key hết hạn
+        const HAN_KEY_MS = 24 * 60 * 60 * 1000;    // key có hạn 24 giờ (giống HAN_KEY_GIAY trong key-system.lua)
         const boNhoTam = new Map();
         const luu = {
             get(key) {
@@ -1042,15 +1044,32 @@
             lienKet.setAttribute('aria-label', `Cổng mở khóa ${nv.so}, ${nv.ten}, ${nhan.textContent}. Mở trong tab mới`);
         }
 
+        // Đã lấy key -> tên khoá đến khi key đó hết hạn (24 giờ), làm mới phiên hay F5 cũng không mở.
+        function docKhoaTen() {
+            const raw = luu.get(KHOA_TEN_KEY);
+            if (raw === null) return null;
+            try {
+                const { ten, den } = JSON.parse(raw);
+                if (typeof ten === 'string' && ten.trim() && ten.length <= 32 && Number.isFinite(den) &&
+                    Date.now() < den && den - Date.now() <= HAN_KEY_MS + 60000) return { ten, den };
+            } catch { /* Dữ liệu hỏng -> bỏ. */ }
+            luu.remove(KHOA_TEN_KEY); // Hết hạn / hỏng
+            return null;
+        }
+
         // Xong đủ 4 nhiệm vụ và phiên còn thời gian -> khoá ô tên (đến khi hết phiên / làm mới phiên).
-        function tenDangKhoa() {
+        function khoaTheoPhien() {
             const hetHan = thoiGianHetHan();
             return NHIEM_VU.every(nv => trangThai(nv) === 'success') &&
                 hetHan !== null && Number.isFinite(hetHan) && Date.now() < hetHan;
         }
 
+        function tenDangKhoa() { return !!docKhoaTen() || khoaTheoPhien(); }
+
         function capNhatKhoaTen() {
-            const khoa = tenDangKhoa();
+            const khoaKey = docKhoaTen();
+            if (khoaKey && luu.get(PLAYER_NAME_KEY) !== khoaKey.ten) luu.set(PLAYER_NAME_KEY, khoaKey.ten);
+            const khoa = !!khoaKey || khoaTheoPhien();
             const oKhoa = document.getElementById('name-lock');
             playerNameInput.readOnly = khoa;
             if (khoa) {
@@ -1060,7 +1079,9 @@
             const coTen = !!playerNameInput.value.trim();
             oKhoa.hidden = !khoa;
             oKhoa.className = `player-help name-lock ${khoa && !coTen ? 'loi' : 'ok'}`;
-            oKhoa.textContent = !khoa ? '' : coTen
+            oKhoa.textContent = !khoa ? '' : khoaKey
+                ? '🔒 Bạn đã lấy key cho tên này nên tên bị khoá. Chỉ đổi được tên khi key hết hạn (24 giờ).'
+                : coTen
                 ? '🔒 Tên đã khoá sau khi xong 4 nhiệm vụ. Chỉ đổi được tên khi hết thời gian phiên.'
                 : '🔒 Bạn chưa nhập tên trước khi xong 4 nhiệm vụ nên không mở khoá được key. Chờ hết thời gian phiên (hoặc bấm Làm mới phiên) rồi nhập tên và làm lại.';
             return khoa;
@@ -1258,7 +1279,11 @@
             const lanCuoi = lanHoanThanhCuoi();
             if (!lanCuoi) return;
             phanTuTruocHopThoai = document.activeElement;
-            capNhatMa();
+            // Lấy được key -> khoá tên đến khi key hết hạn (tính từ lúc xong nhiệm vụ cuối, giống script)
+            if (capNhatMa() && !docKhoaTen()) {
+                luu.set(KHOA_TEN_KEY, JSON.stringify({ ten: playerNameInput.value.trim(), den: lanCuoi.time + HAN_KEY_MS }));
+                kiemTraMoKhoa();
+            }
             hienThiTenNguoiChoi();
             playerDetails.open = false;
             manHinhTrang.classList.add('show');
@@ -1317,7 +1342,7 @@
             else { kiemTraTienTrinhNhiemVu(); capNhatIp(); }
         });
         window.addEventListener('storage', event => {
-            if (event.key === PLAYER_NAME_KEY) {
+            if (event.key === PLAYER_NAME_KEY || event.key === KHOA_TEN_KEY) {
                 playerNameInput.value = luu.get(PLAYER_NAME_KEY) || '';
                 kiemTraMoKhoa();
                 if (manHinhTrang.classList.contains('show')) {
@@ -1332,6 +1357,7 @@
         setInterval(() => {
             if (kiemTraHanSuDung()) return;
             hienThiDongHo();
+            if (playerNameInput.readOnly !== tenDangKhoa()) kiemTraMoKhoa(); // key hết hạn -> mở khoá tên
             NHIEM_VU.filter(nv => trangThai(nv) === 'checking').forEach(hienThiNhiemVu);
         }, 500);
 
