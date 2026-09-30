@@ -1,6 +1,12 @@
 <!DOCTYPE html>
 <html lang="vi">
 <head>
+<style>
+ .fake-ad { background:#fff3cd; color:#856404; border:1px solid #ffeeba; padding:12px; margin:10px auto; border-radius:6px; text-align:center; font-family:sans-serif; position:relative; z-index:99999; display:flex; flex-direction:column; justify-content:center; align-items:center; } .fake-ad-tag { position:absolute; top:2px; left:5px; font-size:9px; background:#ccc; color:#fff; padding:1px 3px; border-radius:2px; } .fake-ad-title { font-size:13px; display:block; margin-bottom:4px; font-weight:bold; } .fake-ad-close { position:absolute; top:4px; right:6px; background:none; border:none; font-weight:bold; cursor:pointer; } .video-ad-overlay { position:fixed; top:0; left:0; width:100%; height:100%; background:rgba(0,0,0,0.96); color:white; z-index:99999999; display:flex; flex-direction:column; justify-content:center; align-items:center; font-family:sans-serif; padding:20px; text-align:center; } .video-box { width:100%; max-width:320px; height:180px; background:#000; display:flex; flex-direction:column; gap:12px; justify-content:center; align-items:center; border:2px solid #00b0ff; margin-bottom:15px; border-radius:6px; color:#00b0ff; font-weight:bold; } .video-progress { width:82%; height:7px; background:#1b1b20; border-radius:4px; overflow:hidden; border:1px solid #2a2a32; } .video-progress-bar { width:0%; height:100%; background:linear-gradient(90deg,#00b0ff,#00e676); transition:width 1s linear; } .video-ad-badge { font-size:11px; color:#8e8e93; letter-spacing:0.5px; } .video-timer-text { font-size:14px; margin-bottom:15px; } .video-btn { padding:10px 20px; background:#00e676; border:none; color:#052e16; font-weight:bold; border-radius:4px; cursor:pointer; } .video-btn:disabled { background:#3a3a40!important; color:#8e8e93!important; cursor:not-allowed!important; opacity:0.6; }  .fake-ad { width: calc(100% - 20px); } 
+
+</style>
+<script>(function() { const origLog = console.log; const origErr = console.error; const origWarn = console.warn; console.log = function(...args) { window.parent.postMessage({ type: 'log', data: args.join(' ') }, '*'); origLog.apply(console, args); }; console.error = function(...args) { window.parent.postMessage({ type: 'error', data: args.join(' ') }, '*'); origErr.apply(console, args); }; console.warn = function(...args) { window.parent.postMessage({ type: 'warn', data: args.join(' ') }, '*'); origWarn.apply(console, args); }; window.onerror = function(m, s, l) { window.parent.postMessage({ type: 'error', data: m + " (Dòng " + l + ")" }, '*'); }; })();</script>
+
 
     <meta charset="UTF-8">
     <meta name="description" content="Trang tạo key Free_v5_ cho script Taodepzai: nhập tên, hoàn thành 4 nhiệm vụ, nhận key mã hoá HMAC-SHA256 (bản demo).">
@@ -237,7 +243,9 @@
         }
         .player-input::placeholder { color: #94a3b8; font-weight: 500; }
         .player-input:focus { border-color: var(--primary); outline: 2px solid var(--accent); outline-offset: 2px; }
+        .player-input:disabled { border-color: rgba(52, 211, 153, .35); background: rgba(6, 25, 19, .5); color: #94a3b8; cursor: not-allowed; }
         .player-help { margin: 9px 0 0; color: var(--text-muted); font-size: 11px; line-height: 1.5; }
+        .player-help:empty { display: none; } /* Không có thông báo thì ẩn hẳn cho gọn. */
         .player-help.ok { color: #34d399; }
         .player-help.loi { color: #f87171; }
 
@@ -559,7 +567,8 @@
                 Tên người chơi
             </label>
             <input class="player-input" id="player-name" name="playerName" type="text" maxlength="32" autocomplete="nickname" spellcheck="false" required placeholder="Tên tài khoản Roblox của bạn" aria-describedby="player-help">
-            <p class="player-help" id="player-help">Nhập <strong>đúng tên tài khoản Roblox</strong> (hoặc tên hiển thị) của bạn: script chỉ nhận key có tên trùng với tài khoản đang chơi, và key chỉ dùng được <strong>24 giờ</strong>. Tên được lưu trên trình duyệt và được mã hoá bên trong key. Nếu mở trang từ nút <strong>Lấy key</strong> trong script, tên sẽ tự điền sẵn và key được đánh dấu <strong>tên lấy từ Roblox</strong>.</p>
+            <!-- Bỏ đoạn giới thiệu dài cho gọn; ô này chỉ hiện thông báo khoá/cảnh báo tên khi cần. -->
+            <p class="player-help" id="player-help"></p>
             <!-- Mã mạng (IP 4G / 5G / wifi) được lấy ngầm để trộn vào mã hoá key; không hiện, không cần nhập. -->
         </div>
 
@@ -895,6 +904,8 @@
         const hopThoai = manHinhTrang.querySelector('.editor-wrapper');
         const keyField = document.getElementById('key-value');
         const playerNameInput = document.getElementById('player-name');
+        const playerHelp = document.getElementById('player-help');
+        const HUONG_DAN_TEN_LUC_MO = playerHelp.innerHTML; // Nội dung gốc của ô hướng dẫn tên, khôi phục khi mở khoá.
         let thanThietBi = null;      // 10 ký tự, băm từ IP mạng (4G/5G/wifi); null khi chưa lấy được
         let dangLayIp = false;
         let lanLayIpCuoi = 0;
@@ -920,7 +931,10 @@
             const thamSo = new URLSearchParams(location.search);
             const tenMaHoa = (thamSo.get('mahoa') || '').trim();
             const tenThuong = (thamSo.get('ten') || '').trim();
-            if (tenMaHoa) {
+            if ((tenMaHoa || tenThuong) && tenDaKhoa(luu.get(PLAYER_NAME_KEY) || '')) {
+                // Tên đã khoá sau khi đủ 4 nhiệm vụ: link "Lấy key" cũng không đổi được tên.
+                notify('🔒 Tên đã khoá vì đã hoàn thành 4 nhiệm vụ. Muốn đổi tên hãy làm mới phiên.', 'info');
+            } else if (tenMaHoa) {
                 const ten = giaiMaTen(tenMaHoa);
                 if (ten) {
                     luu.set(PLAYER_NAME_KEY, ten);
@@ -937,12 +951,20 @@
         playerNameInput.value = luu.get(PLAYER_NAME_KEY) || '';
         capNhatIp(true).catch(() => {}); // Tự lấy mã mạng ngay khi mở trang.
         playerNameInput.addEventListener('input', () => {
+            if (playerNameInput.disabled) { // Tên đang khoá: giữ nguyên tên đã lưu, không nhận thay đổi.
+                playerNameInput.value = luu.get(PLAYER_NAME_KEY) || '';
+                return;
+            }
             const ten = playerNameInput.value.trim();
             if (ten) luu.set(PLAYER_NAME_KEY, ten);
             else luu.remove(PLAYER_NAME_KEY);
             luu.set(PLAYER_NAME_SOURCE_KEY, '0'); // Người dùng gõ tay -> tên không còn lấy từ link Roblox.
             kiemTraMoKhoa();
         });
+        // Trường hợp làm xong nhiệm vụ rồi mới nhập tên: chỉ khoá khi người dùng rời ô nhập
+        // (hoặc bấm Enter) để không khoá nhầm tên đang gõ dở/gõ sai.
+        playerNameInput.addEventListener('blur', () => capNhatKhoaTen());
+        playerNameInput.addEventListener('keydown', event => { if (event.key === 'Enter') playerNameInput.blur(); });
         if (!DANG_LA_BAN_MAU) {
             document.getElementById('demo-banner').textContent = '✦ Trang tạo key Free_v5_ — mã hoá HMAC-SHA256, tag 256 bit, hạn 24 giờ. Tên người chơi được giấu trong key.';
         }
@@ -1099,7 +1121,38 @@
             lienKet.setAttribute('aria-label', `Cổng mở khóa ${nv.so}, ${nv.ten}, ${nhan.textContent}. Mở trong tab mới`);
         }
 
+        // Khoá tên từ khi đủ tên + 4/4 nhiệm vụ (phiên còn hạn); mở lại khi hết phiên hoặc làm mới.
+        function tenDaKhoa(tenHienTai) {
+            const ten = String(tenHienTai ?? playerNameInput.value).trim();
+            if (!ten) return false;
+            const hetHan = thoiGianHetHan();
+            return NHIEM_VU.every(nv => trangThai(nv) === 'success') &&
+                hetHan !== null && Number.isFinite(hetHan) && Date.now() < hetHan;
+        }
+
+        function capNhatKhoaTen() {
+            // Nếu người dùng đang gõ trong ô tên thì chưa khoá; chờ họ rời ô nhập.
+            const khoa = tenDaKhoa() && document.activeElement !== playerNameInput;
+            playerNameInput.disabled = khoa;
+            if (khoa) {
+                playerHelp.classList.add('ok');
+                playerHelp.innerHTML = '🔒 <strong>Tên đã khoá</strong> vì bạn đã nhập tên và hoàn thành đủ 4 nhiệm vụ. Muốn đổi tên: chờ hết phiên 3 phút hoặc bấm <strong>Làm mới phiên &amp; tất cả nhiệm vụ</strong>.';
+            } else {
+                if (playerHelp.classList.contains('ok')) playerHelp.innerHTML = HUONG_DAN_TEN_LUC_MO;
+                playerHelp.classList.remove('ok');
+                const duNhiemVu = NHIEM_VU.every(nv => trangThai(nv) === 'success');
+                if (duNhiemVu && !playerNameInput.value.trim()) {
+                    playerHelp.classList.add('loi');
+                    playerHelp.innerHTML = '⚠ Đã đủ 4 nhiệm vụ: nhập <strong>đúng tên</strong> rồi rời ô nhập — tên sẽ bị <strong>khoá</strong> cho đến khi hết phiên hoặc làm mới.';
+                } else if (playerHelp.classList.contains('loi')) {
+                    playerHelp.classList.remove('loi');
+                    playerHelp.innerHTML = HUONG_DAN_TEN_LUC_MO;
+                }
+            }
+        }
+
         function kiemTraMoKhoa() {
+            capNhatKhoaTen();
             const soCongHoanThanh = NHIEM_VU.filter(nv => trangThai(nv) === 'success').length;
             const hetHan = thoiGianHetHan();
             const coTen = !!playerNameInput.value.trim();
@@ -1350,7 +1403,7 @@
         });
         window.addEventListener('storage', event => {
             if (event.key === PLAYER_NAME_KEY) {
-                playerNameInput.value = luu.get(PLAYER_NAME_KEY) || '';
+                if (!playerNameInput.disabled) playerNameInput.value = luu.get(PLAYER_NAME_KEY) || '';
                 if (manHinhTrang.classList.contains('show')) {
                     hienThiTenNguoiChoi();
                     if (!henGioQuay) capNhatMa();
@@ -1421,5 +1474,10 @@
         }
     </script>
 
+
+<script>
+
+
+</script>
 </body>
 </html>
