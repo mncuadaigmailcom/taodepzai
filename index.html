@@ -239,6 +239,7 @@
         .player-input:focus { border-color: var(--primary); outline: 2px solid var(--accent); outline-offset: 2px; }
         .player-input:disabled { border-color: rgba(52, 211, 153, .35); background: rgba(6, 25, 19, .5); color: #94a3b8; cursor: not-allowed; }
         .player-help { margin: 9px 0 0; color: var(--text-muted); font-size: 11px; line-height: 1.5; }
+        .player-help:empty { display: none; } /* Không có thông báo thì ẩn hẳn cho gọn. */
         .player-help.ok { color: #34d399; }
         .player-help.loi { color: #f87171; }
 
@@ -560,7 +561,8 @@
                 Tên người chơi
             </label>
             <input class="player-input" id="player-name" name="playerName" type="text" maxlength="32" autocomplete="nickname" spellcheck="false" required placeholder="Tên tài khoản Roblox của bạn" aria-describedby="player-help">
-            <p class="player-help" id="player-help">Nhập <strong>đúng tên tài khoản Roblox</strong> (hoặc tên hiển thị) của bạn: script chỉ nhận key có tên trùng với tài khoản đang chơi, và key chỉ dùng được <strong>24 giờ</strong>. Tên được lưu trên trình duyệt và được mã hoá bên trong key. Nếu mở trang từ nút <strong>Lấy key</strong> trong script, tên sẽ tự điền sẵn và key được đánh dấu <strong>tên lấy từ Roblox</strong>.</p>
+            <!-- Bỏ đoạn giới thiệu dài cho gọn; ô này chỉ hiện thông báo khoá/cảnh báo tên khi cần. -->
+            <p class="player-help" id="player-help"></p>
             <!-- Mã mạng (IP 4G / 5G / wifi) được lấy ngầm để trộn vào mã hoá key; không hiện, không cần nhập. -->
         </div>
 
