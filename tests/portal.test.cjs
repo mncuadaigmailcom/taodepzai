@@ -55,6 +55,12 @@ class Element {
     setAttribute(name, value) { this.attributes[name] = String(value); }
     removeAttribute(name) { delete this.attributes[name]; }
     focus() { this.document.activeElement = this; }
+    blur() {
+        if (this.document && this.document.activeElement === this) {
+            this.document.activeElement = null;
+            this.fire('blur'); // Giống trình duyệt: blur() phát sự kiện blur.
+        }
+    }
     select() { this.selected = true; }
     getClientRects() { return [{}]; }
     getBoundingClientRect() { return { left: 0, top: 0, width: 300, height: 200 }; }
@@ -344,13 +350,17 @@ test('tên người chơi nằm trên nhiệm vụ, lưu sau F5 và hiển thị
     afterReload.elements.get('player-details').open = true;
     await afterReload.click('back-btn');
     assert.equal(afterReload.elements.get('player-details').open, false);
+    // Sau khi đủ tên + 4 nhiệm vụ: ô tên bị khoá, không xoá/đổi được cho đến khi làm mới phiên.
+    assert.equal(afterReload.elements.get('player-name').disabled, true, 'đủ tên + 4/4 thì ô tên phải khoá');
     afterReload.elements.get('player-name').value = '   ';
     await afterReload.elements.get('player-name').fire('input');
-    assert.equal(storage.has('taodepzai_player_name'), false);
-    assert.equal(afterReload.elements.get('nut-giai-bai').disabled, true);
-    await afterReload.click('nut-giai-bai');
-    assert.equal(afterReload.modalOpen(), false);
+    assert.equal(storage.get('taodepzai_player_name'), 'HoiAnPlayer_09', 'tên đã khoá thì không xoá được');
+    assert.equal(afterReload.elements.get('player-name').value, 'HoiAnPlayer_09');
+    assert.equal(afterReload.elements.get('nut-giai-bai').disabled, false);
+    await afterReload.click('nut-reset-thu-cong');
+    assert.equal(afterReload.elements.get('player-name').disabled, false, 'làm mới phiên phải mở khoá tên');
     await enterName(afterReload, 'AnotherPlayer');
+    await duBonNhiemVu(afterReload);
     await afterReload.click('nut-giai-bai');
     assert.equal(summary.textContent, 'Người chơi: AnotherPlayer · ✍️ tên gõ tay trên web');
     assert.notEqual(afterReload.nhanKey(), originalCode);
@@ -473,20 +483,54 @@ test('phiên cũ không có mốc hoàn thành phải làm mới thay vì tạo 
     assert.equal(site.elements.get('nut-giai-bai').disabled, false);
 });
 
-test('đổi tên sau khi lấy key thì key đổi theo và mã cũ vẫn đọc được tên cũ', async () => {
+test('khoá tên sau khi hoàn thành đủ nhiệm vụ; mở lại khi làm mới hoặc hết phiên', async () => {
     const site = createPortal();
+    const nameEl = site.elements.get('player-name');
     await enterName(site, 'Player_Mot');
+    assert.equal(nameEl.disabled, false, 'chưa đủ nhiệm vụ thì vẫn sửa được tên');
     await duBonNhiemVu(site);
+    assert.equal(nameEl.disabled, true, 'đủ tên + 4/4 nhiệm vụ thì ô tên phải khoá');
+    nameEl.value = 'Player_Hai';
+    await nameEl.fire('input');
+    assert.equal(nameEl.value, 'Player_Mot', 'ô đã khoá phải đẩy giá trị về tên đã lưu');
+    assert.equal(site.store.get('taodepzai_player_name'), 'Player_Mot');
     await site.click('nut-giai-bai');
     const maMot = site.nhanKey();
+    assert.equal(giaiMaKey(maMot).ten, 'Player_Mot');
     await site.click('back-btn');
-    site.elements.get('player-name').value = 'Player_Hai';
-    await site.elements.get('player-name').fire('input');
+
+    // Làm mới phiên: mở khoá tên, giữ tên cũ cho người dùng sửa lại.
+    await site.click('nut-reset-thu-cong');
+    assert.equal(nameEl.disabled, false, 'làm mới phiên phải mở khoá tên');
+    await enterName(site, 'Player_Hai');
+    assert.equal(nameEl.disabled, false, 'chưa làm lại nhiệm vụ thì chưa khoá');
+    await duBonNhiemVu(site);
+    assert.equal(nameEl.disabled, true);
     await site.click('nut-giai-bai');
     const maHai = site.nhanKey();
     assert.notEqual(maMot, maHai);
-    assert.equal(giaiMaKey(maMot).ten, 'Player_Mot');
+    assert.equal(giaiMaKey(maMot).ten, 'Player_Mot', 'key cũ vẫn đọc được tên cũ');
     assert.equal(giaiMaKey(maHai).ten, 'Player_Hai');
+    await site.click('back-btn');
+
+    // Hết phiên 3 phút: tự mở khoá, tên vẫn giữ.
+    site.advance(160000 + 25000);
+    assert.equal(nameEl.disabled, false, 'hết phiên phải mở khoá tên');
+    assert.equal(site.store.get('taodepzai_player_name'), 'Player_Hai');
+
+    // Trường hợp làm xong nhiệm vụ rồi mới nhập tên: chỉ khoá sau khi rời ô nhập (hoặc Enter).
+    const site2 = createPortal();
+    const name2 = site2.elements.get('player-name');
+    await duBonNhiemVu(site2);
+    assert.equal(name2.disabled, false, 'chưa có tên thì chưa khoá');
+    assert.match(site2.elements.get('player-help').innerHTML, /khoá/, 'phải cảnh báo tên sẽ bị khoá');
+    name2.focus();
+    name2.value = 'NguoiMoi';
+    await name2.fire('input');
+    assert.equal(name2.disabled, false, 'đang gõ trong ô thì chưa khoá');
+    await name2.fire('keydown', { key: 'Enter' });
+    assert.equal(name2.disabled, true, 'bấm Enter (rời ô nhập) thì khoá tên');
+    assert.equal(site2.store.get('taodepzai_player_name'), 'NguoiMoi');
 });
 
 test('bốn cặp key liên tiếp đều hợp lệ với bộ giải mã dùng chung thuật toán Luau', async () => {

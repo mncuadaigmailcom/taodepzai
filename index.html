@@ -237,6 +237,7 @@
         }
         .player-input::placeholder { color: #94a3b8; font-weight: 500; }
         .player-input:focus { border-color: var(--primary); outline: 2px solid var(--accent); outline-offset: 2px; }
+        .player-input:disabled { border-color: rgba(52, 211, 153, .35); background: rgba(6, 25, 19, .5); color: #94a3b8; cursor: not-allowed; }
         .player-help { margin: 9px 0 0; color: var(--text-muted); font-size: 11px; line-height: 1.5; }
         .player-help.ok { color: #34d399; }
         .player-help.loi { color: #f87171; }
@@ -895,6 +896,8 @@
         const hopThoai = manHinhTrang.querySelector('.editor-wrapper');
         const keyField = document.getElementById('key-value');
         const playerNameInput = document.getElementById('player-name');
+        const playerHelp = document.getElementById('player-help');
+        const HUONG_DAN_TEN_LUC_MO = playerHelp.innerHTML; // Nội dung gốc của ô hướng dẫn tên, khôi phục khi mở khoá.
         let thanThietBi = null;      // 10 ký tự, băm từ IP mạng (4G/5G/wifi); null khi chưa lấy được
         let dangLayIp = false;
         let lanLayIpCuoi = 0;
@@ -920,7 +923,10 @@
             const thamSo = new URLSearchParams(location.search);
             const tenMaHoa = (thamSo.get('mahoa') || '').trim();
             const tenThuong = (thamSo.get('ten') || '').trim();
-            if (tenMaHoa) {
+            if ((tenMaHoa || tenThuong) && tenDaKhoa(luu.get(PLAYER_NAME_KEY) || '')) {
+                // Tên đã khoá sau khi đủ 4 nhiệm vụ: link "Lấy key" cũng không đổi được tên.
+                notify('🔒 Tên đã khoá vì đã hoàn thành 4 nhiệm vụ. Muốn đổi tên hãy làm mới phiên.', 'info');
+            } else if (tenMaHoa) {
                 const ten = giaiMaTen(tenMaHoa);
                 if (ten) {
                     luu.set(PLAYER_NAME_KEY, ten);
@@ -937,12 +943,20 @@
         playerNameInput.value = luu.get(PLAYER_NAME_KEY) || '';
         capNhatIp(true).catch(() => {}); // Tự lấy mã mạng ngay khi mở trang.
         playerNameInput.addEventListener('input', () => {
+            if (playerNameInput.disabled) { // Tên đang khoá: giữ nguyên tên đã lưu, không nhận thay đổi.
+                playerNameInput.value = luu.get(PLAYER_NAME_KEY) || '';
+                return;
+            }
             const ten = playerNameInput.value.trim();
             if (ten) luu.set(PLAYER_NAME_KEY, ten);
             else luu.remove(PLAYER_NAME_KEY);
             luu.set(PLAYER_NAME_SOURCE_KEY, '0'); // Người dùng gõ tay -> tên không còn lấy từ link Roblox.
             kiemTraMoKhoa();
         });
+        // Trường hợp làm xong nhiệm vụ rồi mới nhập tên: chỉ khoá khi người dùng rời ô nhập
+        // (hoặc bấm Enter) để không khoá nhầm tên đang gõ dở/gõ sai.
+        playerNameInput.addEventListener('blur', () => capNhatKhoaTen());
+        playerNameInput.addEventListener('keydown', event => { if (event.key === 'Enter') playerNameInput.blur(); });
         if (!DANG_LA_BAN_MAU) {
             document.getElementById('demo-banner').textContent = '✦ Trang tạo key Free_v5_ — mã hoá HMAC-SHA256, tag 256 bit, hạn 24 giờ. Tên người chơi được giấu trong key.';
         }
@@ -1099,7 +1113,38 @@
             lienKet.setAttribute('aria-label', `Cổng mở khóa ${nv.so}, ${nv.ten}, ${nhan.textContent}. Mở trong tab mới`);
         }
 
+        // Khoá tên từ khi đủ tên + 4/4 nhiệm vụ (phiên còn hạn); mở lại khi hết phiên hoặc làm mới.
+        function tenDaKhoa(tenHienTai) {
+            const ten = String(tenHienTai ?? playerNameInput.value).trim();
+            if (!ten) return false;
+            const hetHan = thoiGianHetHan();
+            return NHIEM_VU.every(nv => trangThai(nv) === 'success') &&
+                hetHan !== null && Number.isFinite(hetHan) && Date.now() < hetHan;
+        }
+
+        function capNhatKhoaTen() {
+            // Nếu người dùng đang gõ trong ô tên thì chưa khoá; chờ họ rời ô nhập.
+            const khoa = tenDaKhoa() && document.activeElement !== playerNameInput;
+            playerNameInput.disabled = khoa;
+            if (khoa) {
+                playerHelp.classList.add('ok');
+                playerHelp.innerHTML = '🔒 <strong>Tên đã khoá</strong> vì bạn đã nhập tên và hoàn thành đủ 4 nhiệm vụ. Muốn đổi tên: chờ hết phiên 3 phút hoặc bấm <strong>Làm mới phiên &amp; tất cả nhiệm vụ</strong>.';
+            } else {
+                if (playerHelp.classList.contains('ok')) playerHelp.innerHTML = HUONG_DAN_TEN_LUC_MO;
+                playerHelp.classList.remove('ok');
+                const duNhiemVu = NHIEM_VU.every(nv => trangThai(nv) === 'success');
+                if (duNhiemVu && !playerNameInput.value.trim()) {
+                    playerHelp.classList.add('loi');
+                    playerHelp.innerHTML = '⚠ Đã đủ 4 nhiệm vụ: nhập <strong>đúng tên</strong> rồi rời ô nhập — tên sẽ bị <strong>khoá</strong> cho đến khi hết phiên hoặc làm mới.';
+                } else if (playerHelp.classList.contains('loi')) {
+                    playerHelp.classList.remove('loi');
+                    playerHelp.innerHTML = HUONG_DAN_TEN_LUC_MO;
+                }
+            }
+        }
+
         function kiemTraMoKhoa() {
+            capNhatKhoaTen();
             const soCongHoanThanh = NHIEM_VU.filter(nv => trangThai(nv) === 'success').length;
             const hetHan = thoiGianHetHan();
             const coTen = !!playerNameInput.value.trim();
@@ -1350,7 +1395,7 @@
         });
         window.addEventListener('storage', event => {
             if (event.key === PLAYER_NAME_KEY) {
-                playerNameInput.value = luu.get(PLAYER_NAME_KEY) || '';
+                if (!playerNameInput.disabled) playerNameInput.value = luu.get(PLAYER_NAME_KEY) || '';
                 if (manHinhTrang.classList.contains('show')) {
                     hienThiTenNguoiChoi();
                     if (!henGioQuay) capNhatMa();

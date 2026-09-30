@@ -24,7 +24,10 @@ phiên 3 phút (không cần theo thứ tự); mỗi nhiệm vụ theo dõi riê
 nhiệm vụ đó. Sau 4/4, trang lấy **thời điểm của nhiệm vụ hoàn thành cuối cùng** + số quay 3 số (đổi bằng nút
 "Quay số mới") + mã mạng + tên để tạo key.
 
-Key **ổn định sau F5** nếu vẫn cùng tên và cùng phiên; đổi tên / quay số mới / làm mới phiên sẽ tạo key khác.
+Key **ổn định sau F5** nếu vẫn cùng tên và cùng phiên; quay số mới / làm mới phiên sẽ tạo key khác.
+Khi đã nhập tên và hoàn thành đủ 4 nhiệm vụ, **ô tên bị khoá** — không đổi được nữa cho đến khi hết phiên
+3 phút hoặc bấm nút làm mới phiên (khi đó tên vẫn được giữ để sửa lại, và key mới ứng với tên mới). Nếu làm
+xong nhiệm vụ rồi mới nhập tên, tên chỉ khoá sau khi rời ô nhập (hoặc bấm Enter) để còn sửa được lỗi gõ.
 Tên được lưu trong trình duyệt và **giữ lại khi làm mới phiên**; trạng thái nhiệm vụ và mốc thời gian thì bị
 xoá sau 3 phút hoặc khi bấm nút làm mới. Key đã sao chép đi vẫn đọc lại được sau khi làm mới.
 
