@@ -1,90 +1,84 @@
-# Taodepzai · trang phát key `Free_v5_`
+# Taodepzai
 
-Trang HTML tĩnh `index.html` (GitHub Pages: `https://mncuadaigmailcom.github.io/taodepzai/`) tạo **key
-`Free_v5_`** sau khi người dùng nhập tên và "hoàn thành" 4 nhiệm vụ. Key này được `script.js` (key system
-chạy trên executor Roblox) giải mã và xác thực trước khi tải script chính.
+Repo gồm hub Roblox trong `script.js` và một trang HTML phát key trong `index.html`.
+**`script.js` là Luau, không phải JavaScript.** Bản hiện tại là hub v5.0 NOIR; nó không còn là key system mà các tài liệu cũ mô tả.
 
-Chạy tại máy: `python3 -m http.server 8000` rồi mở `http://localhost:8000`.
-Chạy kiểm thử: `node --test tests/portal.test.cjs` (17 test).
+## Hub Roblox — Link Script tích hợp
 
-| Tệp | Việc |
-|---|---|
-| `index.html` | Trang phát key (HTML + CSS + JS nội tuyến, không phụ thuộc thư viện ngoài) |
-| `script.js` | **Luau/Lua** — key system cho executor (tên tệp giữ nguyên để không phá URL phát hành) |
-| `PHAN-TICH.md` | Phân tích 2 tệp trên: kiến trúc, lỗi, rủi ro, bằng chứng chạy thật |
-| `LUA_HOP_DONG.md` | Hợp đồng kỹ thuật của `script.js`: cờ cấu hình, định dạng key, `KiemTraKey`, checklist đồng bộ |
-| `tools/decode-demo.cjs` | Đọc tên / nhiệm vụ / số quay / mã thiết bị / thời điểm trong key (v5, v4, v2) |
-| `tools/kiem-tra-key.cjs` | Mô phỏng `KiemTraKey` của `script.js`: cho biết script có chấp nhận key hay không |
-| `tests/portal.test.cjs` | 17 test: luồng nhiệm vụ, phiên 3 phút, `?mahoa=`, round-trip v5, khớp cấu hình với `script.js` |
+Phần **Code Đã Lưu** đã đổi thành **🔗 Link Script**, dùng chung cơ chế chạy/nhúng GUI với **Tạo Tính Năng**. Toàn bộ logic nằm trong `script.js`, không cần tải thêm một module của hub.
 
-## Cách hoạt động
+- Dán tên và **link raw HTTP/HTTPS** rồi bấm **Thêm link**. Chỉ lưu nguồn, chưa tải hoặc chạy.
+- Code đã lưu từ bản cũ được giữ nguyên. Vẫn có thể nhập code ở tab **Code** rồi bấm **Lưu Vào Link Script**.
+- Bấm **tên script** hoặc **Kích hoạt**: hub mở một tab riêng, thực thi nguồn và nhúng GUI tương thích vào tab.
+- Bấm lại một mục đã chạy thành công chỉ **mở lại tab**, không thực thi lần nữa. Muốn chạy lại, bấm **Chạy Script** trong toolbar của tab đó.
+- Mở rộng một mục bằng **▼** để xem/copy nguồn hoặc sửa rồi bấm **Lưu sửa**. Sửa trong toolbar của tab cũng cập nhật cùng mục đã lưu.
+- Một mục chỉ có một tab đang mở. Không cho khởi chạy hai nguồn cùng lúc để tránh tranh hook bắt GUI.
+- Xóa mục sẽ hủy luồng khởi chạy của hub, gỡ tab và trả GUI nhúng về vị trí cũ. Không bảo đảm dừng được các luồng/sự kiện riêng mà script bên ngoài đã tự tạo.
+- Danh sách ban đầu không thêm script mẫu, và không tự thực thi khi mở hub hay nạp dữ liệu.
 
-Bốn nhiệm vụ xếp một cột. Người dùng **phải nhập tên** (≤ 32 ký tự) và hoàn thành **đủ 4 nhiệm vụ** trong
-phiên 3 phút (không cần theo thứ tự); mỗi nhiệm vụ theo dõi riêng 5 giây rời tab, quay lại sớm chỉ báo lỗi
-nhiệm vụ đó. Sau 4/4, trang lấy **thời điểm của nhiệm vụ hoàn thành cuối cùng** + số quay 3 số (đổi bằng nút
-"Quay số mới") + mã mạng + tên để tạo key.
+### Script có sẵn ngay trong file chính
 
-Key **ổn định sau F5** nếu vẫn cùng tên và cùng phiên; đổi tên / quay số mới / làm mới phiên sẽ tạo key khác.
-Tên được lưu trong trình duyệt và **giữ lại khi làm mới phiên**; trạng thái nhiệm vụ và mốc thời gian thì bị
-xoá sau 3 phút hoặc khi bấm nút làm mới. Key đã sao chép đi vẫn đọc lại được sau khi làm mới.
+Tìm bảng **`S.BuiltinSavedScripts`** ở đầu phần trạng thái của `script.js`.
 
-### Key `Free_v5_` là gì
+Mỗi mục gồm **`name` + `code`** nếu muốn nhúng mã Luau trực tiếp vào file chính, hoặc **`name` + `url`** nếu nguồn là link raw. Bảng mặc định trống. Hub đưa các mục này vào Link Script khi nạp dữ liệu, nhưng chỉ chạy khi người dùng kích hoạt.
 
-```
-Free_v5_ + base64url( nonce 16 byte | tag 32 byte | bản mã )
-bản rõ = [5, cờ tên-từ-Roblox, số quay (2B), thời điểm hoàn thành ms (6B), nhiệm vụ, mã thiết bị (10), tên UTF-8]
-tag    = HMAC-SHA256(khoá con, 'tdz5|tag|' + nonce + bản rõ)          -- 256 bit, sửa 1 ký tự là hỏng
-khoá   = HMAC-SHA256(BI_MAT, 'tdz5|enc|' + nonce + tag)
-```
+Các mục trùng tên với dữ liệu người dùng không bị ghi đè. Mục được khai báo trong file chính sẽ xuất hiện lại khi nạp dữ liệu nếu đã bị xóa khỏi danh sách; muốn bỏ hẳn một mục gắn sẵn, xóa khai báo khỏi bảng này.
 
-- Nhìn key **không đọc được** tên, ngày giờ hay mã thiết bị; mỗi lần quay (nonce mới) cho key khác hẳn.
-- Hạn **24 giờ** tính từ lúc hoàn thành nhiệm vụ cuối; `script.js` lấy giờ máy chủ Roblox nên chỉnh đồng hồ
-  máy không gia hạn được.
-- Mở trang bằng nút **Lấy key** trong script (`…/?mahoa=<tên đã mã hoá>`) thì tên tự điền và key được đánh
-  dấu "tên lấy từ Roblox" (script có thể bật `YEU_CAU_TEN_TU_ROBLOX` để chỉ nhận loại này). Link `?ten=` cũ
-  vẫn dùng được nhưng không có cờ đó.
-- Trang tự lấy IP công khai qua 3 nguồn (ipify → icanhazip → ident.me) để trộn mã hoá; **không hiện ở đâu cả**
-  và không gửi đi nơi khác.
+**“Link Script” là liên kết/nút kích hoạt trong hub.** Hub không tự đăng code lên mạng hoặc biến code nội tuyến thành một URL công khai để chia sẻ.
 
-## Công cụ
+### Lưu dữ liệu
+
+Dữ liệu vẫn dùng `banana_cat_saved.json`, schema version 3, tương thích danh sách code cũ.
+
+- Nguồn script chỉ được lưu một lần trong `scripts`.
+- Tab mở từ Link Script là view tạm, không bị lưu thêm thành một mục `features` trùng lặp.
+- Executor có `readfile`/`writefile` thật: lưu xuống đĩa.
+- Thiếu API thật hoặc ghi lỗi: giữ trong RAM của phiên chơi, không bảo đảm còn sau rejoin.
+- Xuất clipboard chỉ báo thành công nếu API clipboard thật thực hiện được; fallback trong RAM không bị báo nhầm là đã copy.
+
+### Kiểm thử hub
+
+Cần **Node.js** và **Luau CLI** (`luau`, `luau-compile`, từ [luau-lang/luau](https://github.com/luau-lang/luau/releases)).
 
 ```bash
-# Đọc thông tin trong key (không cần Roblox)
-node tools/decode-demo.cjs 'Free_v5_...'
+# Nếu các executable đã có trong PATH:
+node --test tests/hub.test.cjs
 
-# Script Roblox có chấp nhận key này không? (đọc cấu hình thẳng từ script.js)
-node tools/kiem-tra-key.cjs 'Free_v5_...' "TenTaiKhoan" --ip=203.0.113.7
+# Hoặc chỉ định đường dẫn:
+LUAU_BIN=/duong/dan/luau \
+LUAU_COMPILE_BIN=/duong/dan/luau-compile \
+node --test tests/hub.test.cjs
+
+# Chỉ biên dịch toàn bộ hub, không thực thi:
+luau-compile --null script.js
 ```
 
-`decode-demo.cjs` đọc được cả bản cũ `Free_v4_` (vẫn được `script.js` chấp nhận) và `Free_v2_` (bản XOR cũ,
-**không có mã kiểm tra** — công cụ sẽ cảnh báo). Mã `Free_` 14 ký tự hash đời đầu **không thể đọc ngược tên**.
+Bộ kiểm thử gồm **41 bài**: biên dịch file đầy đủ, xác thực link, code cũ, preset nội tuyến, UI thêm/kích hoạt/sửa/xóa, chống chạy lặp, lỗi cú pháp/HTTP, GUI sinh trễ, mở lại GUI, hủy luồng, lưu/nạp, thứ tự tab và nhận diện API executor.
 
-## Cấu hình trang
+Các bài hành vi chạy **mã thật được trích từ `script.js`**, với adapters Roblox/executor giả lập trong `tests/fixtures/hub-runtime.luau`. Không truy cập mạng hay chạy script bên thứ ba. JSON I/O và phép nhúng/hình học GUI được giả lập; đây không phải kiểm thử trong Roblox thật, không xác nhận physics, rendering hoặc mọi executor.
 
-Tìm ở đầu khối `<script>` trong `index.html`:
+Nếu thiếu Luau CLI, các bài cần executable sẽ hiện **SKIP**. Không coi chúng là đã kiểm thử thành công.
 
-- `NHIEM_VU`: thay bốn `url` và `ten` bằng liên kết thật.
-- `DANG_LA_BAN_MAU = false` sau khi thay liên kết (chỉ đổi nhãn "Liên kết mẫu").
-- `SCRIPT_CUA_BAN`: câu lệnh mẫu hiện trong mục "Câu lệnh mẫu tải script (tùy chọn)" — **kiểm tra nguồn
-  trước khi chạy**; đây chỉ là ô sao chép, trang không tự chạy gì.
-- `BI_MAT` **phải giống `BI_MAT_V4` trong `script.js`** (test số 2 sẽ báo nếu lệch).
+### Lưu ý khi chạy script
 
-## ⚠ Giới hạn bảo mật — đọc trước khi dùng thật
+Link phải trả về mã Luau, không phải trang HTML. Chỉ chạy nguồn bạn tin tưởng; `loadstring` không phải môi trường cách ly. Một số API tương thích còn là giả lập một phần, không thay thế đầy đủ khả năng của executor. “Anti Ban” không bảo đảm tránh ban từ server hoặc Roblox.
 
-1. **Bí mật nằm trong mã nguồn công khai** (`index.html`, `script.js`, `tools/`). Ai đọc code cũng tự tạo
-   được key `Free_v4_`/`Free_v5_` hợp lệ cho bất kỳ tên/ngày giờ/mạng nào — **đã kiểm chứng bằng thực nghiệm**
-   (xem `PHAN-TICH.md` §6.4). Key không chứng minh người chơi đã làm nhiệm vụ.
-2. **`script.js` còn nhận key `Free_v2_` cũ** (`CHAP_NHAN_KEY_V2 = true`): bản này **không có mã kiểm tra**,
-   chỉ cần 5 dòng Python là bịa được key 24 giờ mà không mở trang. Nên đặt `false`.
-3. **`CHAP_NHAN_TEN_HIEN_THI = true`** cho phép dùng key qua `DisplayName` — mà `DisplayName` không duy
-   nhất, nên có thể bị mạo danh: đặt `false` nếu cần chặt.
-4. Thời gian/trạng thái nhiệm vụ nằm trong `localStorage` trình duyệt và **có thể bị sửa**; trang không xác
-   minh nội dung của liên kết nhiệm vụ.
-5. `script.js` tải script chính từ **repo khác** (`SCRIPT_URL`) rồi `loadstring` chạy thẳng — nên ghim
-   commit/tag và kiểm tra nội dung nếu phát hành cho người khác dùng.
+## Trang phát key và tài liệu cũ
 
-Muốn key **dùng được thật, thu hồi được, chỉ chủ trang tra được tên**: cần máy chủ cấp key (key ngẫu nhiên
-128+ bit, lưu hash + trạng thái trong DB, API xác minh nhiệm vụ, trang quản trị có xác thực). Không thể đạt
-được điều đó bằng mã chạy hoàn toàn trong trình duyệt / trên máy người chơi.
+`index.html` là trang tĩnh phát key `Free_v5_`. Có thể mở bằng:
 
-Danh sách lỗi chi tiết và thứ tự khắc phục: `PHAN-TICH.md` §7.
+```bash
+python3 -m http.server 8000
+```
+
+**Hub hiện tại không xác minh key do trang này phát.** Các tài liệu/công cụ sau thuộc key system trước đây và chưa được chuyển sang hợp đồng của hub:
+
+| Tệp | Nội dung |
+|---|---|
+| `PHAN-TICH.md` | Phân tích trang phát key và key system cũ |
+| `LUA_HOP_DONG.md` | Hợp đồng key system cũ, không phải API của hub hiện tại |
+| `tools/decode-demo.cjs` | Giải mã thông tin của key đời cũ |
+| `tools/kiem-tra-key.cjs` | Mô phỏng key system, cần các hằng cấu hình không còn trong hub |
+| `tests/portal.test.cjs` | Test portal/key cũ; hiện có lỗi nền và không thay thế test Luau của hub |
+
+Không sử dụng số bài đạt/trượt của bộ portal cũ để kết luận hub Roblox có chạy được hay không.

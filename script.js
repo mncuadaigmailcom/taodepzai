@@ -1,6 +1,6 @@
 --[[
     taodepzai v5.0 NOIR — FULL CODE  ·  OBSIDIAN NOIR + layout kiểu DELTA
-    v5.0 NOIR: taodepzai - khoi phuc tham kinh co dinh, them hop it nguoi, doi ten. KHONG cat ham/khung/the.
+    v5.0 NOIR: Link Script tich hop - kich hoat code/link da luu trong tab nhu Tao Tinh Nang. Giu cac tinh nang cu.
     v4.66: 🎥 quay camera. v4.65: xuyên tường. v4.64: khán giả thay 👻.
     v4.43: 🔐 Anti Ban. v4.42 rút gọn. v4.41 chip. v4.40 ⚙. v4.39–v4.36 bay/nhảy/tốc độ.
     Giữ: 🚀/🛡 bay · 🧱 noclip · 🦘 nhảy · 💨 sprint · 📍👣 · ✨ · 👥 · ⚙️.
@@ -24,6 +24,12 @@ pcall(function()
         local hui = gethui()
         if hui then targetGui = hui end
     end
+end)
+
+pcall(function()
+    local cleanup = _G.BananaCatHub_FeatureCleanup
+    if type(cleanup) == "function" then cleanup() end
+    _G.BananaCatHub_FeatureCleanup = nil
 end)
 
 do
@@ -737,7 +743,7 @@ D.pageHeader = New("Frame", {
 D.Paint3(D.pageHeader, {C.SURFACE2, C.SURFACE}, 90)   -- v4.9: dải chrome mảnh dưới thanh tiêu đề
 D.pageTitle = New("TextLabel", {
     Name="PageTitle", Size=UDim2.new(1,-196,1,0), Position=UDim2.new(0,10,0,0),
-    Text="💾 Code Đã Lưu", BackgroundTransparency=1, TextColor3=C.ACCENT,   -- v4.6.2: trang đầu tiên
+    Text="🔗 Link Script", BackgroundTransparency=1, TextColor3=C.ACCENT,   -- v4.6.2: trang đầu tiên
     Font=Enum.Font.GothamBold, TextSize=11,
     TextXAlignment=Enum.TextXAlignment.Left, ZIndex=5,
 }, D.pageHeader)
@@ -948,9 +954,9 @@ local function AddTab(name, icon, order, customContent)
     return sf, btn
 end
 local codeTab      = AddTab("Code", "💻", 2)
-local savedCodeTab = AddTab("Code Đã Lưu", "💾", 1)
+local savedCodeTab = AddTab("Link Script", "🔗", 1)
 
-OpenFirstPage()   -- v4.6.2: mở trang ĐẦU TIÊN theo thứ tự rail (💾 Code Đã Lưu)
+OpenFirstPage()   -- v4.6.2: mở trang ĐẦU TIÊN theo thứ tự rail (🔗 Link Script)
 
 S = {
     dragMenu     = false,
@@ -965,6 +971,10 @@ S = {
     embedGuessNew = false,   -- 🕵 nhận cả ScreenGui "lạ" mới xuất hiện (mạnh hơn nhưng dễ ăn GUI game)
     parkCodeGuis = true,
     embeds       = {},       -- registry: {host, gui, recs={{child,origParent,origPos,origSize}}, conns={}}
+    BuiltinSavedScripts = {
+        -- Thêm các mục {name = ..., code = ...} hoặc {name = ..., url = ...} ở đây
+        -- nếu muốn script CÓ SẴN trong file chính. Mặc định trống, không chạy script mẫu.
+    },
 }
 
 S.WRAP_MARK_OLD = "-- ===== AUTO-GENERATED SIZE WRAPPER"
@@ -978,11 +988,54 @@ function S.SanitizeCode(c)
     return out
 end
 
-function S.Shimmed(n)
-    local v = S.shimmedFns and S.shimmedFns[n]
-    if v == nil then return false end
-    return rawget(_G, n) == v
+-- BEGIN EXECUTOR_GLOBALS
+-- Nhận diện đúng môi trường executor; giữ dấu shim qua lần nạp lại hub.
+S.shimmedFns = type(_G.BananaCatHub_ExecutorShims) == "table" and _G.BananaCatHub_ExecutorShims or {}
+_G.BananaCatHub_ExecutorShims = S.shimmedFns
+
+function S.ExecutorEnv()
+    if type(S.executorEnv) == "table" then return S.executorEnv end
+    if type(getgenv) == "function" and getgenv ~= S.shimmedFns.getgenv then
+        local ok, env = pcall(getgenv)
+        if ok and type(env) == "table" then S.executorEnv = env; return env end
+    end
+    if type(getfenv) == "function" then
+        local ok, env = pcall(getfenv, 0)
+        if ok and type(env) == "table" then S.executorEnv = env; return env end
+    end
+    S.executorEnv = _G
+    return _G
 end
+
+function S.GetGlobal(n)
+    local env = S.ExecutorEnv()
+    local ok, value = pcall(function() return env[n] end)
+    if ok and value ~= nil then return value end
+    if type(getfenv) == "function" then
+        ok, value = pcall(function() return getfenv(0)[n] end)
+        if ok and value ~= nil then return value end
+    end
+    return rawget(_G, n)
+end
+
+function S.HasGlobal(n) return S.GetGlobal(n) ~= nil end
+
+function S.Shimmed(n)
+    local value = S.shimmedFns and S.shimmedFns[n]
+    return value ~= nil and S.GetGlobal(n) == value
+end
+
+function S.SetGlobal(n, value)
+    if S.HasGlobal(n) then return false end -- không thay API thật, kể cả API không nằm trong _G
+    local env = S.ExecutorEnv()
+    local ok = pcall(function() env[n] = value end)
+    if not ok or S.GetGlobal(n) ~= value then return false end
+    S.compatAdded = S.compatAdded or {}
+    S.compatAdded[#S.compatAdded + 1] = n
+    S.shimmedFns[n] = value
+    return true
+end
+-- END EXECUTOR_GLOBALS
 
 function D.SyncPageChips()
     pcall(function()
@@ -1005,10 +1058,212 @@ end
 local scripts = {}
 local waypoints = {}          -- khai báo sớm để khối lưu trữ bên dưới dùng được
 local featureTabs = {}        -- nt: khai báo sớm để Store.serialize() và nhãn trạng thái dùng được
-local featureTabIndex = 7   -- 1=Code Đã Lưu 2=Code 3=Script Hub 4=Hỗ Trợ 5=Thiết Lập 6=Tạo Tính Năng; tab tính năng của người dùng từ 7 trở đi
+local featureTabIndex = 8   -- 1=Link Script 2=Code 3=Script Hub 4=Người Chơi 5=Hỗ Trợ 6=Thiết Lập 7=Tạo Tính Năng
 local totalRuns, cancelled = 0, false
 local curThread, curIndicator = nil, nil
 local runActive = false       -- cờ trạng thái chạy (không dựa vào curThread nữa)
+
+-- BEGIN SAVED_SCRIPT_LINKS
+-- Link nội bộ: giữ nguyên code/link trong danh sách, kích hoạt bằng pipeline tab tính năng.
+do
+    local Links = { tabs = {}, views = {} }
+    S.SavedLinks = Links
+
+    local function trim(value)
+        return type(value) == "string" and (value:match("^%s*(.-)%s*$") or "") or ""
+    end
+
+    function Links.Url(value)
+        local url = trim(value)
+        if #url == 0 then return nil, "Vui lòng nhập link raw của script" end
+        if #url > 4096 then return nil, "Link quá dài (tối đa 4096 ký tự)" end
+        if not url:match("^https?://") then return nil, "Link phải bắt đầu bằng https:// hoặc http://" end
+        if url:find('[%s%c"\\]') then return nil, "Link chứa khoảng trắng hoặc ký tự không hợp lệ" end
+        local host = url:match("^https?://([^/?#]+)")
+        if not host or host == "" or host:find("@", 1, true) then
+            return nil, "Link thiếu tên miền hoặc chứa thông tin đăng nhập"
+        end
+        return url
+    end
+
+    function Links.Source(entry)
+        if type(entry) ~= "table" then return nil, "Mục script không hợp lệ" end
+        local source = trim(entry.code or entry.url)
+        if source == "" then return nil, "Script/link đang trống" end
+        local quoted = source:match('^"(https?://.-)"$') or source:match("^'(https?://.-)'$")
+        if quoted then source = quoted end
+        if source:match("^https?://") then return Links.Url(source) end
+        if source:match("^[%a][%w+.-]*://") then return nil, "Chỉ hỗ trợ link HTTP/HTTPS" end
+        return source
+    end
+
+    function Links.Add(list, name, source, urlOnly)
+        local valid, err
+        if urlOnly then valid, err = Links.Url(source)
+        else valid, err = Links.Source({code = source}) end
+        if not valid then return nil, err end
+        local base = trim(name)
+        if base == "" then base = valid:match("^https?://") and "Link Script" or "Script" end
+        local used = {}
+        for _, entry in ipairs(list) do used[entry.name] = true end
+        local unique, n = base, 2
+        while used[unique] do unique = base .. " (" .. n .. ")"; n += 1 end
+        local entry = {name = unique, code = valid, expanded = false}
+        list[#list + 1] = entry
+        return entry
+    end
+
+    function Links.MergeBuiltins(list, builtins)
+        local used, added = {}, 0
+        for _, entry in ipairs(list) do used[entry.name] = entry end
+        for _, seed in ipairs(type(builtins) == "table" and builtins or {}) do
+            if type(seed) == "table" then
+                local source = Links.Source(seed)
+                local name = trim(seed.name)
+                if source and name ~= "" and not used[name] then
+                    local entry = {name = name, code = source, expanded = false, builtin = true}
+                    list[#list + 1] = entry
+                    used[name], added = entry, added + 1
+                elseif source and used[name] and used[name].code == source then
+                    used[name].builtin = true
+                end
+            end
+        end
+        return added
+    end
+
+    function Links.Notify(entry)
+        local view, ft = Links.views[entry], Links.tabs[entry]
+        if view and type(view.render) == "function" then pcall(view.render, ft) end
+    end
+
+    function Links.Report(message, bad)
+        local label = Links.statusLabel
+        if label and label.Parent then
+            label.Text = tostring(message)
+            label.TextColor3 = bad and C.RED or C.MUTED
+        end
+    end
+
+    function Links.Tab(entry)
+        local ft = Links.tabs[entry]
+        if ft and not ft.destroyed and ft.frame and ft.frame.Parent then return ft end
+        if ft and type(S.DestroyFeatureTab) == "function" then S.DestroyFeatureTab(ft) end
+        Links.tabs[entry] = nil
+        return nil
+    end
+
+    function Links.Activate(entry)
+        local source, err = Links.Source(entry)
+        if not source then Links.Report(err, true); return false, err end
+        local ft = Links.Tab(entry)
+        if not ft then
+            if type(S.CreateFeatureTab) ~= "function" then return false, "Hub chưa dựng xong tab tính năng" end
+            local ok, created = pcall(S.CreateFeatureTab, entry.name, "🔗", source, {savedEntry = entry, transient = true})
+            if not ok or type(created) ~= "table" then
+                err = "Không tạo được tab: " .. tostring(created)
+                Links.Report(err, true)
+                return false, err
+            end
+            ft = created
+            Links.tabs[entry] = ft
+        elseif ft.code ~= source then
+            if ft.running then return false, "Script đang chạy; hãy chờ trước khi đổi nguồn" end
+            local ok, why = ft.setSource(source)
+            if not ok then return false, why end
+        end
+        if type(S.OpenFeatureTab) ~= "function" or not S.OpenFeatureTab(ft) then
+            return false, "Không tìm thấy tab của script"
+        end
+        local ok, mode = S.StartFeatureRun(ft, false)
+        if not ok then Links.Report(mode, true); return false, mode end
+        if mode == "opened" then pcall(S.OnFeatureTabOpened, ft) end
+        Links.Notify(entry)
+        -- task.spawn có thể đã xong/lỗi ngay; không ghi đè báo cáo hoàn tất bằng "đang chạy".
+        if mode == "opened" then Links.Report("🔗 " .. entry.name .. " · đã mở tab (không chạy lặp)")
+        elseif ft.running then Links.Report("🔗 " .. entry.name .. " · đang kích hoạt") end
+        return true, ft, mode
+    end
+
+    function Links.RemoveTab(entry)
+        local ft = Links.tabs[entry]
+        Links.tabs[entry], Links.views[entry] = nil, nil
+        if ft and type(S.DestroyFeatureTab) == "function" then S.DestroyFeatureTab(ft) end
+    end
+
+    function Links.ClearTabs()
+        local entries = {}
+        for entry in pairs(Links.tabs) do entries[#entries + 1] = entry end
+        for _, entry in ipairs(entries) do Links.RemoveTab(entry) end
+    end
+
+    function S.CleanupFeatureCapture(ft)
+        local st = ft and ft.hookState
+        if not st then return end
+        st.watchOn, st.inRun = false, false
+        if type(st.stopWatch) == "function" then pcall(st.stopWatch) end
+        if type(st.unhook) == "function" then pcall(st.unhook) end
+        ft.hookState = nil
+    end
+
+    function S.CancelFeatureRun(ft)
+        if not ft then return end
+        ft._runToken = (tonumber(ft._runToken) or 0) + 1
+        ft._jobToken = nil
+        local thread = ft._thread
+        ft._thread, ft.running, ft.hasRun = nil, false, false
+        ft.state = "idle"
+        if S.featureRunOwner == ft then S.featureRunOwner = nil end
+        S.CleanupFeatureCapture(ft)
+        if type(thread) == "thread" and thread ~= coroutine.running() then pcall(task.cancel, thread) end
+        if ft.savedEntry then Links.Notify(ft.savedEntry) end
+    end
+
+    function S.StartFeatureRun(ft, force)
+        if not ft or ft.destroyed or not ft.frame or not ft.frame.Parent then return false, "Tab đã đóng" end
+        if ft.running then return true, "running" end
+        if ft.hasRun and not force then return true, "opened" end
+        if runActive then return false, "Tab Code đang chạy; hãy dừng hoặc chờ xong trước khi kích hoạt" end
+        local owner = S.featureRunOwner
+        if owner and owner.running and owner ~= ft then
+            return false, "Một script khác đang khởi chạy; hãy chờ xong rồi kích hoạt"
+        end
+        if type(ft.execute) ~= "function" then return false, "Tab chưa có hàm chạy script" end
+        local token = {}
+        ft._jobToken, ft.running, ft.state, ft.error = token, true, "running", nil
+        S.featureRunOwner = ft
+        if ft.savedEntry then Links.Notify(ft.savedEntry) end
+        local spawned, thread = pcall(task.spawn, function()
+            local called, result, why = pcall(ft.execute)
+            if ft._jobToken ~= token then return end -- tab bị xoá/huỷ trong lúc script yield
+            ft._thread, ft.running = nil, false
+            ft.hasRun = called and result == true
+            ft.state = ft.hasRun and "ready" or "error"
+            ft.error = not ft.hasRun and tostring(called and why or result) or nil
+            if S.featureRunOwner == ft then S.featureRunOwner = nil end
+            if not ft.hasRun then
+                S.CleanupFeatureCapture(ft)
+                pcall(function()
+                    if ft.status and ft.status.Parent then ft.status.Text = "❌ " .. tostring(ft.error) end
+                end)
+            end
+            if ft.savedEntry then
+                Links.Notify(ft.savedEntry)
+                Links.Report("🔗 " .. ft.name .. (ft.hasRun and " · đã chạy trong tab" or " · lỗi: " .. tostring(ft.error)), not ft.hasRun)
+            end
+        end)
+        if not spawned then
+            ft._jobToken, ft.running, ft.hasRun, ft.state = nil, false, false, "error"
+            ft.error = tostring(thread)
+            if S.featureRunOwner == ft then S.featureRunOwner = nil end
+            if ft.savedEntry then Links.Notify(ft.savedEntry) end
+            return false, ft.error
+        end
+        if ft._jobToken == token and ft.running then ft._thread = thread end -- task.spawn có thể xong ngay
+        return true, "running"
+    end
+end
+-- END SAVED_SCRIPT_LINKS
 
 local Store = {}
 
@@ -1023,13 +1278,13 @@ Store.loadedWp       = 0
 Store.loadedFeatures = {}     -- dữ liệu thô đọc từ đĩa; TAB5 sẽ dựng thành tab thật
 Store.restoreFeatures = nil   -- TAB5 gán hàm dựng lại tab tính năng vào đây
 Store.restoreWaypoints = nil  -- TAB3 gán RebuildWaypoints vào đây (TAB2 cần mà chưa tồn tại)
-Store.statusLbl      = nil      -- tab "Code Đã Lưu" gán nhãn trạng thái vào đây
+Store.statusLbl      = nil      -- tab "Link Script" gán nhãn trạng thái vào đây
 Store.reloadBtn      = nil
 Store._scheduled     = false
-Store.refreshStatus  = nil      -- tab "Code Đã Lưu" gán hàm cập nhật nhãn vào đây
+Store.refreshStatus  = nil      -- tab "Link Script" gán hàm cập nhật nhãn vào đây
 
 function Store.canWrite()
-    if type(writefile) ~= "function" or type(readfile) ~= "function" then return false end
+    if type(S.GetGlobal("writefile")) ~= "function" or type(S.GetGlobal("readfile")) ~= "function" then return false end
     if S.Shimmed("writefile") or S.Shimmed("readfile") then return false end
     return true
 end
@@ -1054,7 +1309,7 @@ function Store.write(data)
         return false
     end
 
-    local okW, errW = pcall(writefile, Store.SAVE_FILE, json)
+    local okW, errW = pcall(S.GetGlobal("writefile"), Store.SAVE_FILE, json)
     if not okW then
         Store.mode = "memory"
         Store.lastError = "Ghi file thất bại: " .. tostring(errW)
@@ -1073,12 +1328,13 @@ end
 function Store.read()
     if Store.canWrite() then
         local hasFile = true
-        if type(isfile) == "function" then
-            local okI, r = pcall(isfile, Store.SAVE_FILE)
+        local fileExists = S.GetGlobal("isfile")
+        if type(fileExists) == "function" and not S.Shimmed("isfile") then
+            local okI, r = pcall(fileExists, Store.SAVE_FILE)
             hasFile = (okI and r == true)
         end
         if hasFile then
-            local okR, txt = pcall(readfile, Store.SAVE_FILE)
+            local okR, txt = pcall(S.GetGlobal("readfile"), Store.SAVE_FILE)
             if okR and type(txt) == "string" and #txt > 0 then
                 local okD, data = pcall(function() return HttpService:JSONDecode(txt) end)
                 if okD and type(data) == "table" then
@@ -1120,11 +1376,14 @@ function Store.serialize()
     end
     local fOut = {}
     for _, f in ipairs(featureTabs) do
-        table.insert(fOut, {
-            name = tostring(f.name or ""),
-            icon = tostring(f.icon or "⚙️"),
-            code = tostring(f.code or ""),
-        })
+        -- Tab mở từ Link Script chỉ là view tạm; nguồn đã nằm trong scripts.
+        if not f.transient then
+            table.insert(fOut, {
+                name = tostring(f.name or ""),
+                icon = tostring(f.icon or "⚙️"),
+                code = tostring(f.code or ""),
+            })
+        end
     end
     return {
         version   = Store.SAVE_VERSION,
@@ -1167,6 +1426,8 @@ function Store.load()
         Store.mode = Store.canWrite() and "empty" or "none"
         Store.loadedScripts, Store.loadedWp = 0, 0
         Store.loadedFeatures = {}
+        S.SavedLinks.MergeBuiltins(scripts, S.BuiltinSavedScripts)
+        Store.loadedScripts = #scripts
         return
     end
 
@@ -1226,9 +1487,10 @@ function Store.load()
     end
 
     scripts   = sOut
+    S.SavedLinks.MergeBuiltins(scripts, S.BuiltinSavedScripts)
     waypoints = wOut
     Store.loadedFeatures = fOut
-    Store.loadedScripts, Store.loadedWp = #sOut, #wOut
+    Store.loadedScripts, Store.loadedWp = #scripts, #wOut
 end
 
 Store.load()
@@ -1244,22 +1506,6 @@ S.lastRunError  = nil
 S.lastNormalizeNote = nil
 S.lastParkedCount = 0
 S.lastParkedNames = {}
-
-function S.HasGlobal(n)
-    local ok, v = pcall(function() return rawget(_G, n) end)
-    return ok and v ~= nil
-end
-
-function S.SetGlobal(n, v)
-    if S.HasGlobal(n) then return false end          -- KHONG de ham that cua executor
-    local ok = pcall(function() rawset(_G, n, v) end)
-    if ok then
-        S.compatAdded[#S.compatAdded + 1] = n
-        S.shimmedFns = S.shimmedFns or {}
-        S.shimmedFns[n] = rawget(_G, n)
-    end
-    return ok
-end
 
 function S.VRead(p)
     local f = S.vfs[tostring(p)]
@@ -1323,8 +1569,10 @@ function S.EnsureCompat()
     if S.compatTried then return S.compatAdded end
     S.compatTried = true
     pcall(function()
-        S.SetGlobal("loadstring", function(src, nm) return load(tostring(src), nm or "compat") end)
-        S.SetGlobal("getgenv", function() return _G end)
+        if type(load) == "function" then
+            S.SetGlobal("loadstring", function(src, nm) return load(tostring(src), nm or "compat") end)
+        end
+        S.SetGlobal("getgenv", function() return S.ExecutorEnv() end)
         S.SetGlobal("getrenv", function() return _G end)
         S.SetGlobal("identifyexecutor", function() return "taodepzai v5.0 NOIR-Compat", "4.7" end)
         S.SetGlobal("getexecutorname", function() return "taodepzai v5.0 NOIR-Compat" end)
@@ -1345,8 +1593,8 @@ function S.EnsureCompat()
         S.SetGlobal("makefolder", function() return true end)
         S.SetGlobal("isfolder",   function() return true end)
         S.SetGlobal("delfolder",  function() return true end)
-        S.SetGlobal("getcustomasset", function(_, p) return tostring(p) end)
-        S.SetGlobal("getsynasset",    function(_, p) return tostring(p) end)
+        S.SetGlobal("getcustomasset", function(p) return tostring(p) end)
+        S.SetGlobal("getsynasset",    function(p) return tostring(p) end)
         S.SetGlobal("request",      function(o) return S.CompatRequest(o) end)
         S.SetGlobal("http_request", function(o) return S.CompatRequest(o) end)
         S.SetGlobal("http", {request = function(o) return S.CompatRequest(o) end})
@@ -1369,7 +1617,7 @@ function S.EnsureCompat()
         S.SetGlobal("setfpscap", function() return true end)
         S.SetGlobal("getfpscap", function() return 60 end)
         S.SetGlobal("iswindowactive", function() return true end)
-        S.SetGlobal("queue_on_teleport", function(_, src)
+        S.SetGlobal("queue_on_teleport", function(src)
             S.queued[#S.queued + 1] = tostring(src); return true end)
     end)
     if #S.compatAdded > 0 then
@@ -1443,7 +1691,9 @@ local function ExecOnce(code, name)
     code = S.NormalizeRunnable(code)     -- v4.7: link trần / thiếu () / BOM -> chạy được
     S.EnsureCompat()                     -- v4.7: bù hàm executor còn thiếu (không đè hàm thật)
     local ok, err = pcall(function()
-        local fn, lerr = loadstring(code)
+        local compiler = S.GetGlobal("loadstring")
+        if type(compiler) ~= "function" then error("Executor không hỗ trợ loadstring để chạy script") end
+        local fn, lerr = compiler(code)
         if not fn then error(lerr) end
         fn()
     end)
@@ -1465,6 +1715,9 @@ local function Cancel()
 end
 
 local function RunCode(code, name, ind, times, delay, noPark)
+    if S.featureRunOwner and S.featureRunOwner.running then
+        return false, "Một tab tính năng đang khởi chạy; hãy chờ xong trước khi chạy Code"
+    end
     Cancel()
     ReleaseHubFocus()   -- v4.4b: nhả focus TextBox, nếu không game chặn hết input (không đi/không bắn)
     if #code==0 then return false, "⚠️ Vui lòng nhập code!" end
@@ -1665,7 +1918,7 @@ y = y + 82
 local runBtn = Button(codeTab, "▶ Chạy Code", 8, y, 336, 26, Color3.fromRGB(0,160,90))
 local stopBtn = Button(codeTab, "⏹ Dừng", 350, y, 126, 26, C.RED)
 y = y + 32
-local saveBtn = Button(codeTab, "💾 Lưu Vào Danh Sách", 8, y, 468, 26, C.BLUE)
+local saveBtn = Button(codeTab, "🔗 Lưu Vào Link Script", 8, y, 468, 26, C.BLUE)
 y = y + 32
 
 local statusLbl = Label(codeTab, "", y)
@@ -1714,37 +1967,69 @@ end)
 local RebuildScripts
 
 saveBtn.Activated:Connect(function()
-    local n=nameIn.Text
-    local c=codeIn.Text
-    if #c==0 then statusLbl.Text="⚠️ Vui lòng nhập code!"; return end
-    if #n==0 then n="Script "..(#scripts+1) end
-    local bn=n
-    local cnt=1
-    while true do
-        local ex=false
-        for _,s in ipairs(scripts) do if s.name==n then ex=true; break end end
-        if not ex then break end
-        cnt+=1; n=bn.." ("..cnt..")"
-    end
-    table.insert(scripts,{name=n, code=c, expanded=false})
+    local entry, err = S.SavedLinks.Add(scripts, nameIn.Text, codeIn.Text)
+    if not entry then statusLbl.Text = "⚠️ " .. tostring(err); return end
     if RebuildScripts then RebuildScripts() end
     Store.saveSoon()
-    statusLbl.Text="✅ Đã lưu vào Tab 'Code Đã Lưu'! (đã ghi xuống đĩa)"
+    statusLbl.Text = "🔗 Đã thêm vào Link Script; bấm Kích hoạt để chạy trong tab"
 end)
 
 local sy = 8
-Label(savedCodeTab, "💾 Danh Sách Script Đã Lưu", sy)
-sy = sy + 18
+Label(savedCodeTab, "🔗 Link Script — kích hoạt như tab tính năng", sy)
+sy = sy + 20
+
+do
+    local hint = Label(savedCodeTab, "Link raw hoặc code đã lưu · chỉ chạy khi bạn kích hoạt", sy)
+    hint.TextColor3, hint.TextSize = C.MUTED, 9
+    sy = sy + 20
+    local linkName = New("TextBox", {
+        Name="SavedLinkName", Size=UDim2.new(1,-116,0,26), Position=UDim2.new(0,8,0,sy),
+        Text="", PlaceholderText="Tên script (tùy chọn)", ClearTextOnFocus=false,
+        BackgroundColor3=C.SURFACE2, TextColor3=C.DARK, PlaceholderColor3=C.GRAY,
+        Font=Enum.Font.GothamMedium, TextSize=10, TextXAlignment=Enum.TextXAlignment.Left, ZIndex=8,
+    }, savedCodeTab)
+    Corner(linkName, UDim.new(0,5)); New("UIPadding", {PaddingLeft=UDim.new(0,6)}, linkName)
+    local addLink = New("TextButton", {
+        Name="AddSavedLink", Size=UDim2.new(0,94,0,26), Position=UDim2.new(1,-102,0,sy),
+        Text="🔗 Thêm link", BackgroundColor3=C.BLUE, TextColor3=C.WHITE,
+        Font=Enum.Font.GothamBold, TextSize=10, ZIndex=8,
+    }, savedCodeTab)
+    Corner(addLink, UDim.new(0,5))
+    sy = sy + 30
+    local linkUrl = New("TextBox", {
+        Name="SavedLinkUrl", Size=UDim2.new(1,-16,0,26), Position=UDim2.new(0,8,0,sy),
+        Text="", PlaceholderText="https://... (link raw trả về mã Luau, không phải trang HTML)",
+        ClearTextOnFocus=false, BackgroundColor3=C.SURFACE2, TextColor3=C.DARK,
+        PlaceholderColor3=C.GRAY, Font=Enum.Font.Code, TextSize=10,
+        TextXAlignment=Enum.TextXAlignment.Left, ZIndex=8,
+    }, savedCodeTab)
+    Corner(linkUrl, UDim.new(0,5)); New("UIPadding", {PaddingLeft=UDim.new(0,6)}, linkUrl)
+    addLink.Activated:Connect(function()
+        local entry, err = S.SavedLinks.Add(scripts, linkName.Text, linkUrl.Text, true)
+        if not entry then S.SavedLinks.Report("⚠️ " .. tostring(err), true); return end
+        linkName.Text, linkUrl.Text = "", ""
+        RebuildScripts()
+        Store.saveSoon()
+        S.SavedLinks.Report("🔗 Đã lưu " .. entry.name .. "; chưa tải/chạy script")
+    end)
+end
+sy = sy + 30
+S.SavedLinks.statusLabel = New("TextLabel", {
+    Name="SavedLinkStatus", Size=UDim2.new(1,-16,0,28), Position=UDim2.new(0,8,0,sy),
+    Text="Code cũ được giữ nguyên. Bấm tên hoặc Kích hoạt để mở tab và chạy.",
+    BackgroundTransparency=1, TextColor3=C.MUTED, Font=Enum.Font.GothamMedium,
+    TextSize=9, TextWrapped=true, TextXAlignment=Enum.TextXAlignment.Left, ZIndex=7,
+}, savedCodeTab)
+sy = sy + 32
 
 local searchIn = New("TextBox", {
     Size=UDim2.new(1,-16,0,26), Position=UDim2.new(0,8,0,sy), Text="",
-    PlaceholderText="🔍 Tìm kiếm script...", PlaceholderColor3=Color3.fromRGB(122, 130, 148),
-    BackgroundColor3=Color3.fromRGB(26, 29, 38), BackgroundTransparency=0, TextColor3=Color3.fromRGB(233, 237, 245),
+    PlaceholderText="🔍 Tìm link/script đã lưu...", PlaceholderColor3=C.GRAY,
+    BackgroundColor3=C.SURFACE2, TextColor3=C.DARK,
     Font=Enum.Font.GothamMedium, TextSize=12, BorderSizePixel=0, ClearTextOnFocus=false,
     Active=true, Selectable=true, ZIndex=10, TextXAlignment=Enum.TextXAlignment.Left,
 }, savedCodeTab)
-Corner(searchIn, UDim.new(0,5))
-Stroke(searchIn, Color3.fromRGB(180,180,200), 1.2)
+Corner(searchIn, UDim.new(0,5)); Stroke(searchIn, C.BORDER, 1.2)
 New("UIPadding", {PaddingLeft=UDim.new(0,6)}, searchIn)
 sy = sy + 32
 
@@ -1787,6 +2072,7 @@ Store.refreshStatus = function()
 end
 
 S.DoReload = function()
+    S.SavedLinks.ClearTabs()
     Store.load()
     RebuildScripts()
     S.Rebuild()
@@ -1799,176 +2085,135 @@ Store.reloadBtn.Activated:Connect(S.DoReload)
 sy = sy + 24
 
 local scriptList = New("Frame", {
-    Size=UDim2.new(1,-16,0,0), Position=UDim2.new(0,8,0,sy),
+    Name="SavedLinkList", Size=UDim2.new(1,-16,0,0), Position=UDim2.new(0,8,0,sy),
     BackgroundTransparency=1, BorderSizePixel=0, ZIndex=6,
 }, savedCodeTab)
 New("UIListLayout", {SortOrder=Enum.SortOrder.LayoutOrder, Padding=UDim.new(0,6)}, scriptList)
 
 RebuildScripts = function()
-    for _,c in ipairs(scriptList:GetChildren()) do
-        if not c:IsA("UIListLayout") then c:Destroy() end
+    S.SavedLinks.views = {}
+    for _, child in ipairs(scriptList:GetChildren()) do
+        if not child:IsA("UIListLayout") then child:Destroy() end
     end
-
-    local term=searchIn.Text:lower()
-    local disp={}
-    for _,d in ipairs(scripts) do
-        if term=="" or d.name:lower():find(term,1,true) then table.insert(disp,d) end
+    local term, display = searchIn.Text:lower(), {}
+    for _, entry in ipairs(scripts) do
+        if term == "" or entry.name:lower():find(term, 1, true)
+            or entry.code:lower():find(term, 1, true) then display[#display + 1] = entry end
     end
-
-    if #disp==0 then
+    if #display == 0 then
         New("TextLabel", {
-            Size=UDim2.new(1,0,0,40),
-            Text=term~="" and "📭 Không tìm thấy script phù hợp" or "📭 Chưa có script nào được lưu",
-            BackgroundTransparency=1, TextColor3=C.GRAY, Font=Enum.Font.GothamMedium, TextSize=11,
-            TextXAlignment=Enum.TextXAlignment.Center, TextYAlignment=Enum.TextYAlignment.Center, ZIndex=7,
+            Size=UDim2.new(1,0,0,40), BackgroundTransparency=1, TextColor3=C.GRAY,
+            Text=term ~= "" and "📭 Không tìm thấy link/script" or "📭 Chưa có link/script; thêm link hoặc lưu code từ tab 💻",
+            Font=Enum.Font.GothamMedium, TextSize=10, TextWrapped=true, ZIndex=7,
         }, scriptList)
     end
-
     local totalHeight = 0
-
-    for _, d in ipairs(disp) do
-        local isExpanded = d.expanded or false
-        local rowH = isExpanded and 160 or 42
-
+    for order, entry in ipairs(display) do
+        local expanded = entry.expanded == true
+        local rowH = expanded and 160 or 42
         local row = New("Frame", {
-            Size=UDim2.new(1,0,0,rowH), BackgroundColor3=Color3.fromRGB(26, 29, 38),
-            BackgroundTransparency=0.1, BorderSizePixel=0, ZIndex=6,
-            ClipsDescendants=true,
+            Name="SavedLinkRow", Size=UDim2.new(1,0,0,rowH), LayoutOrder=order,
+            BackgroundColor3=C.SURFACE2, BackgroundTransparency=0.1, ZIndex=6, ClipsDescendants=true,
         }, scriptList)
-        Corner(row,UDim.new(0,6)); Stroke(row)
-
-        local arrowBtn = New("TextButton", {
+        Corner(row, UDim.new(0,6)); Stroke(row)
+        local arrow = New("TextButton", {
             Size=UDim2.new(0,24,0,24), Position=UDim2.new(0,6,0,9),
-            Text=isExpanded and "▲" or "▼",
-            BackgroundColor3=Color3.fromRGB(32, 36, 47), BackgroundTransparency=0,
-            TextColor3=C.BLUE, Font=Enum.Font.GothamBold, TextSize=10, BorderSizePixel=0, ZIndex=8,
+            Text=expanded and "▲" or "▼", BackgroundColor3=C.SURFACE3, TextColor3=C.BLUE,
+            Font=Enum.Font.GothamBold, TextSize=10, ZIndex=8,
         }, row)
-        Corner(arrowBtn, UDim.new(0,4))
-
-        local nameLbl = New("TextLabel", {
-            Size=UDim2.new(1,-175,0,42), Position=UDim2.new(0,36,0,0),
-            Text=d.name, BackgroundTransparency=1, TextColor3=C.DARK,
+        Corner(arrow, UDim.new(0,4))
+        local nameLink = New("TextButton", {
+            Name="SavedLinkActivateName", Size=UDim2.new(1,-194,0,42), Position=UDim2.new(0,36,0,0),
+            Text="🔗 " .. entry.name, BackgroundTransparency=1, TextColor3=C.ACCENT,
             Font=Enum.Font.GothamBold, TextSize=11, TextXAlignment=Enum.TextXAlignment.Left,
             TextTruncate=Enum.TextTruncate.AtEnd, ZIndex=8,
         }, row)
-
-        local delScriptBtn = New("TextButton", {
-            Size=UDim2.new(0,58,0,26), Position=UDim2.new(1,-132,0,8),
-            Text="🗑 Xóa", BackgroundColor3=C.RED, BackgroundTransparency=0.1,
-            TextColor3=C.WHITE, Font=Enum.Font.GothamBold, TextSize=10, BorderSizePixel=0, ZIndex=8,
+        local remove = New("TextButton", {
+            Size=UDim2.new(0,58,0,26), Position=UDim2.new(1,-146,0,8), Text="🗑 Xóa",
+            BackgroundColor3=C.RED, TextColor3=C.WHITE, Font=Enum.Font.GothamBold, TextSize=10, ZIndex=8,
         }, row)
-        Corner(delScriptBtn, UDim.new(0,5))
-
-        local runScriptBtn = New("TextButton", {
-            Size=UDim2.new(0,62,0,26), Position=UDim2.new(1,-68,0,8),
-            Text="▶ Chạy", BackgroundColor3=C.GREEN, BackgroundTransparency=0.1,
-            TextColor3=C.WHITE, Font=Enum.Font.GothamBold, TextSize=10, BorderSizePixel=0, ZIndex=8,
+        Corner(remove, UDim.new(0,5))
+        local activate = New("TextButton", {
+            Name="SavedLinkActivate", Size=UDim2.new(0,76,0,26), Position=UDim2.new(1,-82,0,8),
+            Text="▶ Kích hoạt", BackgroundColor3=C.GREEN, TextColor3=C.WHITE,
+            Font=Enum.Font.GothamBold, TextSize=9, ZIndex=8,
         }, row)
-        Corner(runScriptBtn, UDim.new(0,5))
-
-        if isExpanded then
-            local codeBoxFrame = New("ScrollingFrame", {
+        Corner(activate, UDim.new(0,5))
+        S.SavedLinks.views[entry] = {render = function(ft)
+            if not activate.Parent then return end
+            activate.Text = ft and ft.running and "⏳ Chạy..."
+                or (ft and ft.state == "error" and "↻ Thử lại")
+                or (ft and ft.hasRun and "↗ Mở tab") or "▶ Kích hoạt"
+            activate.BackgroundColor3 = ft and ft.state == "error" and C.RED or C.GREEN
+        end}
+        S.SavedLinks.Notify(entry)
+        local function activateEntry()
+            local ok, why = S.SavedLinks.Activate(entry)
+            if not ok then S.SavedLinks.Report("⚠️ " .. tostring(why), true) end
+        end
+        nameLink.Activated:Connect(activateEntry)
+        activate.Activated:Connect(activateEntry)
+        if expanded then
+            local box = New("ScrollingFrame", {
                 Size=UDim2.new(1,-12,0,82), Position=UDim2.new(0,6,0,42),
-                BackgroundColor3=Color3.fromRGB(24, 27, 35), BackgroundTransparency=0,
-                BorderSizePixel=0, ZIndex=8, ScrollBarThickness=4,
-                CanvasSize=UDim2.new(0,0,0,0),
-                AutomaticCanvasSize=Enum.AutomaticSize.Y,
+                BackgroundColor3=C.SURFACE, ZIndex=8, ScrollBarThickness=4,
+                AutomaticCanvasSize=Enum.AutomaticSize.Y, CanvasSize=UDim2.new(),
                 ScrollingDirection=Enum.ScrollingDirection.Y,
-                ScrollingEnabled=true,
-                VerticalScrollBarInset=Enum.ScrollBarInset.ScrollBar,
             }, row)
-            Corner(codeBoxFrame, UDim.new(0,5))
-            Stroke(codeBoxFrame, Color3.fromRGB(190,195,210), 1)
-
-            local codeLbl = New("TextBox", {
-                Size=UDim2.new(1,-8,0,0), Position=UDim2.new(0,4,0,4),
-                AutomaticSize=Enum.AutomaticSize.Y,
-                Text=d.code, TextColor3=Color3.fromRGB(226, 230, 240), BackgroundTransparency=1,
-                Font=Enum.Font.Code, TextSize=10, TextXAlignment=Enum.TextXAlignment.Left,
-                TextYAlignment=Enum.TextYAlignment.Top, MultiLine=true, TextWrapped=true,
-                ClearTextOnFocus=false, TextEditable=false, Active=true, ZIndex=9,
-            }, codeBoxFrame)
-
-            local copyBtn = New("TextButton", {
-                Size=UDim2.new(0,120,0,24), Position=UDim2.new(0,6,0,128),
-                Text="📋 Sao Chép Code", BackgroundColor3=C.BLUE, BackgroundTransparency=0.1,
-                TextColor3=C.WHITE, Font=Enum.Font.GothamBold, TextSize=10, BorderSizePixel=0, ZIndex=8,
+            Corner(box, UDim.new(0,5))
+            local sourceBox = New("TextBox", {
+                Name="SavedLinkSource", Size=UDim2.new(1,-8,0,0), Position=UDim2.new(0,4,0,4),
+                AutomaticSize=Enum.AutomaticSize.Y, Text=entry.code, TextColor3=C.DARK,
+                BackgroundTransparency=1, Font=Enum.Font.Code, TextSize=10,
+                TextXAlignment=Enum.TextXAlignment.Left, TextYAlignment=Enum.TextYAlignment.Top,
+                MultiLine=true, TextWrapped=true, ClearTextOnFocus=false, ZIndex=9,
+            }, box)
+            local copy = New("TextButton", {
+                Size=UDim2.new(0,120,0,24), Position=UDim2.new(0,6,0,128), Text="📋 Copy nguồn",
+                BackgroundColor3=C.BLUE, TextColor3=C.WHITE, Font=Enum.Font.GothamBold, TextSize=10, ZIndex=8,
             }, row)
-            Corner(copyBtn, UDim.new(0,5))
-
-            copyBtn.Activated:Connect(function()
-                if S.CopyToClipboard(d.code) then
-                    flash(copyBtn, "✅ Đã Sao Chép!", 1.5)
-                else
-                    codeLbl:CaptureFocus()
-                    codeLbl.SelectionStart = 1
-                    codeLbl.CursorPosition = #d.code + 1
-                    flash(copyBtn, "⚠️ Đã Bôi Đen Code", 1.5)
-                end
+            Corner(copy, UDim.new(0,5))
+            copy.Activated:Connect(function()
+                flash(copy, S.CopyToClipboard(entry.code) and "✅ Đã copy" or "⚠️ Không có clipboard", 1.4)
+            end)
+            local apply = New("TextButton", {
+                Size=UDim2.new(0,120,0,24), Position=UDim2.new(1,-126,0,128), Text="💾 Lưu sửa",
+                BackgroundColor3=C.ORANGE, TextColor3=C.INK, Font=Enum.Font.GothamBold, TextSize=10, ZIndex=8,
+            }, row)
+            Corner(apply, UDim.new(0,5))
+            apply.Activated:Connect(function()
+                local valid, err = S.SavedLinks.Source({code = sourceBox.Text})
+                local ft = S.SavedLinks.Tab(entry)
+                if not valid then S.SavedLinks.Report("⚠️ " .. tostring(err), true); return end
+                if ft and ft.running then S.SavedLinks.Report("⚠️ Chờ script chạy xong trước khi sửa", true); return end
+                if ft then ft.setSource(valid) end
+                entry.code = valid
+                Store.saveSoon()
+                S.SavedLinks.Notify(entry)
+                S.SavedLinks.Report("💾 Đã cập nhật nguồn; lần kích hoạt sau sẽ chạy bản mới")
             end)
         end
-
-        arrowBtn.Activated:Connect(function()
-            d.expanded = not d.expanded
+        arrow.Activated:Connect(function()
+            entry.expanded = not entry.expanded
             RebuildScripts()
             Store.saveSoon()
         end)
-
-        runScriptBtn.Activated:Connect(function()
-            local prev = runScriptBtn.Text
-            local prevColor = runScriptBtn.TextColor3
-            RunCode(d.code, d.name, runScriptBtn, 1, 0)
-            runScriptBtn.Text = "⏳ ..."
-            task.spawn(function()
-                local waited = 0
-                while runActive and waited < 60 do task.wait(0.1); waited = waited + 0.1 end
-                task.wait(0.4)                       -- chờ chụp/đậu GUI xong hẳn
-                local rep = S.lastRunReport
-                local txt = S.RunReportText()
-                local bad = rep and rep.fail > 0 and rep.ok == 0
-                if bad then
-                    runScriptBtn.Text = "❌ lỗi"
-                    runScriptBtn.TextColor3 = C.RED
-                elseif rep and (rep.guis or 0) > 0 then
-                    runScriptBtn.Text = "🧩 vào tab"
-                elseif rep and rep.parked then
-                    runScriptBtn.Text = "🪟 ngoài MH"
-                else
-                    runScriptBtn.Text = "✅ xong"
+        remove.Activated:Connect(function()
+            for i, saved in ipairs(scripts) do
+                if saved == entry then
+                    S.SavedLinks.RemoveTab(entry)
+                    table.remove(scripts, i)
+                    RebuildScripts()
+                    Store.saveSoon()
+                    break
                 end
-                pcall(function()
-                    if Store.statusLbl and Store.statusLbl.Parent then
-                        Store.statusLbl.Text = "▶ '" .. tostring(d.name) .. "' · " .. (txt ~= "" and txt or "xong")
-                        Store.statusLbl.TextColor3 = bad and C.RED or C.GRAY
-                    end
-                end)
-                task.delay(2.2, function()
-                    if runScriptBtn and runScriptBtn.Parent then
-                        runScriptBtn.Text = prev
-                        runScriptBtn.TextColor3 = prevColor
-                    end
-                end)
-            end)
-        end)
-
-        delScriptBtn.Activated:Connect(function()
-            local origIdx = nil
-            for idx, s in ipairs(scripts) do
-                if s == d then origIdx = idx; break end
-            end
-            if origIdx then
-                table.remove(scripts, origIdx)
-                RebuildScripts()
-                Store.saveSoon()
             end
         end)
-
-        totalHeight = totalHeight + rowH + 6
+        totalHeight += rowH + 6
     end
-
     local listH = math.max(totalHeight, 40)
     scriptList.Size = UDim2.new(1,-16,0,listH)
-    savedCodeTab.CanvasSize = UDim2.new(0, 0, 0, sy + listH + 30)
+    savedCodeTab.CanvasSize = UDim2.new(0,0,0,sy + listH + 30)
     if Store.refreshStatus then Store.refreshStatus() end
 end
 
@@ -4321,6 +4566,7 @@ function S.HookInstanceNew()
         end
     end
 
+    st.unhook = unhook
     S.activeHook = unhook
     return unhook, records, st
 end
@@ -4511,6 +4757,10 @@ function S.ReembedFeature(ft, allowScan)
     if not host then return 0, "tab thiếu ScriptHost" end
     for _, e in ipairs(S.embeds) do
         if e.host and e.host.Parent == host then return 0, "tab đã có GUI nhúng sẵn" end
+    end
+    -- GUI đã trả ra màn hình không còn ở host; cho phép nhúng lại record cũ.
+    for _, record in ipairs(ft.records or {}) do
+        if record.inst and record.inst.Parent then record.embedded, record.reported = false, nil end
     end
     local n, why = S.EmbedRecorded(ft.records, host, "all", true)
     if n > 0 then return n end
@@ -4759,7 +5009,9 @@ local function RunFeatureScript(code, name, containerFrame, indicator, statusLab
     local embedCount, lateCandidate = 0, 0
     local featureUnhook, records, lastWhy, hookState = nil, nil, nil, nil
     local ok, err = pcall(function()
-        local fn, lerr = loadstring(code)
+        local compiler = S.GetGlobal("loadstring")
+        if type(compiler) ~= "function" then error("Executor không hỗ trợ loadstring để chạy script") end
+        local fn, lerr = compiler(code)
         if not fn then error("loadstring thất bại: "..tostring(lerr)) end
 
         local beforeGuis = {}
@@ -4897,17 +5149,25 @@ local function RunFeatureScript(code, name, containerFrame, indicator, statusLab
         return false, err, records
     end
 end
-local function CreateFeatureTab(name, icon, codeContent)
+local function CreateFeatureTab(name, icon, codeContent, options)
     if not name or #name == 0 then name = "Tính Năng " .. (#featureTabs + 1) end
     if not icon or #icon == 0 then icon = "⚙️" end
 
-    codeContent = NormalizeCode(codeContent)
+    options = options or {}
+    codeContent = options.savedEntry and codeContent or NormalizeCode(codeContent)
 
     local featureData
 
     local sf  = MakeTabFrame()
     local btn = MakeTabButton(name, icon, featureTabIndex + #featureTabs, function()
-        task.defer(function() S.OnFeatureTabOpened(featureData) end)
+        task.defer(function()
+            if not featureData or featureData.destroyed or not featureData.frame.Parent then return end
+            if featureData.savedEntry then
+                S.SavedLinks.Activate(featureData.savedEntry)
+            else
+                S.OnFeatureTabOpened(featureData)
+            end
+        end)
     end)
 
     table.insert(tabs, btn)
@@ -4923,6 +5183,9 @@ local function CreateFeatureTab(name, icon, codeContent)
         btn = btn,
         frame = sf,
         tabIdx = tabIdx,
+        savedEntry = options.savedEntry,
+        transient = options.transient == true,
+        state = "idle", running = false, hasRun = false,
     }
     table.insert(featureTabs, featureData)
 
@@ -5035,13 +5298,33 @@ local function CreateFeatureTab(name, icon, codeContent)
         S.ClearEmbedsUnder(embedHost)
     end
 
-    runFeatureBtn.Activated:Connect(function()
+    featureData.indicator = runFeatureBtn
+    featureData.execute = function()
         ClearHost()
         fStatus.Text = "⏳ Đang chạy..."
-        RunFeatureScript(codeContent, name, embedHost, runFeatureBtn, fStatus)
+        return RunFeatureScript(codeContent, name, embedHost, runFeatureBtn, fStatus)
+    end
+    featureData.setSource = function(source)
+        if featureData.running then return false, "Script đang chạy" end
+        local valid, err = S.SavedLinks.Source({code = source})
+        if not valid then return false, err end
+        S.CancelFeatureRun(featureData)
+        codeContent = featureData.savedEntry and valid or NormalizeCode(valid)
+        featureData.code = codeContent
+        ClearHost()
+        featureData.records = nil
+        return true
+    end
+    runFeatureBtn.Activated:Connect(function()
+        local ok, why = S.StartFeatureRun(featureData, true)
+        if not ok then fStatus.Text = "⚠️ " .. tostring(why) end
     end)
 
     saveFeatureBtn.Activated:Connect(function()
+        if featureData.savedEntry then
+            fStatus.Text = "🔗 Script này đã nằm trong Link Script"
+            return
+        end
         local c = codeContent
         if #c == 0 then
             fStatus.Text = "⚠️ Không có code!"
@@ -5071,12 +5354,15 @@ local function CreateFeatureTab(name, icon, codeContent)
     end)
 
     applyEditBtn.Activated:Connect(function()
-        codeContent = NormalizeCode(editorBox.Text)
-        featureData.code = codeContent
+        local ok, err = featureData.setSource(editorBox.Text)
+        if not ok then fStatus.Text = "⚠️ " .. tostring(err); return end
+        if featureData.savedEntry then
+            featureData.savedEntry.code = codeContent
+            S.SavedLinks.Notify(featureData.savedEntry)
+        end
         editorFrame.Visible = false
-        ClearHost()
-        Store.saveSoon()   -- code đã đổi thì bản lưu trên đĩa cũng phải đổi theo
-        fStatus.Text = "✏️ Đã cập nhật code"
+        Store.saveSoon()
+        fStatus.Text = "✏️ Đã cập nhật nguồn; bấm Chạy Script để chạy bản mới"
     end)
 
     cancelEditBtn.Activated:Connect(function()
@@ -5084,11 +5370,52 @@ local function CreateFeatureTab(name, icon, codeContent)
     end)
 
     closeFeatureBtn.Activated:Connect(function()
+        if featureData.running then S.CancelFeatureRun(featureData) end
         ClearHost()
-        OpenFirstPage()   -- v4.6.2: đóng tab tính năng thì về trang đầu (💾 Code Đã Lưu)
+        OpenFirstPage()   -- v4.6.2: đóng tab tính năng thì về trang đầu (🔗 Link Script)
     end)
 
     return featureData
+end
+
+S.CreateFeatureTab = CreateFeatureTab
+function S.OpenFeatureTab(ft)
+    for i, frame in ipairs(tabContent) do
+        if frame == ft.frame and frame.Parent then SwitchTab(i); return true end
+    end
+    return false
+end
+
+function S.DestroyFeatureTab(ft)
+    if not ft or ft.destroyed then return false end
+    ft.destroyed = true
+    S.CancelFeatureRun(ft)
+    if ft.savedEntry and S.SavedLinks.tabs[ft.savedEntry] == ft then
+        S.SavedLinks.tabs[ft.savedEntry] = nil
+        S.SavedLinks.Notify(ft.savedEntry)
+    end
+    if activeTab == ft.frame then OpenFirstPage() end
+    local host = ft.hostFrame or (ft.frame and ft.frame:FindFirstChild("ScriptHost"))
+    if host then pcall(S.ClearEmbedsUnder, host) end
+    if type(S.PruneEmbeds) == "function" then pcall(S.PruneEmbeds) end
+    for i, button in ipairs(tabs) do
+        if button == ft.btn then table.remove(tabs, i); table.remove(tabContent, i); break end
+    end
+    for i, feature in ipairs(featureTabs) do
+        if feature == ft then table.remove(featureTabs, i); break end
+    end
+    pcall(function() ft.btn:Destroy() end)
+    pcall(function() ft.frame:Destroy() end)
+    for order, feature in ipairs(featureTabs) do
+        feature.btn.LayoutOrder = featureTabIndex + order - 1
+        for i, button in ipairs(tabs) do if button == feature.btn then feature.tabIdx = i; break end end
+    end
+    tabBar.CanvasSize = UDim2.new(0,0,0,#tabs * 44 + 10)
+    return true
+end
+
+_G.BananaCatHub_FeatureCleanup = function()
+    for i = #featureTabs, 1, -1 do S.DestroyFeatureTab(featureTabs[i]) end
 end
 
 task.spawn(function()
@@ -5264,9 +5591,9 @@ S.DoTogglePark = function()
     S.SyncEmbedToggles()
     if S.parkCodeGuis == false then
         local n = S.RemoveAllParked()   -- hoàn tác ngay: trả GUI về màn hình game
-        createStatus.Text = "🪟 TẮT: script chạy ở tab 💻 Code / 💾 Code Đã Lưu sẽ để GUI NGOÀI màn hình game"
+        createStatus.Text = "🪟 TẮT: script chạy ở tab 💻 Code sẽ để GUI NGOÀI màn hình game"
             .. (n > 0 and (" · đã trả " .. n .. " GUI về màn hình") or "")
-            .. " · tab ➕ Tính Năng vẫn nhúng GUI vào tab như bình thường."
+            .. " · 🔗 Link Script và ➕ Tính Năng dùng công tắc 🧩 nhúng riêng."
     else
         createStatus.Text = "🪟 BẬT: GUI của script chạy ở tab 💻 Code sẽ được đưa vào tab '🧩 GUI Ngoài'"
             .. " (mỗi GUI có nút ↩ trả về màn hình). Dex/IY/SimpleSpy vẫn LUÔN ở ngoài màn hình game."
@@ -5359,7 +5686,7 @@ end)
     if RebuildScripts then RebuildScripts() end
     Store.saveSoon()
 
-    createStatus.Text = "✅ Đã lưu bản tự co giãn vào tab 'Code Đã Lưu': "..saveName..
+    createStatus.Text = "✅ Đã lưu bản tự co giãn vào tab 'Link Script': "..saveName..
         " · để tab tính năng co giãn theo menu thì KHÔNG cần bản này, hub tự làm khi bấm ▶ Chạy Script."
 end)
 
@@ -5450,7 +5777,7 @@ copyTemplateBtn.Activated:Connect(function()
     Store.saveSoon()
 
     createStatus.Text = (copied and ("📋 ĐÃ COPY " .. #code .. " ký tự vào clipboard")
-        or ("⚠️ Executor không có setclipboard — lấy code ở tab 'Code Đã Lưu'"))
+        or ("⚠️ Executor không có setclipboard — lấy code ở tab 'Link Script'"))
         .. " · đã lưu '" .. saveName .. "'"
         .. (inBox and " · đã điền vào ô code" or " · ô code giữ nguyên code của bạn")
         .. " · gửi NGUYÊN đoạn code đó cho AI/người viết script, dán lại rồi bấm ▶ Chạy Script."
@@ -5523,29 +5850,9 @@ local function RebuildFeatureList()
         }, row)
         Corner(delBtn, UDim.new(0,4))
         delBtn.Activated:Connect(function()
-            local idx = nil
-            for j, t in ipairs(tabs) do
-                if t == ft.btn then idx = j; break end
-            end
-            if idx then
-                if activeTab == ft.frame then OpenFirstPage() end   -- v4.6.2
-                local hostFrame = ft.frame and ft.frame:FindFirstChild("ScriptHost")
-                if hostFrame then S.ClearEmbedsUnder(hostFrame) end
-                ft.btn:Destroy()
-                ft.frame:Destroy()
-                table.remove(tabs, idx)
-                table.remove(tabContent, idx)
-                table.remove(featureTabs, i)
-                for j, t in ipairs(tabs) do
-                    t.LayoutOrder = j
-                end
-                for j, ft2 in ipairs(featureTabs) do
-                    for k, t in ipairs(tabs) do
-                        if t == ft2.btn then ft2.tabIdx = k; break end
-                    end
-                end
+            if S.DestroyFeatureTab(ft) then
                 RebuildFeatureList()
-                Store.saveSoon()   -- ⭐ xóa cũng phải ghi xuống đĩa, nếu không tab sẽ "sống lại" khi rejoin
+                Store.saveSoon()
             end
         end)
 
@@ -5602,28 +5909,13 @@ pcall(function()
 end)
 
 Store.restoreFeatures = function()
-    for i = #featureTabs, 1, -1 do
-        local ft = featureTabs[i]
-        for j, b in ipairs(tabs) do
-            if b == ft.btn then
-                table.remove(tabs, j)
-                table.remove(tabContent, j)
-                break
-            end
-        end
-        if activeTab == ft.frame then OpenFirstPage() end   -- v4.6.2
-        local hostFrame = ft.frame and ft.frame:FindFirstChild("ScriptHost")
-        if hostFrame then S.ClearEmbedsUnder(hostFrame) end
-        pcall(function() ft.btn:Destroy() end)
-        pcall(function() ft.frame:Destroy() end)
-        table.remove(featureTabs, i)
-    end
+    for i = #featureTabs, 1, -1 do S.DestroyFeatureTab(featureTabs[i]) end
 
     for _, f in ipairs(Store.loadedFeatures) do
         CreateFeatureTab(f.name, f.icon, f.code)
     end
 
-    for j, t in ipairs(tabs) do t.LayoutOrder = j end
+    -- Giữ LayoutOrder của các trang chính (Link Script luôn là trang đầu).
     tabBar.CanvasSize = UDim2.new(0, 0, 0, #tabs * 44 + 10)
     RebuildFeatureList()
     if Store.refreshStatus then Store.refreshStatus() end
@@ -8437,13 +8729,15 @@ function S.GetJobId()
 end
 
 function S.CopyToClipboard(text)
-    local did = false
-    pcall(function()
-        if setclipboard then setclipboard(text) did = true
-        elseif toclipboard then toclipboard(text) did = true
-        elseif set_clipboard then set_clipboard(text) did = true end
-    end)
-    return did
+    for _, name in ipairs({"setclipboard", "toclipboard", "set_clipboard"}) do
+        local fn = S.GetGlobal(name)
+        if type(fn) == "function" and not S.Shimmed(name) then
+            local ok, result = pcall(fn, tostring(text))
+            if ok and result ~= false then return true end
+        end
+    end
+    S.clipboardTxt = tostring(text) -- chỉ giữ bản sao trong RAM; KHÔNG báo đã copy thật
+    return false
 end
 
 function S.FetchServers(cursor)
@@ -9397,7 +9691,7 @@ function S.RebuildHubList()
                 table.insert(scripts, {name = nm, code = it.code, expanded = false})
                 pcall(function() if RebuildScripts then RebuildScripts() end end)
                 pcall(function() Store.saveSoon() end)
-                D.Say("💾 đã lưu '" .. nm .. "' sang tab 💾 Code Đã Lưu", C.GREEN)
+                D.Say("💾 đã lưu '" .. nm .. "' sang tab 🔗 Link Script", C.GREEN)
             end)
         end
 
@@ -12685,13 +12979,13 @@ do
         envTitle.Text = "Executor: " .. nm .. (ver ~= "" and ("  ·  " .. ver) or "")
         local miss = {}
         for _, k in ipairs({"writefile", "readfile", "setclipboard", "gethui", "hookfunction", "Drawing", "request", "queue_on_teleport"}) do
-            if not S.HasGlobal(k) then miss[#miss + 1] = k end
+            if not S.HasGlobal(k) or S.Shimmed(k) then miss[#miss + 1] = k end
         end
         if #miss == 0 then
             envBody.Text = "✅ Executor đủ mọi hàm hub cần — không phải bù gì."
             envBody.TextColor3 = C.GREEN
         else
-            envBody.Text = "Hub đã tự bù " .. #miss .. " hàm còn thiếu: " .. table.concat(miss, ", ")
+            envBody.Text = "⚠️ " .. #miss .. " API thiếu/giả lập (không phải API thật): " .. table.concat(miss, ", ")
             envBody.TextColor3 = C.YELLOW
         end
     end)
@@ -12712,6 +13006,7 @@ do
             return
         end
         armed = false
+        S.SavedLinks.ClearTabs()
         for i = #scripts, 1, -1 do scripts[i] = nil end
         for i = #waypoints, 1, -1 do waypoints[i] = nil end
         pcall(function() RebuildScripts() end)
@@ -12849,6 +13144,6 @@ print(string.format(
     Store.loadedScripts, Store.loadedWp, #Store.loadedFeatures, Store.mode,
     Store.lastError and (" | ⚠️ " .. Store.lastError) or ""
 ))
-print("   💾 File lưu: " .. Store.SAVE_FILE .. " (trong thư mục workspace của executor — sống qua cả lần rejoin)")
-print("   Tính năng: Code + Code Đã Lưu + Script Hub + Hỗ Trợ (POS+SIZE+ROT+LOOK+VẬT THỂ+HIGHLIGHT TÍM) + Thiết Lập + Tạo Tính Năng")
+print("   💾 File lưu: " .. Store.SAVE_FILE .. (Store.canWrite() and " (executor có API lưu thật; kiểm tra trạng thái/lỗi ghi trong menu)" or " (hiện chỉ giữ trong RAM; hãy xuất dữ liệu để sao lưu)"))
+print("   Tính năng: Code + Link Script + Script Hub + Hỗ Trợ (POS+SIZE+ROT+LOOK+VẬT THỂ+HIGHLIGHT TÍM) + Thiết Lập + Tạo Tính Năng")
 print("   🆕 v5.0: Di chuyển — 🚀/🛡 bay · 🧱 noclip · 🦘 nhảy · 💨 sprint · 👥 định vị/spectator · ✨ glow · 💾 lưu script/waypoint/tab")
