@@ -28,24 +28,28 @@ function between(start, end) {
 
 // Functions and UI handlers are extracted from the real main script, not reimplemented.
 // Geometry rendering, Roblox services and executor I/O are deterministic offline adapters.
-const production = [
+const coreProduction = [
     between('function S.SanitizeCode(c)', '\nfunction D.SyncPageChips()'),
     between('-- BEGIN SAVED_SCRIPT_LINKS', '-- END SAVED_SCRIPT_LINKS'),
     between('local Store = {}', '\n-- ----------------------------------------------------------------------------\nS.compatAdded'),
     between('S.compatAdded  =', '\nlocal function ExecOnce('),
     between('local function ExecOnce(', '\nlocal function Label('),
     between('function S.CopyToClipboard(text)', '\nfunction S.FetchServers('),
-    between('-- BEGIN SAVED_CODE_FACTORY', '-- END SAVED_CODE_MOUNT'),
+    between('-- BEGIN SAVED_CODE_BRIDGE', '-- END SAVED_CODE_BRIDGE'),
     between('local function NormalizeCode(c)', '\nlocal GAME_OWNED_GUI_NAMES'),
     between('S.EMBED_TRY_DELAYS   =', '\nS.parkTab   ='),
     between('local function RunFeatureScript(', '\ntask.spawn(function()\n    task.wait(1)'),
-    between('Store.restoreFeatures = function()', '\nS.Move = {'),
+    between('Store.restoreFeatures = function()', '\n-- BEGIN BUILTIN_SAVED_CODE_BOOTSTRAP'),
 ].join('\n') + `\n_G.BananaCatHubAPI = {SavedCodeAdapter = S.SavedCodeAdapter}\nfunction Mock.reloadGlobalHelpers()\nS = {}\n${between('-- BEGIN EXECUTOR_GLOBALS', '-- END EXECUTOR_GLOBALS')}\nend\n`;
+// Old row regressions mount the REAL external module in a test-only host. Main contains no GUI copy.
+const addonFactory = savedCodeSource.slice(savedCodeSource.indexOf('-- BEGIN SAVED_CODE_FACTORY'),
+    savedCodeSource.indexOf('-- END SAVED_CODE_FACTORY'));
+const production = coreProduction + `\n${addonFactory}\nMock.manager = CreateSavedCode({parent=savedCodeTab, adapter=S.SavedCodeAdapter})\n`;
 let sequence = 0;
-function luaTest(name, code) {
+function luaTest(name, code, options = {}) {
     test(name, { skip: !hasLuau && 'Install Luau CLI or set LUAU_BIN to run behavioral tests' }, () => {
         const file = path.join(temp, `${++sequence}.luau`);
-        fs.writeFileSync(file, `${fixture}\n${production}\n${code}\nMock.flush()\nprint("ASSERTIONS_OK")\n`);
+        fs.writeFileSync(file, `${fixture}\n${options.withoutManager ? coreProduction : production}\n${code}\nMock.flush()\nprint("ASSERTIONS_OK")\n`);
         const result = spawnSync(luau, [file], { encoding: 'utf8', timeout: 15000, maxBuffer: 4 * 1024 * 1024 });
         assert.ifError(result.error);
         assert.equal(result.status, 0, `${result.stdout}\n${result.stderr}`);
@@ -61,11 +65,11 @@ test('the entire main script compiles as Luau (including local/register limits)'
     assert.equal(result.status, 0, `${result.stdout}\n${result.stderr}`);
 });
 
-test('Code Đã Lưu uses the standalone factory in the main hub instead of a second UI implementation', () => {
-    assert.match(source, /AddTab\("Code Đã Lưu", "💾", 1\)/);
-    assert.match(source, /S\.SavedCodeView = S\.SavedCodeFactory\(\{parent = savedCodeTab, adapter = S\.SavedCodeAdapter\}\)/);
-    const factory = between('-- BEGIN SAVED_CODE_FACTORY', '-- END SAVED_CODE_FACTORY');
-    assert.doesNotMatch(factory, /S\.SavedLinks|Store\.|RunCode\(/);
+test('main has a built-in URL feature but no saved-code GUI factory or primary page', () => {
+    assert.doesNotMatch(source, /savedCodeTab|S\.SavedCodeFactory|S\.SavedCodeView|BEGIN SAVED_CODE_FACTORY|AddTab\("Code Đã Lưu"/);
+    assert.match(source, /S\.SavedCodeScriptUrl = "https:\/\/raw\.githubusercontent\.com\/mncuadaigmailcom\/taodepzai\/arena\/01a0fd07-taodepzai\/code-da-luu\.lua"/);
+    assert.match(source, /S\.CreateFeatureTab\("Code Đã Lưu", "💾", S\.SavedCodeScriptUrl/);
+    assert.match(source, /builtinId = "saved-code", transient = true, fixedOrder = 1/);
     assert.match(source, /return RunFeatureScript\(codeContent, name, embedHost, runFeatureBtn, fStatus\)/);
 });
 
@@ -161,7 +165,7 @@ local ok, ft = S.SavedLinks.Activate(entry)
 assert(ok)
 Mock.flush()
 assert(ft.state == "error" and not ft.hasRun and not ft.running and ft.error ~= nil)
-assert(S.SavedLinks.statusLabel.Text:find("lỗi", 1, true), S.SavedLinks.statusLabel.Text)
+assert(Mock.manager.StatusLabel.Text:find("lỗi", 1, true), Mock.manager.StatusLabel.Text)
 assert(S.featureRunOwner == nil and ft._thread == nil)
 entry.code = Mock.guiCode
 assert(S.SavedLinks.Activate(entry))
@@ -188,7 +192,7 @@ local entry = Mock.add("Immediate", Mock.guiCode)
 local ok, ft = S.SavedLinks.Activate(entry)
 assert(ok and ft.hasRun and not ft.running and ft._thread == nil)
 assert(S.featureRunOwner == nil)
-assert(not S.SavedLinks.statusLabel.Text:find("đang kích hoạt", 1, true), S.SavedLinks.statusLabel.Text)
+assert(not Mock.manager.StatusLabel.Text:find("đang kích hoạt", 1, true), Mock.manager.StatusLabel.Text)
 `);
 
 luaTest('opening a closed feature reembeds its existing GUI without executing code again', String.raw`
@@ -306,10 +310,10 @@ assert(Store.save())
 S.DoReload()
 Mock.flush()
 assert(#scripts == 2 and scripts[1].name == a.name and scripts[1].code == a.code and scripts[1].expanded)
-assert(scripts[2].code == b.code and #featureTabs == 0 and #Mock.http == 1 and Mock.executed == 1)
+assert(scripts[2].code == b.code and #featureTabs == 1 and #Mock.http == 1 and Mock.executed == 1)
 assert(S.SavedLinks.Activate(scripts[1]))
 Mock.flush()
-assert(#featureTabs == 1 and #Mock.http == 2)
+assert(#featureTabs == 2 and #Mock.http == 2)
 `);
 
 luaTest('reloading while a script is yielded cancels its late work and safely replaces entry identities', String.raw`
@@ -318,7 +322,7 @@ assert(Store.save())
 assert(S.SavedLinks.Activate(entry))
 S.DoReload()
 Mock.flush()
-assert(Mock.executed == 0 and #featureTabs == 0 and S.featureRunOwner == nil)
+assert(Mock.executed == 0 and #featureTabs == 1 and S.featureRunOwner == nil)
 assert(#scripts == 1 and scripts[1] ~= entry and scripts[1].code == entry.code)
 assert(S.activeHook == nil and playerGui.ChildAdded:Count() == 0)
 `);
@@ -416,11 +420,11 @@ assert(fa.btn.LayoutOrder == 8 and fb.btn.LayoutOrder == 9)
 S.DestroyFeatureTab(fa)
 local _, fc = S.SavedLinks.Activate(c)
 assert(fb.btn.LayoutOrder == 8 and fc.btn.LayoutOrder == 9)
-assert(savedButton.LayoutOrder == 1 and codeButton.LayoutOrder == 2)
+assert(codeButton.LayoutOrder == 2)
 assert(tabs[fb.tabIdx] == fb.btn and tabs[fc.tabIdx] == fc.btn)
 assert(Store.save())
 S.DoReload()
-assert(savedButton.LayoutOrder == 1 and codeButton.LayoutOrder == 2)
+assert(S.savedCodeFeature.btn.LayoutOrder == 1 and codeButton.LayoutOrder == 2)
 `);
 
 luaTest('a configured inline preset exists after load but runs only when its saved link is activated', String.raw`
@@ -505,7 +509,7 @@ assert(manager.Root.Parent.Parent == ft.hostFrame and manager.Gui.Parent == play
 assert(#manager.Adapter.list() == 1 and manager.Adapter.list()[1] == entry and Mock.executed == 0)
 `);
 
-luaTest('the standalone manager and native tab observe the same saved list and mutations', `
+luaTest('the external manager shares the hub data backend and mutations', `
 local manager = assert(loadstring([====[${savedCodeSource}]====]))()
 manager.NameInput.Text, manager.SourceInput.Text = "From separate script", Mock.guiCode
 Mock.find(manager.Root, "AddSavedLink").Activated:Fire()
@@ -517,7 +521,7 @@ manager.Adapter.remove(scripts[1])
 assert(#scripts == 0 and #manager.Adapter.list() == 0 and #Store.serialize().scripts == 0)
 `);
 
-luaTest('closing a separate shared view does not destroy the native manager or its saved data', `
+luaTest('closing one external view does not destroy another view or saved data', `
 local entry = Mock.add("Shared", Mock.guiCode)
 local manager = assert(loadstring([====[${savedCodeSource}]====]))()
 local before = 0
@@ -525,7 +529,7 @@ for _ in pairs(S.SavedLinks.listeners) do before += 1 end
 manager.Destroy()
 local after = 0
 for _ in pairs(S.SavedLinks.listeners) do after += 1 end
-assert(manager.dead and not S.SavedCodeView.dead and before == after + 1)
+assert(manager.dead and not Mock.manager.dead and before == after + 1)
 assert(#scripts == 1 and scripts[1] == entry)
 Mock.add("Still working", "print('ok')")
 assert(Mock.row("Still working"))
@@ -551,17 +555,161 @@ assert(manager.Adapter.add("Isolated", "print('ok')"))
 assert(#scripts == 0 and manager.Adapter.storage().file == "taodepzai_saved_code.json")
 `);
 
-luaTest('destroying an embedded manager releases only its observer, not the native tab', `
+luaTest('destroying an embedded manager releases only its observer, not the data adapter', `
 local ft = S.CreateFeatureTab("Manager", "💾", [====[${savedCodeSource}]====])
 assert(S.StartFeatureRun(ft,true))
 Mock.flush()
 local manager = assert(_G.TDZSavedCodeStandalone)
 manager.Gui:Destroy()
 Mock.flush()
-assert(manager.dead and not S.SavedCodeView.dead)
+assert(manager.dead and not Mock.manager.dead)
 local count = 0
 for _ in pairs(S.SavedLinks.listeners) do count += 1 end
 assert(count == 1)
 Mock.add("After destruction", "print('ok')")
 assert(Mock.row("After destruction"))
 `);
+
+luaTest('main bootstrap preinstalls the saved-code URL feature without loading its GUI or fetching HTTP', `
+${between('-- BEGIN BUILTIN_SAVED_CODE_BOOTSTRAP', '-- END BUILTIN_SAVED_CODE_BOOTSTRAP')}
+local ft = assert(S.savedCodeFeature)
+assert(#featureTabs == 1 and ft.name == "Code Đã Lưu" and ft.builtinId == "saved-code")
+assert(ft.transient and ft.btn.LayoutOrder == 1 and codeButton.LayoutOrder == 2)
+assert(ft.code:find(S.SavedCodeScriptUrl,1,true) and activeTab == ft.frame)
+assert(not ft.hasRun and not ft.running and #Mock.http == 0 and _G.TDZSavedCodeStandalone == nil)
+assert(S.SavedCodeFactory == nil and S.SavedCodeView == nil)
+`, {withoutManager:true});
+
+luaTest('the built-in Run button downloads the real external source and embeds the manager, keeping legacy records', `
+local entry = assert(S.SavedLinks.Add(scripts,"Old code",Mock.guiCode))
+Mock.sources[S.SavedCodeScriptUrl] = [====[${savedCodeSource}]====]
+local ft = S.EnsureSavedCodeFeature()
+Mock.button(ft.frame,"▶ Chạy Script").Activated:Fire()
+Mock.flush()
+local manager = assert(_G.TDZSavedCodeStandalone)
+assert(ft.hasRun and manager.Mode == "hub" and manager.Adapter == S.SavedCodeAdapter)
+assert(manager.Root.Parent.Parent == ft.hostFrame)
+assert(#Mock.http == 1 and Mock.http[1] == S.SavedCodeScriptUrl and Mock.executed == 0)
+assert(#manager.Adapter.list() == 1 and manager.Adapter.list()[1] == entry)
+assert(Mock.find(manager.Root,"SavedLinkActivate"))
+`, {withoutManager:true});
+
+luaTest('registering or opening the built-in tab repeatedly cannot duplicate it or autorun the URL', String.raw`
+local ft = S.EnsureSavedCodeFeature()
+assert(S.EnsureSavedCodeFeature() == ft and S.EnsureSavedCodeFeature() == ft)
+ft.btn.Activated:Fire(); ft.btn.Activated:Fire()
+Mock.flush()
+assert(#featureTabs == 1 and #Mock.http == 0 and activeTab == ft.frame and not ft.hasRun)
+`, {withoutManager:true});
+
+luaTest('a network error in the built-in module is visible and can be retried with the same tab', `
+local ft = S.EnsureSavedCodeFeature()
+Mock.button(ft.frame,"▶ Chạy Script").Activated:Fire()
+Mock.flush()
+assert(ft.state == "error" and ft.status.Text:find("404",1,true))
+assert(Mock.find(ft.frame,"SavedCodeFeatureHint").Visible)
+Mock.sources[S.SavedCodeScriptUrl] = [====[${savedCodeSource}]====]
+Mock.button(ft.frame,"▶ Chạy Script").Activated:Fire()
+Mock.flush()
+assert(ft.hasRun and ft.state == "ready" and #featureTabs == 1 and #Mock.http == 2)
+assert(_G.TDZSavedCodeStandalone.Root.Parent.Parent == ft.hostFrame)
+`, {withoutManager:true});
+
+luaTest('invalid external Luau does not lock the preinstalled module and retry loads valid source', `
+local ft = S.EnsureSavedCodeFeature()
+Mock.sources[S.SavedCodeScriptUrl] = "invalid Luau ???"
+assert(S.StartFeatureRun(ft,true)); Mock.flush()
+assert(ft.state == "error" and not ft.running and S.featureRunOwner == nil)
+Mock.sources[S.SavedCodeScriptUrl] = [====[${savedCodeSource}]====]
+assert(S.StartFeatureRun(ft,true)); Mock.flush()
+assert(ft.hasRun and #featureTabs == 1)
+`, {withoutManager:true});
+
+luaTest('close and reopen restore the built-in manager GUI without another HTTP request', `
+Mock.sources[S.SavedCodeScriptUrl] = [====[${savedCodeSource}]====]
+local ft = S.EnsureSavedCodeFeature()
+assert(S.StartFeatureRun(ft,true)); Mock.flush()
+local manager = assert(_G.TDZSavedCodeStandalone)
+Mock.find(ft.frame,"FeatureTabClose").Activated:Fire()
+assert(activeTab == codeTab and manager.Root.Parent == manager.Gui and not manager.dead)
+ft.btn.Activated:Fire(); Mock.flush()
+assert(activeTab == ft.frame and manager.Root.Parent.Parent == ft.hostFrame)
+assert(#Mock.http == 1 and _G.TDZSavedCodeStandalone == manager)
+`, {withoutManager:true});
+
+luaTest('the preinstalled module is neither serialized nor copied into saved code, unlike user features', String.raw`
+local ft = S.EnsureSavedCodeFeature()
+local user = S.CreateFeatureTab("My feature","⚙️","print('user')")
+local entry = assert(S.SavedLinks.Add(scripts,"Keep","print('keep')"))
+Mock.button(ft.frame,"📤 Chép Code").Activated:Fire()
+local data = Store.serialize()
+assert(#data.scripts == 1 and data.scripts[1].code == entry.code)
+assert(#data.features == 1 and data.features[1].name == user.name)
+assert(#featureTabs == 2 and not user.transient)
+`, {withoutManager:true});
+
+luaTest('save/reload keeps one built-in tab and updates its external view to the reloaded entries', `
+local entry = assert(S.SavedLinks.Add(scripts,"Saved","print('old')"))
+Mock.sources[S.SavedCodeScriptUrl] = [====[${savedCodeSource}]====]
+local ft = S.EnsureSavedCodeFeature()
+assert(S.StartFeatureRun(ft,true)); Mock.flush()
+local manager = assert(_G.TDZSavedCodeStandalone)
+assert(Store.save())
+S.DoReload(); Mock.flush()
+assert(S.savedCodeFeature == ft and #featureTabs == 1 and not manager.dead)
+assert(#manager.Adapter.list() == 1 and manager.Adapter.list()[1] ~= entry)
+assert(#Mock.http == 1 and ft.btn.LayoutOrder == 1)
+assert(#Store.serialize().features == 0)
+`, {withoutManager:true});
+
+luaTest('dynamic tab removal preserves fixed builtin order and unique user-feature orders', String.raw`
+local builtin = S.EnsureSavedCodeFeature()
+local a = S.CreateFeatureTab("A","⚙️","print('a')")
+local b = S.CreateFeatureTab("B","⚙️","print('b')")
+assert(builtin.btn.LayoutOrder == 1 and a.btn.LayoutOrder == 8 and b.btn.LayoutOrder == 9)
+S.DestroyFeatureTab(a)
+local c = S.CreateFeatureTab("C","⚙️","print('c')")
+assert(builtin.btn.LayoutOrder == 1 and b.btn.LayoutOrder == 8 and c.btn.LayoutOrder == 9)
+S.DestroyFeatureTab(builtin)
+assert(S.savedCodeFeature == nil)
+local replacement = S.EnsureSavedCodeFeature()
+assert(replacement ~= builtin and replacement.btn.LayoutOrder == 1 and #featureTabs == 3)
+assert(b.btn.LayoutOrder == 8 and c.btn.LayoutOrder == 9)
+`, {withoutManager:true});
+
+luaTest('deleting the built-in while its HTTP load yields cancels late GUI creation', `
+local actualHttpGet = game.HttpGet
+game.HttpGet = function(self,url) task.wait(2); return actualHttpGet(self,url) end
+Mock.sources[S.SavedCodeScriptUrl] = [====[${savedCodeSource}]====]
+local ft = S.EnsureSavedCodeFeature()
+assert(S.StartFeatureRun(ft,true) and ft.running)
+S.DestroyFeatureTab(ft)
+Mock.flush()
+assert(#featureTabs == 0 and S.savedCodeFeature == nil and _G.TDZSavedCodeStandalone == nil)
+assert(S.featureRunOwner == nil and S.activeHook == nil)
+`, {withoutManager:true});
+
+luaTest('the built-in URL module reports unsupported compilers without fetching HTTP or creating GUI', String.raw`
+local ft = S.EnsureSavedCodeFeature()
+getfenv(0).loadstring = false -- explicitly mask the CLI's inherited native builtin
+_G.loadstring = nil
+Mock.button(ft.frame,"▶ Chạy Script").Activated:Fire()
+Mock.flush()
+assert(ft.state == "error" and ft.error:find("loadstring",1,true))
+assert(#Mock.http == 0 and _G.TDZSavedCodeStandalone == nil and S.featureRunOwner == nil)
+`, {withoutManager:true});
+
+luaTest('double Run clicks while loading the built-in URL spawn only one HTTP job and one manager', `
+local actualHttpGet = game.HttpGet
+game.HttpGet = function(self,url) task.wait(1); return actualHttpGet(self,url) end
+Mock.sources[S.SavedCodeScriptUrl] = [====[${savedCodeSource}]====]
+local ft = S.EnsureSavedCodeFeature()
+local run = Mock.button(ft.frame,"▶ Chạy Script")
+run.Activated:Fire(); run.Activated:Fire()
+assert(ft.running and #featureTabs == 1)
+Mock.flush()
+assert(ft.hasRun and #Mock.http == 1 and #featureTabs == 1)
+local count = 0
+for _, gui in ipairs(playerGui:GetChildren()) do if gui.Name == "TDZSavedCode" then count += 1 end end
+assert(count == 1 and _G.TDZSavedCodeStandalone.Root.Parent.Parent == ft.hostFrame)
+`, {withoutManager:true});

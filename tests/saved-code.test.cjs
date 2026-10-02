@@ -35,14 +35,10 @@ test('the standalone manager compiles independently', {skip: !hasCompiler && 'In
     assert.equal(result.status, 0, result.stderr);
 });
 
-test('the embedded factory matches the standalone source byte for byte after its declaration', () => {
-    const extract = source => source.slice(source.indexOf('-- BEGIN SAVED_CODE_FACTORY'),
-        source.indexOf('-- END SAVED_CODE_FACTORY') + '-- END SAVED_CODE_FACTORY'.length);
-    assert.equal(extract(main), extract(standalone).replace('local function CreateSavedCode(options)',
-        'S.SavedCodeFactory = function(options)'));
-    assert.doesNotMatch(extract(standalone), /\bS\.|\bStore\.|_G\.BananaCatHubAPI/);
-    const result = spawnSync(process.execPath, [path.join(root, 'tools/sync-saved-code.cjs'), '--check'], {encoding:'utf8'});
-    assert.equal(result.status, 0, result.stderr);
+test('the manager GUI exists only in the external script, not in main', () => {
+    assert.match(standalone, /local function CreateSavedCode\(options\)/);
+    assert.doesNotMatch(main, /BEGIN SAVED_CODE_FACTORY|SavedCodeRoot|SavedCodeBody|S\.SavedCodeView/);
+    assert.match(main, /S\.SavedCodeScriptUrl.*code-da-luu\.lua/);
 });
 
 luaTest('standalone startup creates an embeddable ScreenGui without requiring the main hub', String.raw`

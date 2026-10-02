@@ -134,9 +134,9 @@ local contentArea = New("Frame", {}, main)
 local codeTab = New("ScrollingFrame", {}, contentArea)
 local savedCodeTab = New("ScrollingFrame", {}, contentArea)
 local codeButton = New("TextButton", {LayoutOrder = 2}, tabBar)
-local savedButton = New("TextButton", {LayoutOrder = 1}, tabBar)
-local tabs, tabContent = {codeButton, savedButton}, {codeTab, savedCodeTab}
-local activeTab = savedCodeTab
+-- Test-only host for the standalone manager UI; not a primary page in the main hub.
+local tabs, tabContent = {codeButton}, {codeTab}
+local activeTab = codeTab
 local featureTabIndex = 8
 local runActive = false
 local totalRuns, cancelled, curThread, curIndicator = 0, false, nil, nil
@@ -148,7 +148,13 @@ local function SwitchTab(index)
     for i, frame in ipairs(tabContent) do frame.Visible = i == index end
     activeTab = tabContent[index]
 end
-local function OpenFirstPage() SwitchTab(2) end
+local function OpenFirstPage()
+    local first, order = 1, math.huge
+    for i, button in ipairs(tabs) do
+        if button.LayoutOrder < order then first, order = i, button.LayoutOrder end
+    end
+    SwitchTab(first)
+end
 local function MakeTabFrame() return New("ScrollingFrame", {}, contentArea) end
 local function MakeTabButton(name, icon, order, onClick)
     local btn = New("TextButton", {Text = icon, LayoutOrder = order}, tabBar)
