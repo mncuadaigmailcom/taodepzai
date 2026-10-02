@@ -8,6 +8,8 @@ const { spawnSync } = require('node:child_process');
 const root = path.join(__dirname, '..');
 const source = fs.readFileSync(path.join(root, 'script.js'), 'utf8').replace(/\r\n/g, '\n');
 const fixture = fs.readFileSync(path.join(__dirname, 'fixtures/hub-runtime.luau'), 'utf8');
+const savedCodeSource = fs.readFileSync(path.join(root, 'code-da-luu.lua'), 'utf8');
+assert.doesNotMatch(savedCodeSource, /\]====\]/);
 const luau = process.env.LUAU_BIN || 'luau';
 const compiler = process.env.LUAU_COMPILE_BIN || 'luau-compile';
 const available = binary => !spawnSync(binary, ['--help'], { encoding: 'utf8' }).error;
@@ -33,12 +35,12 @@ const production = [
     between('S.compatAdded  =', '\nlocal function ExecOnce('),
     between('local function ExecOnce(', '\nlocal function Label('),
     between('function S.CopyToClipboard(text)', '\nfunction S.FetchServers('),
-    between('local sy = 8\n', '\nlocal supportTab ='),
+    between('-- BEGIN SAVED_CODE_FACTORY', '-- END SAVED_CODE_MOUNT'),
     between('local function NormalizeCode(c)', '\nlocal GAME_OWNED_GUI_NAMES'),
     between('S.EMBED_TRY_DELAYS   =', '\nS.parkTab   ='),
     between('local function RunFeatureScript(', '\ntask.spawn(function()\n    task.wait(1)'),
     between('Store.restoreFeatures = function()', '\nS.Move = {'),
-].join('\n') + `\nfunction Mock.reloadGlobalHelpers()\nS = {}\n${between('-- BEGIN EXECUTOR_GLOBALS', '-- END EXECUTOR_GLOBALS')}\nend\n`;
+].join('\n') + `\n_G.BananaCatHubAPI = {SavedCodeAdapter = S.SavedCodeAdapter}\nfunction Mock.reloadGlobalHelpers()\nS = {}\n${between('-- BEGIN EXECUTOR_GLOBALS', '-- END EXECUTOR_GLOBALS')}\nend\n`;
 let sequence = 0;
 function luaTest(name, code) {
     test(name, { skip: !hasLuau && 'Install Luau CLI or set LUAU_BIN to run behavioral tests' }, () => {
@@ -59,12 +61,11 @@ test('the entire main script compiles as Luau (including local/register limits)'
     assert.equal(result.status, 0, `${result.stdout}\n${result.stderr}`);
 });
 
-test('Link Script is built into script.js, with an empty preset list and no old RunCode row handler', () => {
-    assert.match(source, /AddTab\("Link Script", "🔗", 1\)/);
-    assert.match(source, /BuiltinSavedScripts\s*=\s*\{\s*(?:--[^\n]*\n\s*)*\}/);
-    const savedUI = between('local sy = 8\n', '\nlocal supportTab =');
-    assert.match(savedUI, /S\.SavedLinks\.Activate\(entry\)/);
-    assert.doesNotMatch(savedUI, /RunCode\(|S\.lastRunReport|while runActive/);
+test('Code Đã Lưu uses the standalone factory in the main hub instead of a second UI implementation', () => {
+    assert.match(source, /AddTab\("Code Đã Lưu", "💾", 1\)/);
+    assert.match(source, /S\.SavedCodeView = S\.SavedCodeFactory\(\{parent = savedCodeTab, adapter = S\.SavedCodeAdapter\}\)/);
+    const factory = between('-- BEGIN SAVED_CODE_FACTORY', '-- END SAVED_CODE_FACTORY');
+    assert.doesNotMatch(factory, /S\.SavedLinks|Store\.|RunCode\(/);
     assert.match(source, /return RunFeatureScript\(codeContent, name, embedHost, runFeatureBtn, fStatus\)/);
 });
 
@@ -491,4 +492,76 @@ _G.BananaCatHub_SavedData = nil
 scripts = {}
 Store.load()
 assert(Store.mode == "file" and #scripts == 1 and scripts[1].code == entry.code)
+`);
+
+luaTest('pasting the whole Code Đã Lưu script into Tạo Tính Năng creates and embeds its manager GUI', `
+local entry = Mock.add("Existing saved code", Mock.guiCode)
+local ft = S.CreateFeatureTab("Code Đã Lưu riêng", "💾", [====[${savedCodeSource}]====])
+assert(S.StartFeatureRun(ft, true))
+Mock.flush()
+local manager = assert(_G.TDZSavedCodeStandalone)
+assert(ft.hasRun and manager.Mode == "hub" and manager.Adapter == S.SavedCodeAdapter)
+assert(manager.Root.Parent.Parent == ft.hostFrame and manager.Gui.Parent == playerGui)
+assert(#manager.Adapter.list() == 1 and manager.Adapter.list()[1] == entry and Mock.executed == 0)
+`);
+
+luaTest('the standalone manager and native tab observe the same saved list and mutations', `
+local manager = assert(loadstring([====[${savedCodeSource}]====]))()
+manager.NameInput.Text, manager.SourceInput.Text = "From separate script", Mock.guiCode
+Mock.find(manager.Root, "AddSavedLink").Activated:Fire()
+assert(#scripts == 1 and scripts[1].name == "From separate script")
+assert(Mock.row("From separate script"))
+assert(manager.Adapter.update(scripts[1], "print('changed')"))
+assert(Store.serialize().scripts[1].code == "print('changed')")
+manager.Adapter.remove(scripts[1])
+assert(#scripts == 0 and #manager.Adapter.list() == 0 and #Store.serialize().scripts == 0)
+`);
+
+luaTest('closing a separate shared view does not destroy the native manager or its saved data', `
+local entry = Mock.add("Shared", Mock.guiCode)
+local manager = assert(loadstring([====[${savedCodeSource}]====]))()
+local before = 0
+for _ in pairs(S.SavedLinks.listeners) do before += 1 end
+manager.Destroy()
+local after = 0
+for _ in pairs(S.SavedLinks.listeners) do after += 1 end
+assert(manager.dead and not S.SavedCodeView.dead and before == after + 1)
+assert(#scripts == 1 and scripts[1] == entry)
+Mock.add("Still working", "print('ok')")
+assert(Mock.row("Still working"))
+`);
+
+luaTest('Code Đã Lưu manager can be restored into its feature tab without rerunning or duplicating its window', `
+local ft = S.CreateFeatureTab("Manager", "💾", [====[${savedCodeSource}]====])
+assert(S.StartFeatureRun(ft,true))
+Mock.flush()
+local manager = assert(_G.TDZSavedCodeStandalone)
+Mock.find(ft.frame,"FeatureTabClose").Activated:Fire()
+assert(manager.Root.Parent == manager.Gui and not manager.dead)
+S.OnFeatureTabOpened(ft)
+assert(manager.Root.Parent.Parent == ft.hostFrame and _G.TDZSavedCodeStandalone == manager)
+assert(not manager.dead and #featureTabs == 1)
+`);
+
+luaTest('the separate manager uses an isolated store when the host lacks the new adapter', `
+_G.BananaCatHubAPI = {Version="older hub"}
+local manager = assert(loadstring([====[${savedCodeSource}]====]))()
+assert(manager.Mode == "standalone" and manager.Adapter ~= S.SavedCodeAdapter)
+assert(manager.Adapter.add("Isolated", "print('ok')"))
+assert(#scripts == 0 and manager.Adapter.storage().file == "taodepzai_saved_code.json")
+`);
+
+luaTest('destroying an embedded manager releases only its observer, not the native tab', `
+local ft = S.CreateFeatureTab("Manager", "💾", [====[${savedCodeSource}]====])
+assert(S.StartFeatureRun(ft,true))
+Mock.flush()
+local manager = assert(_G.TDZSavedCodeStandalone)
+manager.Gui:Destroy()
+Mock.flush()
+assert(manager.dead and not S.SavedCodeView.dead)
+local count = 0
+for _ in pairs(S.SavedLinks.listeners) do count += 1 end
+assert(count == 1)
+Mock.add("After destruction", "print('ok')")
+assert(Mock.row("After destruction"))
 `);

@@ -1,84 +1,89 @@
 # Taodepzai
 
-Repo gồm hub Roblox trong `script.js` và một trang HTML phát key trong `index.html`.
-**`script.js` là Luau, không phải JavaScript.** Bản hiện tại là hub v5.0 NOIR; nó không còn là key system mà các tài liệu cũ mô tả.
+Repo gồm hub Roblox `script.js`, script quản lý **Code Đã Lưu** độc lập `code-da-luu.lua`, và trang phát key cũ `index.html`.
 
-## Hub Roblox — Link Script tích hợp
+**`script.js` là Luau, không phải JavaScript.**
 
-Phần **Code Đã Lưu** đã đổi thành **🔗 Link Script**, dùng chung cơ chế chạy/nhúng GUI với **Tạo Tính Năng**. Toàn bộ logic nằm trong `script.js`, không cần tải thêm một module của hub.
+## Code Đã Lưu đã được tách thành script riêng
 
-- Dán tên và **link raw HTTP/HTTPS** rồi bấm **Thêm link**. Chỉ lưu nguồn, chưa tải hoặc chạy.
-- Code đã lưu từ bản cũ được giữ nguyên. Vẫn có thể nhập code ở tab **Code** rồi bấm **Lưu Vào Link Script**.
-- Bấm **tên script** hoặc **Kích hoạt**: hub mở một tab riêng, thực thi nguồn và nhúng GUI tương thích vào tab.
-- Bấm lại một mục đã chạy thành công chỉ **mở lại tab**, không thực thi lần nữa. Muốn chạy lại, bấm **Chạy Script** trong toolbar của tab đó.
-- Mở rộng một mục bằng **▼** để xem/copy nguồn hoặc sửa rồi bấm **Lưu sửa**. Sửa trong toolbar của tab cũng cập nhật cùng mục đã lưu.
-- Một mục chỉ có một tab đang mở. Không cho khởi chạy hai nguồn cùng lúc để tránh tranh hook bắt GUI.
-- Xóa mục sẽ hủy luồng khởi chạy của hub, gỡ tab và trả GUI nhúng về vị trí cũ. Không bảo đảm dừng được các luồng/sự kiện riêng mà script bên ngoài đã tự tạo.
-- Danh sách ban đầu không thêm script mẫu, và không tự thực thi khi mở hub hay nạp dữ liệu.
+File **`code-da-luu.lua`** chứa toàn bộ GUI và logic của phần Code Đã Lưu: thêm code/link raw, danh sách, tìm kiếm, sửa, copy, chạy/dừng, xóa, lưu/nạp và xuất/nhập JSON. File này không cần các biến `S`, `Store`, `scripts` của hub để chạy độc lập.
 
-### Script có sẵn ngay trong file chính
+### Dán vào Tạo Tính Năng của taodepzai
 
-Tìm bảng **`S.BuiltinSavedScripts`** ở đầu phần trạng thái của `script.js`.
+1. Mở `code-da-luu.lua` và **copy toàn bộ nội dung**.
+2. Trong hub, mở **Tạo Tính Năng**.
+3. Nhập tên, ví dụ **Code Đã Lưu**, rồi dán nội dung vào ô code.
+4. Tạo tab, mở tab và bấm **Chạy Script**.
 
-Mỗi mục gồm **`name` + `code`** nếu muốn nhúng mã Luau trực tiếp vào file chính, hoặc **`name` + `url`** nếu nguồn là link raw. Bảng mặc định trống. Hub đưa các mục này vào Link Script khi nạp dữ liệu, nhưng chỉ chạy khi người dùng kích hoạt.
+Script tạo `ScreenGui` tên `TDZSavedCode`; pipeline Tạo Tính Năng bắt và nhúng cả giao diện quản lý vào tab. Không gắn cờ overlay ngoài màn hình.
 
-Các mục trùng tên với dữ liệu người dùng không bị ghi đè. Mục được khai báo trong file chính sẽ xuất hiện lại khi nạp dữ liệu nếu đã bị xóa khỏi danh sách; muốn bỏ hẳn một mục gắn sẵn, xóa khai báo khỏi bảng này.
+- Khi chạy trong bản hub đã cập nhật, script dùng `BananaCatHubAPI.SavedCodeAdapter` để chia sẻ **đúng danh sách code** với tab chính, không sao chép dữ liệu sang một danh sách khác.
+- Chạy độc lập hoặc trên hub cũ không có adapter: vẫn có cửa sổ riêng và backend riêng.
+- Chạy lại script quản lý sẽ dọn cửa sổ cũ, không chồng nhiều cửa sổ.
+- Đóng/nhúng/trả GUI ra màn hình không làm mất dữ liệu đã lưu.
+- Code trong danh sách **không tự chạy** khi mở script quản lý hoặc nạp file.
 
-**“Link Script” là liên kết/nút kích hoạt trong hub.** Hub không tự đăng code lên mạng hoặc biến code nội tuyến thành một URL công khai để chia sẻ.
+### Hub dùng chính script đã tách
 
-### Lưu dữ liệu
+`script.js` không còn tự xây dựng một bản GUI Code Đã Lưu thứ hai. Nó nhúng cùng factory từ `code-da-luu.lua` và mount vào tab chính.
 
-Dữ liệu vẫn dùng `banana_cat_saved.json`, schema version 3, tương thích danh sách code cũ.
+Không cần HTTP hay `loadstring` để dựng tab chính lúc mở hub. Bản độc lập vẫn có thể được copy/dán như một script bình thường.
 
-- Nguồn script chỉ được lưu một lần trong `scripts`.
-- Tab mở từ Link Script là view tạm, không bị lưu thêm thành một mục `features` trùng lặp.
-- Executor có `readfile`/`writefile` thật: lưu xuống đĩa.
-- Thiếu API thật hoặc ghi lỗi: giữ trong RAM của phiên chơi, không bảo đảm còn sau rejoin.
-- Xuất clipboard chỉ báo thành công nếu API clipboard thật thực hiện được; fallback trong RAM không bị báo nhầm là đã copy.
-
-### Kiểm thử hub
-
-Cần **Node.js** và **Luau CLI** (`luau`, `luau-compile`, từ [luau-lang/luau](https://github.com/luau-lang/luau/releases)).
+Sau khi sửa `code-da-luu.lua`, đồng bộ bản nhúng bằng:
 
 ```bash
-# Nếu các executable đã có trong PATH:
-node --test tests/hub.test.cjs
+node tools/sync-saved-code.cjs
+node tools/sync-saved-code.cjs --check
+```
 
-# Hoặc chỉ định đường dẫn:
+`code-da-luu.lua` là nguồn gốc của factory. Test sẽ báo lỗi nếu bản trong hub bị lệch.
+
+## Chạy code và lưu dữ liệu
+
+### Trong hub
+
+- Tab chính được đặt lại tên **💾 Code Đã Lưu**.
+- Thêm trực tiếp code Luau hoặc link raw trong phần quản lý, hoặc lưu từ tab Code.
+- Kích hoạt một mục mở tab tính năng của mục đó và chạy/nhúng GUI bằng pipeline hiện có.
+- Bấm lại mục đã chạy thành công chỉ mở tab; bấm **Chạy Script** trong toolbar để thực thi lại.
+- Tab mở từ mục đã lưu là view tạm, không được lưu thêm thành một `features` trùng lặp.
+- Dữ liệu vẫn là `banana_cat_saved.json`, schema version 3. Waypoint, features và settings không bị script quản lý độc lập ghi đè.
+
+### Khi không có adapter của hub
+
+- File riêng: **`taodepzai_saved_code.json`**, schema version 1.
+- Nếu chưa có file riêng, đọc danh sách `scripts` từ `banana_cat_saved.json` để chuyển dữ liệu cũ. **Chỉ đọc file cũ**, không ghi vào nó.
+- Code được chạy trực tiếp; GUI do code đó tạo nằm ngoài cửa sổ quản lý.
+- Nút **Dừng** hủy luồng khởi chạy đang được quản lý; không bảo đảm hủy các luồng/sự kiện riêng mà code bên ngoài đã tự tạo.
+- Thiếu API lưu file thật hoặc ghi lỗi: giữ dữ liệu trong RAM, không bảo đảm còn sau rejoin. Dùng Xuất JSON để sao lưu.
+- Không báo copy thành công khi chỉ có clipboard giả lập. Nếu không có clipboard thật, JSON được điền vào ô code để copy thủ công.
+
+Bảng `S.BuiltinSavedScripts` trong hub vẫn hỗ trợ khai báo code/link có sẵn trong file chính. Mặc định trống, không thêm script mẫu. Các mục khai báo ở đó được đưa vào danh sách lúc nạp, nhưng không tự chạy.
+
+## Kiểm thử
+
+Cần Node.js và [Luau CLI](https://github.com/luau-lang/luau/releases) (`luau`, `luau-compile`).
+
+```bash
+node tools/sync-saved-code.cjs --check
+node --test tests/hub.test.cjs tests/saved-code.test.cjs
+luau-compile --null script.js
+luau-compile --null code-da-luu.lua
+
+# Nếu executable chưa có trong PATH:
 LUAU_BIN=/duong/dan/luau \
 LUAU_COMPILE_BIN=/duong/dan/luau-compile \
-node --test tests/hub.test.cjs
-
-# Chỉ biên dịch toàn bộ hub, không thực thi:
-luau-compile --null script.js
+node --test tests/hub.test.cjs tests/saved-code.test.cjs
 ```
 
-Bộ kiểm thử gồm **41 bài**: biên dịch file đầy đủ, xác thực link, code cũ, preset nội tuyến, UI thêm/kích hoạt/sửa/xóa, chống chạy lặp, lỗi cú pháp/HTTP, GUI sinh trễ, mở lại GUI, hủy luồng, lưu/nạp, thứ tự tab và nhận diện API executor.
+**67 test** gồm hồi quy hub, chạy script độc lập, dán toàn bộ script vào Tạo Tính Năng, nhúng/trả GUI, chia sẻ danh sách qua adapter, đồng bộ factory, CRUD, tìm kiếm, chạy/dừng, lỗi cú pháp/HTTP, hủy job, singleton, lưu/nạp, file hỏng, migration, JSON và nhận diện API thật/giả lập.
 
-Các bài hành vi chạy **mã thật được trích từ `script.js`**, với adapters Roblox/executor giả lập trong `tests/fixtures/hub-runtime.luau`. Không truy cập mạng hay chạy script bên thứ ba. JSON I/O và phép nhúng/hình học GUI được giả lập; đây không phải kiểm thử trong Roblox thật, không xác nhận physics, rendering hoặc mọi executor.
+Test hành vi dùng mã thật từ hai script với adapters Roblox/executor giả lập trong `tests/fixtures/hub-runtime.luau`. Không gọi mạng hay chạy script bên thứ ba. JSON I/O, hình học và rendering được giả lập. **Chưa thay thế kiểm tra trên Roblox/executor thật.**
 
-Nếu thiếu Luau CLI, các bài cần executable sẽ hiện **SKIP**. Không coi chúng là đã kiểm thử thành công.
+Nếu thiếu Luau CLI, các bài cần executable hiện SKIP; không coi là đã kiểm thử thành công.
 
-### Lưu ý khi chạy script
+## Lưu ý
 
-Link phải trả về mã Luau, không phải trang HTML. Chỉ chạy nguồn bạn tin tưởng; `loadstring` không phải môi trường cách ly. Một số API tương thích còn là giả lập một phần, không thay thế đầy đủ khả năng của executor. “Anti Ban” không bảo đảm tránh ban từ server hoặc Roblox.
+Chỉ chạy code/link bạn tin tưởng; `loadstring` không phải môi trường cách ly. Link raw phải trả về mã Luau, không phải HTML. Một số API tương thích của hub vẫn chỉ được giả lập một phần. “Anti Ban” không bảo đảm tránh ban từ server hoặc Roblox.
 
-## Trang phát key và tài liệu cũ
-
-`index.html` là trang tĩnh phát key `Free_v5_`. Có thể mở bằng:
-
-```bash
-python3 -m http.server 8000
-```
-
-**Hub hiện tại không xác minh key do trang này phát.** Các tài liệu/công cụ sau thuộc key system trước đây và chưa được chuyển sang hợp đồng của hub:
-
-| Tệp | Nội dung |
-|---|---|
-| `PHAN-TICH.md` | Phân tích trang phát key và key system cũ |
-| `LUA_HOP_DONG.md` | Hợp đồng key system cũ, không phải API của hub hiện tại |
-| `tools/decode-demo.cjs` | Giải mã thông tin của key đời cũ |
-| `tools/kiem-tra-key.cjs` | Mô phỏng key system, cần các hằng cấu hình không còn trong hub |
-| `tests/portal.test.cjs` | Test portal/key cũ; hiện có lỗi nền và không thay thế test Luau của hub |
-
-Không sử dụng số bài đạt/trượt của bộ portal cũ để kết luận hub Roblox có chạy được hay không.
+`index.html`, `PHAN-TICH.md`, `LUA_HOP_DONG.md`, `tools/decode-demo.cjs`, `tools/kiem-tra-key.cjs` và `tests/portal.test.cjs` thuộc portal/key system cũ. Hub hiện tại không xác minh key của trang. Bộ portal cũ còn lỗi nền, không thay thế các test Luau phía trên.
