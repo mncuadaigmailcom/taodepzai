@@ -27,6 +27,7 @@ local function CreateScriptHub(bridge)
     local oldS, oldD, oldOther, ownedS, ownedD, ownedOther = {}, {}, {}, {}, {}, {}
     for _, key in ipairs(syncKeys) do oldS[key] = S[key] end
     for key, value in pairs(D) do if key:sub(1,3) == "hub" then oldD[key] = value end end
+    oldOther.card = D.CardBtn
     oldOther.pass, oldOther.glass, oldOther.glow, oldOther.free, oldOther.safe = MV._passBtn, MV._glassBtns, GL.RefreshPanel, FR.RefreshPanel, MV.Safe.RefreshPanel
     local gui = New("ScreenGui", {Name="TDZScriptHub", ResetOnSpawn=false, IgnoreGuiInset=true,
         ZIndexBehavior=Enum.ZIndexBehavior.Sibling}, player.PlayerGui or player:WaitForChild("PlayerGui"))
@@ -37,6 +38,7 @@ local function CreateScriptHub(bridge)
     local function snapshotInstalled()
         for _, key in ipairs(syncKeys) do ownedS[key] = S[key] end
         for key, value in pairs(D) do if key:sub(1,3) == "hub" then ownedD[key] = value end end
+        ownedOther.card = D.CardBtn
         ownedOther.pass, ownedOther.glass, ownedOther.glow, ownedOther.free, ownedOther.safe = MV._passBtn, MV._glassBtns, GL.RefreshPanel, FR.RefreshPanel, MV.Safe.RefreshPanel
     end
     function view.Destroy(alreadyDestroying)
@@ -46,6 +48,7 @@ local function CreateScriptHub(bridge)
         for _, connection in ipairs(connections) do pcall(function() connection:Disconnect() end) end
         for _, key in ipairs(syncKeys) do if S[key] == ownedS[key] then S[key] = oldS[key] end end
         for key, value in pairs(ownedD) do if D[key] == value then D[key] = oldD[key] end end
+        if D.CardBtn == ownedOther.card then D.CardBtn = oldOther.card end
         if MV._passBtn == ownedOther.pass then MV._passBtn = oldOther.pass end
         if MV._glassBtns == ownedOther.glass then MV._glassBtns = oldOther.glass end
         if GL.RefreshPanel == ownedOther.glow then GL.RefreshPanel = oldOther.glow end
@@ -56,6 +59,97 @@ local function CreateScriptHub(bridge)
         elseif gui.Parent then task.defer(function() if gui.Parent then gui:Destroy() end end) end
     end
     local ok, err = pcall(function()
+-- BEGIN SCRIPT_HUB_CATALOG
+S.ScriptHubList = {
+    {icon="🛡", name="Infinite Yield", cat="Admin", ord=1,
+     desc="Admin commands: kill, speed, jump, noclip, teleport, bring, prefix tùy chỉnh...",
+     code=[[loadstring(game:HttpGet("https://raw.githubusercontent.com/EdgeIY/infiniteyield/master/source"))()]],
+     noPark=true},
+    {icon="🧰", name="Dex Explorer", cat="Explorer", ord=2,
+     desc="Duyệt toàn bộ instance trong game, xem/sửa property, tìm object theo đường dẫn.",
+     code=[[loadstring(game:HttpGet("https://raw.githubusercontent.com/infyiff/backup/main/dex.lua"))()]],
+     noPark=true},
+    {icon="📡", name="SimpleSpy v3", cat="Spy", ord=3,
+     desc="Theo dõi RemoteEvent/RemoteFunction: tên, tham số, copy code để gọi lại y hệt.",
+     code=[[loadstring(game:HttpGet("https://raw.githubusercontent.com/ex-serum/SimpleSpy/main/SimpleSpy.lua"))()]],
+     noPark=true},
+    {icon="🎯", name="Niêm tâm (Crosshair)", cat="Tiện ích", ord=4, action="crosshair",
+     desc="Bật/tắt vòng tròn niêm tâm + 4 nét ngắn ở GIỮA màn hình game (ngoài menu)."},
+    {icon="🧩", name="Trả GUI về màn hình", cat="Tiện ích", ord=5, action="unpark",
+     desc="Hoàn tác MỌI GUI hub đang mượn vào menu: tab tính năng + tab 🧩 GUI Ngoài."},
+    {icon="🖱", name="Sửa kẹt chuột", cat="Tiện ích", ord=6, action="fixmouse",
+     desc="Nhả focus ô nhập, trả GUI về game, đặt lại MouseBehavior — hết cảnh không quay chuột/không bắn."},
+    {icon="🔄", name="Nạp lại hub từ đĩa", cat="Tiện ích", ord=7, action="reload",
+     desc="Đọc lại file lưu: script đã lưu, waypoint, tab tính năng, cài đặt 🧩 / 🕵 / 🪟."},
+    {icon="🧹", name="Dọn host nhúng rác", cat="Tiện ích", ord=8, action="prune",
+     desc="Xóa các khung Embedded_ mồ côi/rỗng còn sót trong tab (script tự Destroy GUI để lại)."},
+    {icon="🔄", name="Reset Server", cat="Server", ord=9, action="resetserver",
+     desc="Vào lại ĐÚNG server đang chơi (giữ nguyên bạn bè/người chơi cùng server). Studio thì nạp lại game."},
+    {icon="🔀", name="Hop Server", cat="Server", ord=10, action="hopserver",
+     desc="Tự đi lấy mã server: đọc danh sách server công khai, bỏ server hiện tại + server đầy, nhảy sang 1 server khác."},
+    {icon="👥", name="Hop Server Ít Người", cat="Server", ord=10.1, action="hoplow",
+     desc="Quét 800 server (8 trang) tìm server VẮNG NHẤT (ít người nhất), ưu tiên server chỉ 1-2 người, rồi nhảy sang. Dùng khi muốn farm yên tĩnh."},
+    {icon="🌙", name="Hop Server Siêu Vắng (≤3)", cat="Server", ord=10.2, action="hopempty",
+     desc="Chỉ tìm server có ≤3 người đang chơi (siêu vắng). Nếu không có, tự động fallback sang tìm server ít người nhất. Quét tối đa 10 trang."},
+    {icon="🔐", name="Anti Ban", cat="Server", ord=10.5, action="antiban",
+     desc="Tự hop SANG SERVER KHÁC (cùng game) khi bị kick/ban hoặc server nghi hành động (bay/xuyên/tốc độ bị reset). Đánh lạc hướng chủ server. Bấm lại để TẮT."},
+    {icon="🌐", name="Lấy mã server (JobId)", cat="Server", ord=11, action="getjobid",
+     desc="Đọc mã server hiện tại, copy ra clipboard và điền sẵn vào ô 🎟 để gửi cho bạn bè vào cùng."},
+    {icon="🚀", name="Bay theo camera", cat="Di chuyển", ord=12, action="fly",
+     desc="Bay ĐIỀU KHIỂN TAY theo camera (khác 🛡 Bay An Toàn). Nhìn xuống 60° + tiến tới = xuống 60°. WASD/joystick; thả phím đứng lơ lửng. Space lên · Shift/Ctrl xuống. 🧱 xuyên tường bật/tắt riêng ở khung 🚀."},
+    {icon="💨", name="Tốc độ theo camera", cat="Di chuyển", ord=12.2, action="camspeed",
+     desc="Chạy trên mặt đất 100% kiểu 🚀: WASD/joystick theo hướng camera. KHÔNG xuyên tường, nhảy bình thường, rơi theo trọng lực game, không nút ảo. Chỉnh tốc độ ở khung 💨."},
+    {icon="🪩", name="Thảm kính bám chân", cat="Di chuyển", ord=12.6, action="carpet",
+     desc="Bật/tắt một thảm kính trong suốt bám dưới chân; tương thích chế độ thảm cũ, không ảnh hưởng các tấm kính cố định."},
+    {icon="🧱", name="Đặt tấm kính cố định", cat="Di chuyển", ord=12.7, action="placeglass",
+     desc="Đặt thêm một tấm kính dưới chân tại vị trí hiện tại. Mỗi lần bấm tạo một tấm mới, không ghi đè tấm trước."},
+    {icon="📋", name="Quản lý kính đã đặt", cat="Di chuyển", ord=12.8, action="openglasspanel",
+     desc="Mở tab 👥 Người Chơi để xem số lượng/danh sách, bay tới hoặc xóa riêng từng tấm kính."},
+    {icon="🔄", name="Tự đặt kính theo đường đi", cat="Di chuyển", ord=12.9, action="autoglass",
+     desc="Tự thêm kính cố định khi di chuyển đủ xa; bấm lại để dừng. Danh sách và số lượng cập nhật trong menu."},
+    {icon="🧹", name="Xóa toàn bộ kính", cat="Di chuyển", ord=12.95, action="clearglass",
+     desc="Xóa tất cả tấm kính cố định đã đặt, không tắt thảm kính bám chân."},
+    {icon="🚀", name="Bay tới kính gần nhất", cat="Di chuyển", ord=12.96, action="flyglass",
+     desc="Bay xuyên vật cản tới tâm tấm kính cố định gần nhất; tốc độ chỉnh trong tab 👥 Người Chơi."},
+    {icon="⏹", name="Dừng bay tới kính", cat="Di chuyển", ord=12.97, action="stopglassfly",
+     desc="Dừng ngay lực bay tới tấm kính và khôi phục trạng thái nhân vật trước khi bay."},
+    {icon="🧱", name="Xuyên Tường", cat="Di chuyển", ord=13, action="noclip",
+     desc="Đi xuyên mọi vật cản. Tắt đi trả lại ĐÚNG CanCollide gốc của từng part (không gán cứng như bản cũ)."},
+    {icon="🦘", name="Nhảy Vô Hạn", cat="Di chuyển", ord=14, action="infjump",
+     desc="Nhảy mãi không chạm đất. Tự thử 3 cách nhảy (ChangeState · lệnh Jump · đẩy vận tốc) nên cả game cấm nhảy, để JumpPower=0 hay ăn mất phím Space vẫn nhảy được."},
+    {icon="🦘", name="Nhảy Cao", cat="Di chuyển", ord=14.2, action="highjump",
+     desc="Công tắc độc lập kiểu 👤 Né người (🛡): BẬT/TẮT + chỉnh tốc độ nhảy. Space là nhảy cao, rơi theo trọng lực game. Không xuyên tường, không nút ảo. Không thay 🦘 Nhảy vô hạn."},
+            {icon="🎥", name="Khán giả", cat="Tiện ích", ord=21.5, action="freecam",
+     desc="Camera BAY khắp nơi giống 🚀 (WASD · Space/Shift · nhìn chuột). Nhân vật MÌNH đứng yên tại chỗ. Tắt thì trả camera. Không FireServer. Không cướp 🚀💨🦘🛡✨🔐."},
+    {icon="✨", name="Phát Sáng", cat="Tiện ích", ord=22, action="glow",
+     desc="CHÍNH BẠN phát sáng: nhuộm sáng cả nhân vật + đèn toả sáng thật quanh người. Chỉnh CHIỀU RỘNG + ĐỘ SÁNG + MÀU ở khung ✨ ngay đầu danh sách. 👁 xuyên tường (sáng xuyên vật cản) · 💡 đèn không bị vật cản chặn · bị game xoá hay respawn thì tự gắn lại."},
+    {icon="🛡", name="Bay An Toàn", cat="Di chuyển", ord=23, action="safefly",
+     desc="Bật là TỰ BAY + TỰ NÉ NGƯỜI CHƠI và mọi vật có dấu hiệu chuyển động (kể cả vật bị script/tween kéo đi) trong bán kính bạn chỉnh: càng gần đẩy càng mạnh, quá gần thì vọt lên trên. 🔲 Có BỨC TƯỜNG TRONG SUỐT HÌNH VUÔNG bao quanh cho thấy vùng né · 🧱 tự bật Xuyên Tường để đẩy bạn QUA vật cản. Chỉnh 💨 tốc độ · 📏 khoảng cách né · 🌀 né gắt ở khung 🛡 ngay đầu danh sách."},
+    {icon="📍", name="Định Vị Người Chơi", cat="Định vị", ord=17, action="loc_all",
+     desc="Xuyên tường thấy TẤT CẢ người chơi. Bấm lại để TẮT. Chọn từng người / khoảng cách: tab 👥 Người Chơi."},
+    {icon="👣", name="Xem Người Chơi", cat="Định vị", ord=19, action="spec_on",
+     desc="Bám camera theo người gần nhất. Bấm lại để TRẢ CAMERA. Danh sách chọn người: tab 👥."},
+}
+S.hubFavs   = S.hubFavs or {}
+S.hubCat    = "Tất cả"
+S.hubSearch = ""
+
+-- END SCRIPT_HUB_CATALOG
+
+function D.CardBtn(parent, text, posX, w, color)
+    local b = New("TextButton", {
+        Size = UDim2.new(0, w, 0, 24), Position = UDim2.new(1, posX, 0, 16),
+        Text = text, BackgroundColor3 = color or C.SURFACE3, BackgroundTransparency = 0.08,
+        TextColor3 = D.BestText(color or C.SURFACE3), Font = Enum.Font.GothamBold, TextSize = 9,
+        BorderSizePixel = 0, ZIndex = 8,
+    }, parent)
+    Corner(b, UDim.new(0, 7))
+    Stroke(b, D.Edge(color or C.SURFACE3), 1.1)
+    D.Shade(b, Color3.fromRGB(255,255,255), Color3.fromRGB(182,187,201), 90)   -- v4.9: bevel sâu hơn
+    D.Tactile(b, 0.08)
+    return b
+end
+
 -- BEGIN ORIGINAL_SCRIPT_HUB_UI
 D.hubTab = hubRoot
 

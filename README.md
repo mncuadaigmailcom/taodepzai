@@ -1,94 +1,88 @@
 # Taodepzai
 
-`script.js` là hub Roblox viết bằng **Luau**, không phải JavaScript. Bản gốc đối chiếu: commit `852724782b7259c81b733261563e1585d0434f4e`.
+`script.js` là hub Roblox viết bằng **Luau**, không phải JavaScript.
 
-## Script Hub được làm giống Code Đã Lưu
+## Đúng cách tích hợp hiện tại
 
-Hub có sẵn hai tab từ link, cùng pipeline **Tạo Tính Năng**:
+- **💾 Code Đã Lưu là tab thường trong main**, theo giao diện/bố cục bản gốc: tìm kiếm, mở rộng/xem code, copy, chạy và xóa.
+- Nút Chạy của Code Đã Lưu gọi **RunCode bình thường**, không tạo tab tính năng mới, không tải module quản lý code.
+- **Chỉ 📚 Script Hub được tách thành `script-hub.lua`** và gắn link trong main. Mở tab Script Hub rồi bấm **▶ Chạy Script** để tải/nhúng GUI bằng pipeline Tạo Tính Năng.
+- Không còn `code-da-luu.lua`, adapter/module Code Đã Lưu, preset/listeners hay tab tính năng Code Đã Lưu của cách làm trước.
 
-| Tab | Script GUI riêng | Thứ tự gốc |
-|---|---|---|
-| 💾 Code Đã Lưu | `code-da-luu.lua` | 1 |
-| 📚 Script Hub | `script-hub.lua` | 3 |
+### Số dòng/dung lượng MAIN
 
-Tab Code vẫn ở thứ tự 2; Người Chơi/Hỗ Trợ/Thiết Lập/Tạo Tính Năng giữ vị trí và tính năng. Tab người dùng bắt đầu từ thứ tự 8.
+So sánh riêng file `script.js`, giữ CRLF như bản gốc:
 
-### Cách dùng
+| Bản | Dòng | Byte |
+|---|---:|---:|
+| Gốc `8527247` | 12.854 | 559.899 |
+| Bản trước làm sai phần Code Đã Lưu | 11.562 | 493.810 |
+| Bản sửa hiện tại | 11.494 | 484.277 |
 
-1. Chạy bản `script.js` cập nhật.
-2. Chọn **Code Đã Lưu** hoặc **Script Hub** đã có sẵn.
-3. Bấm **▶ Chạy Script** ở toolbar: hub tải URL module và nhúng GUI vào tab.
+Main giảm **1.360 dòng, 75.622 byte (~13,5% dung lượng)** so với bản gốc, và nhỏ hơn cả bản cập nhật trước.
 
-Không cần tự tạo tab hay dán module. Chỉ mở hub/tab chưa tải hoặc chạy script trong catalog. Bấm ✕ ở toolbar trả GUI về màn hình và về tab Code. Mở lại sẽ nhúng GUI hiện có, không tải/chạy lại. Bấm Chạy Script để chủ động tải lại; cửa sổ cũ được dọn.
+Nếu cộng **main + file module riêng**, tổng không nhất thiết nhỏ hơn bản một-file vì có thêm lớp loader/bridge và cleanup. Mục tiêu ở đây là **main ít code hơn**, còn logic GUI Script Hub nằm trong file riêng; không xóa tính năng để giảm dòng.
 
-Các URL gắn trong main:
+### Chạy hub
 
-```text
-https://raw.githubusercontent.com/mncuadaigmailcom/taodepzai/arena/01a0fd07-taodepzai/code-da-luu.lua
-https://raw.githubusercontent.com/mncuadaigmailcom/taodepzai/arena/01a0fd07-taodepzai/script-hub.lua
-```
-
-Tìm `S.SavedCodeScriptUrl` hoặc `S.ScriptHubScriptUrl` để đổi link. Các bản cập nhật thuộc nhánh `arena/01a0fd07-taodepzai`, chưa gộp vào main.
-
-## Giữ chức năng Script Hub gốc
-
-GUI trong `script-hub.lua` lấy từ các khối Script Hub của bản gốc, không thay bằng một danh sách rút gọn:
-
-- Giữ nguyên catalog: các script ngoài và các tiện ích/server/di chuyển/định vị.
-- Giữ tìm kiếm, danh mục, ghim yêu thích, copy và lưu nguồn.
-- Giữ khung server: JobId, copy, vào server, hop/ít người/siêu vắng.
-- Giữ đủ **9 panel**: Tune, Anti Ban, Fly, Speed, High Jump, Move, Glow, Free Camera và Safe Fly.
-- Các nút gọi chính controller gốc trong main. Script ngoài giữ `noPark` để GUI ở ngoài màn hình.
-- Controller di chuyển, kính, locator, spectator, free camera, glow, server, cùng trang Người Chơi vẫn ở main. Không tải lại controller/hook physics khi mở GUI module.
-- Dữ liệu/yêu thích được giữ. Nút lưu đọc danh sách hiện tại ngay cả sau reload/import, không giữ một array cũ.
-
-`script-hub.lua` cần `BananaCatHubAPI.ScriptHubBridge` của bản main cập nhật; chạy khi chưa có hub sẽ báo lỗi rõ, không tạo GUI dở dang. Nó không phải một bản hub độc lập thứ hai.
-
-Bản gốc không chỉnh sửa vẫn có thể xem tại:
+Dùng URL của `script.js` trên nhánh cập nhật:
 
 ```text
-https://raw.githubusercontent.com/mncuadaigmailcom/taodepzai/852724782b7259c81b733261563e1585d0434f4e/script.js
+https://raw.githubusercontent.com/mncuadaigmailcom/taodepzai/arena/01a0fd07-taodepzai/script.js
 ```
 
-Bản cập nhật dựa trên chức năng/GUI gốc, đồng thời giữ các sửa lỗi storage, nhận diện API, hủy job và lifecycle đã được kiểm thử. Không khẳng định là hoàn nguyên mọi sửa lỗi về commit cũ.
+- Code Đã Lưu dùng được ngay khi mở hub, không cần mạng/module.
+- Script Hub có sẵn tại thứ tự 3. Bấm **▶ Chạy Script** để tải URL cấu hình ở `S.ScriptHubScriptUrl`.
+- Nút ✕ ở toolbar Script Hub trả GUI về màn hình và về Code; mở lại nhúng GUI cũ, không tải lại.
+- Lỗi HTTP/cú pháp/GUI hiện rõ, có thể chạy lại. Chạy lại module dọn cửa sổ cũ.
 
-## Giữ dữ liệu Code Đã Lưu
+Bản trên nhánh `arena/01a0fd07-taodepzai`, chưa gộp vào main.
 
-Main chỉ giữ adapter dữ liệu `BananaCatHubAPI.SavedCodeAdapter`; GUI quản lý nằm trong `code-da-luu.lua`.
+## Giữ các chức năng gốc
 
-- Dữ liệu hub vẫn là `banana_cat_saved.json`, schema version 3: scripts, waypoint, feature người dùng, settings/yêu thích.
-- Bỏ GUI trong main không xóa file hay code cũ. Các nút Lưu của Code/Script Hub/tạo mẫu vẫn cập nhật cùng danh sách.
-- Cả hai tab module có sẵn là transient, không được lưu trùng vào `features` hoặc `scripts`.
-- Nạp dữ liệu giữ cả hai tab module, dựng lại các tab do người dùng tạo.
-- `S.BuiltinSavedScripts` mặc định trống, không thêm ví dụ mới.
+`script-hub.lua` giữ catalog, tìm kiếm, danh mục, ghim, copy/lưu nguồn, server panel và đủ **9 panel gốc**: Tune, Anti Ban, Fly, Speed, High Jump, Move, Glow, Free Camera, Safe Fly.
 
-`code-da-luu.lua` chạy độc lập được: khi thiếu adapter main, dùng `taodepzai_saved_code.json`, schema 1, chỉ đọc `scripts` từ file hub để chuyển dữ liệu cũ. Không ghi đè file waypoint/settings. Thiếu API file thật/ghi lỗi thì giữ RAM và hỗ trợ sao lưu JSON; không đảm bảo còn sau rejoin.
+Catalog và helper dựng thẻ cũng chuyển sang module để main nhỏ hơn. **Các game controllers và action dispatch vẫn ở main** để các trang/tính năng khác hoạt động cả khi chưa tải Script Hub; không tạo thêm một bộ physics/hooks khi tải GUI.
+
+Giữ tab Code, Người Chơi, Hỗ Trợ, Thiết Lập, Tạo Tính Năng và tab người dùng. Code Đã Lưu/Code/Script Hub giữ thứ tự gốc 1/2/3; tab người dùng từ 8.
+
+Test đối chiếu 309 hàm có tên của bản gốc, catalog và tên các panel trong `tests/fixtures/script-hub-original.json`. Việc đối chiếu source không thay thế kiểm tra physics/rendering thật.
+
+Module Script Hub cần `BananaCatHubAPI.ScriptHubBridge` của main cập nhật; chạy khi chưa có main sẽ báo lỗi rõ, không tạo GUI dở dang.
+
+## Dữ liệu
+
+Dữ liệu hub vẫn dùng **`banana_cat_saved.json`, schema 3**: scripts, waypoint, tab người dùng, settings/yêu thích. Không xóa file lưu khi thay cách hiển thị Code Đã Lưu.
+
+- Lưu từ Code, Script Hub, tạo mẫu vẫn cập nhật cùng danh sách native.
+- Chỉ tab Script Hub có sẵn là transient; không lưu trùng vào `features` hoặc chép vào danh sách code.
+- Reload giữ một tab Script Hub, khôi phục tab người dùng và nạp code cũ vào tab thường.
+- Thiếu API file thật/ghi lỗi: giữ trong RAM, không đảm bảo còn sau rejoin. Trạng thái không báo RAM là đã ghi file.
+- Thiếu clipboard thật: nút copy trong tab thường bôi đen code để copy thủ công, không báo thành công giả.
 
 ## Kiểm thử
 
 Cần Node.js và [Luau CLI](https://github.com/luau-lang/luau/releases) (`luau`, `luau-compile`).
 
 ```bash
-node --test tests/hub.test.cjs tests/saved-code.test.cjs tests/script-hub.test.cjs
+node --test tests/hub.test.cjs tests/script-hub.test.cjs
 luau-compile --null script.js
-luau-compile --null code-da-luu.lua
 luau-compile --null script-hub.lua
 
 # Hoặc chỉ định executable:
 LUAU_BIN=/duong/dan/luau \
 LUAU_COMPILE_BIN=/duong/dan/luau-compile \
-node --test tests/hub.test.cjs tests/saved-code.test.cjs tests/script-hub.test.cjs
+node --test tests/hub.test.cjs tests/script-hub.test.cjs
 ```
 
-**103 bài** gồm các hồi quy trước, kiểm tra không mất hàm/catalog/panel từ bản gốc, GUI Script Hub gốc, dispatch/copy/save/favorites/search/category/server/panel inputs, tải module qua pipeline thật, lỗi HTTP/mount và retry, singleton/dọn UI hooks, close/reopen, hủy tải, giữ cả hai tab module/thứ tự, serialization và storage.
+**57 test của cách tích hợp hiện tại**: Code Đã Lưu native/offline, lưu/tên trùng/search/expand/copy/run/delete, lỗi và retry, hủy job/monitor dòng đã xóa, repeat controls, API/storage thật/RAM, main nhỏ hơn, không còn module Code Đã Lưu, Script Hub gốc/panel/catalog/controller parity, URL/capture/nhúng/close/reopen/lifecycle, serialization/reload/order và user features.
 
-Manifest bản gốc trong `tests/fixtures/script-hub-original.json` ghi catalog, tên panel và các hàm có tên để đối chiếu khi chỉnh tiếp.
+Các test riêng cho cách làm sai trước đó (Code Đã Lưu dạng module/link tính năng) được bỏ cùng module; không dùng số test cũ để mô tả bản này.
 
-Hành vi chạy source thật với Roblox/executor/controllers giả lập. Không gọi mạng hoặc thực thi các payload IY/Dex/SimpleSpy. JSON I/O, hình học, physics và rendering được giả lập. **Chưa thay thế kiểm tra trong Roblox/executor thật**, không khẳng định mọi game/executor đều tương thích. Thiếu CLI hiện SKIP, không coi là đã đạt.
+Hành vi chạy source thật bằng Roblox/executor/controller adapters giả lập, không gọi mạng hoặc thực thi IY/Dex/SimpleSpy. JSON, hình học, rendering và physics không phải game thật. **Chưa thử trên Roblox/executor thật.** Thiếu Luau CLI hiện SKIP, không tính là đã đạt.
 
 ## Giới hạn
 
-- Chỉ chạy nguồn đáng tin cậy; URL cần mạng và phải trả mã Luau, không phải HTML. `loadstring` không phải sandbox.
-- Hủy chỉ dừng luồng khởi chạy do hub/module quản lý, không bảo đảm dừng mọi child task/listener/side effect của script ngoài.
-- Các API giả lập không thay thế API native hoàn toàn. “Anti Ban” không bảo đảm tránh ban.
-- Portal/key system cũ (`index.html`, key tools và `tests/portal.test.cjs`) chưa tương thích hub hiện tại, còn lỗi nền; không thay thế các test Luau trên.
+Chỉ chạy nguồn tin tưởng; URL phải trả Luau, không phải HTML, và cần mạng. `loadstring` không phải sandbox. Hủy chỉ dừng luồng khởi chạy do hub quản lý, không đảm bảo hủy child task/listener/side effect của script ngoài. “Anti Ban” không bảo đảm tránh ban.
+
+Portal/key cũ (`index.html`, key tools và `tests/portal.test.cjs`) chưa tương thích hub hiện tại, còn lỗi nền; không thay thế các test Luau trên.

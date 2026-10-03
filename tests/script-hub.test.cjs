@@ -16,8 +16,7 @@ function between(start,end) {
     assert(a>=0 && b>a, `Missing main section ${start}`);
     return main.slice(a,b);
 }
-const production = [between('S.ScriptHubList = {', '\nfunction D.CardBtn('),
-    between('function D.CardBtn(', '\n-- Script Hub GUI moved'),
+const production = [between('function S.RunHubAction(', '\n-- Script Hub GUI moved'),
     `\n_G.BananaCatHubAPI = {ScriptHubBridge=function() return Mock.makeScriptHubBridge() end}\n`,
     `function Mock.openScriptHub() return assert(loadstring([====[${moduleSource}]====]))() end\n`].join('\n');
 assert.doesNotMatch(moduleSource,/\]====\]/);
@@ -47,7 +46,11 @@ test('the extracted original Script Hub module compiles', {skip:!hasCompiler && 
 test('all original named controllers and all catalog items survive the extraction',()=>{
     const all = main + '\n' + moduleSource;
     for(const name of manifest.functions) assert(all.includes(name), `Lost original function: ${name}`);
-    assert.equal(between('S.ScriptHubList = {','\nfunction S.RunHubAction'), manifest.catalogSource);
+    const catalog = moduleSource.slice(moduleSource.indexOf('S.ScriptHubList = {'),
+        moduleSource.indexOf('\n-- END SCRIPT_HUB_CATALOG'));
+    assert.equal(catalog, manifest.catalogSource);
+    assert.doesNotMatch(main, /S\.SavedLinks|SavedCodeAdapter|code-da-luu\.lua|EnsureSavedCodeFeature/);
+    assert.match(main, /AddTab\("Code Đã Lưu", "💾", 1\)/);
     for(const panel of manifest.panelNames) assert(moduleSource.includes(`Name = "${panel}"`), `Lost panel ${panel}`);
     assert.equal(manifest.panelNames.length,9);
     assert.match(main,/AddTab\("Người Chơi", "👥", 4\)/);

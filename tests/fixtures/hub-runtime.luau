@@ -2,7 +2,7 @@
 -- No network calls, movement code, or third-party scripts are executed by these tests.
 _G = {}
 S = {embedEnabled = true, embedGuessNew = false, parkCodeGuis = true, embeds = {},
-    BuiltinSavedScripts = {}, WRAP_MARK_OLD = "-- ===== AUTO-GENERATED SIZE WRAPPER"}
+    WRAP_MARK_OLD = "-- ===== AUTO-GENERATED SIZE WRAPPER"}
 local Mock = {now = 0, queue = {}, cancelled = {}, errors = {}, http = {}, sources = {},
     executed = 0, embedded = 0, restored = 0, savedRebuilds = 0, featureRebuilds = 0}
 _G.Mock = Mock
@@ -34,6 +34,8 @@ function methods:IsA(class)
         (self.ClassName == "Frame" or self.ClassName == "ScrollingFrame" or self.ClassName == "TextButton"
         or self.ClassName == "TextBox" or self.ClassName == "TextLabel"))
 end
+function methods:CaptureFocus() self._focused = true end
+function methods:ReleaseFocus() self._focused = false end
 function methods:GetChildren() return table.clone(self._children) end
 function methods:GetDescendants()
     local out = {}
@@ -134,9 +136,9 @@ local contentArea = New("Frame", {}, main)
 local codeTab = New("ScrollingFrame", {}, contentArea)
 local savedCodeTab = New("ScrollingFrame", {}, contentArea)
 local codeButton = New("TextButton", {LayoutOrder = 2}, tabBar)
--- Test-only host for the standalone manager UI; not a primary page in the main hub.
-local tabs, tabContent = {codeButton}, {codeTab}
-local activeTab = codeTab
+local savedButton = New("TextButton", {LayoutOrder = 1}, tabBar)
+local tabs, tabContent = {codeButton,savedButton}, {codeTab,savedCodeTab}
+local activeTab = savedCodeTab
 local featureTabIndex = 8
 local runActive = false
 local totalRuns, cancelled, curThread, curIndicator = 0, false, nil, nil
@@ -270,17 +272,19 @@ function Mock.button(parent, text)
     error("missing button " .. text)
 end
 function Mock.row(name)
-    for _, row in ipairs(Mock.find(savedCodeTab, "SavedLinkList"):GetChildren()) do
-        local link = row:FindFirstChild("SavedLinkActivateName")
-        if link and link.Text == "🔗 " .. name then return row end
+    for _, row in ipairs(Mock.find(savedCodeTab, "SavedCodeList"):GetChildren()) do
+        local label = row:FindFirstChild("SavedCodeName")
+        if label and label.Text == name then return row end
     end
     error("missing saved row " .. name)
 end
 function Mock.add(name, code)
-    local entry = assert(S.SavedLinks.Add(scripts, name, code))
+    local entry = {name=name,code=code,expanded=false}
+    scripts[#scripts+1] = entry
     RebuildScripts()
     return entry
 end
+
 Mock.guiCode = [[
 _G.Mock.executed += 1
 local g = Instance.new("ScreenGui")
