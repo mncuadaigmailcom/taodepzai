@@ -42,6 +42,27 @@ if _G.BananaCatHub_Connections then
     end
 end
 _G.BananaCatHub_Connections = {}
+
+do   -- dọn tàn dư ⭕ định vị vòng của lần chạy trước (chạy lại không bị chồng 2 vòng)
+    pcall(function() RunService:UnbindFromRenderStep("BC_Ring") end)
+    local old = _G.BananaCatHub_Ring
+    if type(old) == "table" then
+        if old.Unbind then pcall(old.Unbind) end
+        if old.Clear then pcall(old.Clear) end
+        if old.ui and old.ui.panel then pcall(function() old.ui.panel:Destroy() end) end
+    end
+    for _, n in ipairs({ "BC_RingVis", "BC_RingBtns", "BC_RingESP" }) do
+        pcall(function()
+            local g = playerGui and playerGui:FindFirstChild(n)
+            if g then g:Destroy() end
+        end)
+        pcall(function()
+            local g = workspace:FindFirstChild(n)
+            if g then g:Destroy() end
+        end)
+    end
+    _G.BananaCatHub_Ring = nil
+end
 pcall(function()
     local oldUnhook = _G.BananaCatHub_AntiBanUnhook
     if type(oldUnhook) == "function" then pcall(oldUnhook) end
@@ -83,7 +104,21 @@ for _, parent in ipairs({targetGui, playerGui, game:GetService("CoreGui")}) do
         local old = parent:FindFirstChild("BananaCatHub_Crosshair")
         if old then old:Destroy() end
     end)
+    pcall(function()   -- v5.1: dọn định vị vật của lần chạy trước (tránh chồng Highlight)
+        local old = parent:FindFirstChild("BC_ObjTrackESP")
+        if old then old:Destroy() end
+    end)
 end
+
+-- v5.1.1: Highlight/nhãn/hộp giờ gắn thẳng vào VẬT (trong Workspace) nên phải dọn trong workspace
+pcall(function()
+    for _, d in ipairs(workspace:GetDescendants()) do
+        local n = d.Name
+        if n == "BC_OT_HL" or n == "BC_OT_BB" or n == "BC_OT_BOX" then
+            pcall(function() d:Destroy() end)
+        end
+    end
+end)
 
 local function trackConn(conn)
     local t = _G.BananaCatHub_Connections
@@ -109,6 +144,8 @@ pcall(function() RunService:UnbindFromRenderStep("BC_SafeInvis") end)
 pcall(function() RunService:UnbindFromRenderStep("BC_SafeInvisFly") end)
 pcall(function() RunService:UnbindFromRenderStep("BC_AutoGlass") end)
 pcall(function() RunService:UnbindFromRenderStep("BC_GlassFly") end)
+pcall(function() RunService:UnbindFromRenderStep("BC_ObjTrack") end)  -- v5.1: định vị vật theo tên
+pcall(function() RunService:UnbindFromRenderStep("BC_ObjFly") end)    -- v5.1: bay tới vật
 
 local C = {
     WHITE  = Color3.fromRGB(255, 255, 255),
@@ -3136,6 +3173,1606 @@ function SV.Reset()                     -- xoá đỉnh, vẫn đo tiếp
     return SV.max
 end
 
+-- ============================================================================
+-- ---------- ⭕ ĐỊNH VỊ VÒNG (v5.2) — mọi thứ TRONG VÒNG: vật · người chơi · NPC ---
+-- Đặt 1 vòng tròn ở vị trí bất kì trong map; mọi thứ nằm trong bán kính đều được
+-- định vị (Highlight + nhãn), gộp theo "đơn vị" (nhân vật/NPC/model) nên không rối
+-- thành hàng chục marker cho 1 người. Vật/người ĐI VÀO vòng thì tự hiện, ĐI RA thì
+-- tự mất (quét lại 0,6s/lần). Thông tin chi tiết của vật đang chọn hiện đầy đủ
+-- y như khung "📊 phân tích toạ độ" (Name/Class/Position/Size/Rotation/Look/
+-- Material/Color/Path) và cập nhật liên tục khi vật di chuyển.
+-- 3 nút ảo trên màn hình: 🎯 Đổ vòng · ⏪ Lùi · ⏩ Tới (+ 🔒 khoá/chỉnh vị trí nút).
+-- ============================================================================
+do   -- gói gọn trong 1 khối: tiết kiệm "local" ở cấp cao nhất của chunk
+S.Ring = {
+    on = false,
+    center = nil,          -- Vector3 tâm vòng (nil = chưa đổ)
+    radius = 60,           -- bán kính vòng (stud) — chỉnh bằng ô 🔢 / ➖ ➕
+    step = 14,             -- stud mỗi lần bấm ⏪ / ⏩
+    follow = true,         -- 🧲 vòng bám theo nhân vật (mặc định BẬT: bạn đi đâu vòng theo đó)
+    skipSelf = true,       -- 🚫 bỏ qua chính mình
+    showVis = true,        -- 🖼 vẽ vòng trong map
+    showLabel = true,      -- 💬 nhãn tên + khoảng cách
+    thru = true,           -- 🕶 xuyên tường
+    showButtons = true,    -- 👁 hiện 3 nút ảo
+    editMode = false,      -- 🖐 đang CHỈNH vị trí nút ảo (tắt = khoá, không kéo được)
+    maxItems = 60,         -- tối đa bao nhiêu "đơn vị" được định vị (đủ rộng cho map đông)
+    onlyPlayers = false,   -- 🧑 chỉ định vị người chơi / NPC (bỏ vật vô tri)
+    color = 1,
+    items = {},            -- [inst] = { hl, bb, lbl, part, unit, dist, distC, kind }
+    list = {},             -- danh sách gần tâm vòng nhất
+    ui = {},               -- tham chiếu control trong tab 🛠 Hỗ Trợ
+    -- ngân sách chống khựng (giống 🌳 định vị vật)
+    scanEvery = 0.6, labelEvery = 0.25, makeBudget = 6, labelBudget = 16,
+    infoEvery = 0.5, tickSliceMs = 1.5,
+    _order = {}, _orderN = 0, _slotN = 0, _tickIdx = 0, _pending = {},
+    _vis = nil, _visRing = nil, _gui = nil, _btnsGui = nil,
+    _sel = nil, _selPart = nil, _infoAt = 0, _acc = 0, _scanAcc = 0, _bound = false,
+    _found = 0, _scanned = 0, _skipped = 0, _err = nil, _lastScan = 0, _scanMs = 0,
+    _visAt = 0,
+    -- quét bù toàn map: engine (GetPartBoundsInRadius) BỎ QUA vật CanQuery = false
+    -- (sách trang trí, tường mỏng, đồ nội thất…) nên phải có lượt quét riêng, chia lát
+    sweepEvery = 3.0, sweepBudget = 220, sweepMs = 1.2, _sweep = {},
+}
+local R = S.Ring
+
+R.palette = {
+    { name = "Xanh nước", fill = Color3.fromRGB(0, 195, 255), out = Color3.fromRGB(196, 240, 255) },
+    { name = "Xanh lá",  fill = Color3.fromRGB(60, 230, 130), out = Color3.fromRGB(214, 255, 232) },
+    { name = "Cam",      fill = Color3.fromRGB(255, 150, 40), out = Color3.fromRGB(255, 236, 205) },
+    { name = "Tím",      fill = Color3.fromRGB(180, 120, 255), out = Color3.fromRGB(236, 226, 255) },
+    { name = "Vàng",     fill = Color3.fromRGB(255, 220, 90), out = Color3.fromRGB(255, 250, 214) },
+    { name = "Hồng",     fill = Color3.fromRGB(255, 110, 190), out = Color3.fromRGB(255, 220, 240) },
+}
+function R.Pal()
+    local i = tonumber(R.color) or 1
+    return R.palette[i] or R.palette[1]
+end
+function R.CycleColor()
+    R.color = ((tonumber(R.color) or 1) % #R.palette) + 1
+    R.ApplyStyle()
+    R.Paint()
+    return R.Pal().name
+end
+
+local function ringRound(n) return math.floor((tonumber(n) or 0) + 0.5) end
+local function ringClamp(n, lo, hi, dft)
+    n = tonumber(n)
+    if n == nil or n ~= n then return dft end
+    if n < lo then return lo end
+    if n > hi then return hi end
+    return n
+end
+
+function R.Root()
+    local c = player.Character
+    if c then
+        local hrp = c:FindFirstChild("HumanoidRootPart")
+        if hrp then return hrp end
+    end
+    local okM, mv = pcall(function() return S.Move and S.Move.Root and S.Move.Root() end)
+    if okM and mv then return mv end
+    return nil
+end
+
+-- Hướng "tới" = hướng nhìn của camera chiếu xuống mặt phẳng ngang
+function R.Look()
+    local dir = nil
+    pcall(function() dir = camera.CFrame.LookVector end)
+    if dir == nil then
+        local root = R.Root()
+        if root then pcall(function() dir = root.CFrame.LookVector end) end
+    end
+    if dir == nil then return Vector3.new(0, 0, -1) end
+    local flat = Vector3.new(dir.X, 0, dir.Z)
+    if flat.Magnitude < 0.05 then return Vector3.new(0, 0, -1) end
+    return flat.Unit
+end
+
+-- Gộp 1 BasePart về "đơn vị" của nó:
+--   • nhân vật/NPC (Model có Humanoid) -> cả Model (1 người = 1 marker)
+--   • vật nằm trong Model/Folder -> cấp cao nhất dưới Workspace (1 cây = 1 marker)
+--   • còn lại -> chính part đó
+function R.UnitOf(part)
+    if part == nil then return nil, "?" end
+    local okM, model = pcall(function() return part:FindFirstAncestorOfClass("Model") end)
+    if okM and model ~= nil then
+        local okH, hasHum = pcall(function() return model:FindFirstChildOfClass("Humanoid") ~= nil end)
+        if okH and hasHum then
+            local okP, plyr = pcall(function() return Players:GetPlayerFromCharacter(model) end)
+            if okP and plyr ~= nil then return model, "player", plyr end
+            return model, "npc", nil
+        end
+    end
+    local top, guard = part, 0
+    while top.Parent and top.Parent ~= workspace and guard < 32 do
+        guard = guard + 1
+        top = top.Parent
+    end
+    if top ~= part then
+        local okT, isGroup = pcall(function() return top:IsA("Model") or top:IsA("Folder") end)
+        if okT and isGroup then return top, "group", nil end
+    end
+    return part, "part", nil
+end
+
+-- Part đại diện để gắn nhãn (nhân vật -> HumanoidRootPart/Head; Model/Folder -> part đầu tiên)
+function R.PartOf(inst)
+    if inst == nil then return nil end
+    local okA, isPart = pcall(function() return inst:IsA("BasePart") end)
+    if okA and isPart then return inst end
+    local okR, hrp = pcall(function() return inst:FindFirstChild("HumanoidRootPart") end)
+    if okR and hrp ~= nil and hrp.Parent ~= nil then return hrp end
+    local okH, head = pcall(function() return inst:FindFirstChild("Head") end)
+    if okH and head ~= nil and head.Parent ~= nil then return head end
+    local okP, pp = pcall(function() return inst.PrimaryPart end)
+    if okP and pp ~= nil and pp.Parent ~= nil then return pp end
+    local okF, found = pcall(function() return inst:FindFirstChildWhichIsA("BasePart", true) end)
+    if okF and found ~= nil and found.Parent ~= nil then return found end
+    return nil
+end
+
+-- Đường dẫn đầy đủ (giống 📊 phân tích toạ độ)
+function R.PathOf(inst)
+    if inst == nil then return "nil" end
+    local parts, cur, guard = {}, inst, 0
+    while cur and cur ~= game and guard < 40 do
+        table.insert(parts, 1, tostring(cur.Name))
+        cur = cur.Parent
+        guard = guard + 1
+    end
+    return table.concat(parts, ".")
+end
+
+-- Bảng thông tin ĐẦY ĐỦ y như khung "🎯 VẬT THỂ ĐƯỢC CHỌN" của 📊 phân tích toạ độ
+function R.Info(inst, part)
+    if inst == nil then return {} end
+    if part == nil then part = R.PartOf(inst) end
+    local rows = {}
+    local function add(k, v) rows[#rows + 1] = { k = k, v = tostring(v) } end
+    add("Name", tostring(inst.Name))
+    add("Class", tostring(inst.ClassName))
+    add("Path", R.PathOf(inst))
+    local okP0, unitKind = pcall(function() return select(2, R.UnitOf(part or inst)) end)
+    if okP0 and unitKind == "player" then
+        add("Loại", "🧑 Người chơi (di chuyển trong vòng)")
+    elseif okP0 and unitKind == "npc" then
+        add("Loại", "🤖 NPC (di chuyển trong vòng)")
+    end
+    if part then
+        local okP, pos = pcall(function() return part.Position end)
+        if okP and pos then add("Position", string.format("%.3f, %.3f, %.3f", pos.X, pos.Y, pos.Z)) end
+        local okS, size = pcall(function() return part.Size end)
+        if okS and size then add("Size", string.format("%.3f, %.3f, %.3f", size.X, size.Y, size.Z)) end
+        local okC, cf = pcall(function() return part.CFrame end)
+        if okC and cf then
+            pcall(function()
+                local rx, ry, rz = cf:ToOrientation()
+                add("Rotation", string.format("P=%.1f° Y=%.1f° R=%.1f°", math.deg(rx), math.deg(ry), math.deg(rz)))
+            end)
+            pcall(function()
+                local look = cf.LookVector
+                add("Look", string.format("%.3f, %.3f, %.3f", look.X, look.Y, look.Z))
+            end)
+        end
+        local okM, mat = pcall(function() return part.Material end)
+        if okM and mat then add("Material", tostring(mat):gsub("Enum.Material.", "")) end
+        local okCol, col = pcall(function() return part.Color end)
+        if okCol and col then
+            add("Color", string.format("R=%d G=%d B=%d",
+                math.floor(col.R * 255), math.floor(col.G * 255), math.floor(col.B * 255)))
+        end
+    end
+    local c = R.center
+    if c and part then
+        pcall(function()
+            local pos = part.Position
+            add("📍 Cách tâm vòng", string.format("%.1f m (bán kính %.0f m)", (pos - c).Magnitude, R.radius))
+        end)
+    end
+    local root = R.Root()
+    if root and part then
+        pcall(function()
+            local pos = part.Position
+            add("🧍 Cách bạn", string.format("%.1f m", (pos - root.Position).Magnitude))
+        end)
+    end
+    return rows
+end
+
+function R.CopyCoords(inst)
+    local part = (inst and R.PartOf(inst)) or R._selPart
+    if part == nil then return false, "chưa chọn vật nào" end
+    local ok, pos = pcall(function() return part.Position end)
+    if not ok or not pos then return false, "vật không còn toạ độ" end
+    local txt = string.format("%.3f, %.3f, %.3f", pos.X, pos.Y, pos.Z)
+    local did = (S.CopyToClipboard and S.CopyToClipboard(txt)) or false
+    return did, txt
+end
+
+function R.CopyPath(inst)
+    local target = inst or R._sel
+    if target == nil then return false, "chưa chọn vật nào" end
+    local txt = R.PathOf(target)
+    local did = (S.CopyToClipboard and S.CopyToClipboard(txt)) or false
+    return did, txt
+end
+
+function R.Select(inst)
+    if inst == nil or inst.Parent == nil then
+        R._sel, R._selPart = nil, nil
+    else
+        R._sel = inst
+        R._selPart = R.PartOf(inst)
+    end
+    if R.RefreshInfo then pcall(R.RefreshInfo) end
+    return R._sel
+end
+
+-- ---------------------------------------------------------------- GUI trong map
+function R.Gui()
+    if R._gui and R._gui.Parent then return R._gui end
+    R._gui = New("ScreenGui", {
+        Name = "BC_RingESP", ResetOnSpawn = false,
+        ZIndexBehavior = Enum.ZIndexBehavior.Sibling,
+    }, targetGui)
+    return R._gui
+end
+
+-- Vòng nhìn thấy trong map: 1 Folder BC_RingVis gồm
+--   • Disc  — đĩa neon dày 0.35 studs (nhìn rõ trên mặt đất, không bị chìm)
+--   • Edge  — vành CylinderHandleAdornment LUÔN NỔI trên mọi vật (AlwaysOnTop)
+--   • Core + Pillar — cột mốc ở TÂM vòng để thấy vòng đang ở đâu từ xa
+function R.RefreshVis()
+    if not (R.on and R.showVis) or R.center == nil then
+        if R._vis then pcall(function() R._vis:Destroy() end) end
+        R._vis, R._visDisc, R._visRing, R._visCore, R._visPillar = nil, nil, nil, nil, nil
+        return
+    end
+    local pal = R.Pal()
+    local rad = tonumber(R.radius) or 60
+    if R._vis == nil or R._vis.Parent == nil then
+        local okV, vis = pcall(function()
+            return New("Folder", { Name = "BC_RingVis" }, workspace)
+        end)
+        if okV and vis then R._vis = vis else R._vis = nil end
+        R._visDisc, R._visRing, R._visCore, R._visPillar = nil, nil, nil, nil
+    end
+    if R._vis == nil then return end
+
+    -- 1) đĩa neon
+    if R._visDisc == nil or R._visDisc.Parent == nil then
+        local okD, disc = pcall(function()
+            return New("Part", {
+                Name = "Disc", Shape = Enum.PartType.Cylinder, Anchored = true,
+                CanCollide = false, CanQuery = false, CanTouch = false, CastShadow = false,
+                Material = Enum.Material.Neon, Transparency = 0.6, Color3 = pal.fill,
+                Size = Vector3.new(0.35, rad * 2, rad * 2),
+            }, R._vis)
+        end)
+        if okD and disc then R._visDisc = disc end
+    end
+    if R._visDisc then
+        pcall(function()
+            R._visDisc.Size = Vector3.new(0.35, rad * 2, rad * 2)
+            R._visDisc.CFrame = CFrame.new(R.center) * CFrame.Angles(0, 0, math.rad(90))
+            R._visDisc.Color3 = pal.fill
+            R._visDisc.Transparency = 0.6
+        end)
+    end
+
+    -- 2) vành tròn — luôn vẽ nổi trên mọi vật nên dù đĩa có bị chôn trong nền vẫn THẤY VÒNG
+    if R._visRing == nil or R._visRing.Parent == nil then
+        pcall(function()
+            R._visRing = New("CylinderHandleAdornment", {
+                Name = "Edge", Adornee = R._visDisc,
+                Radius = rad, Height = 0.45, InnerRadius = rad * 0.88,
+                AlwaysOnTop = true, ZIndex = 5, Color3 = pal.out, Transparency = 0,
+            }, R._vis)
+        end)
+    end
+    if R._visRing then
+        pcall(function()
+            R._visRing.Adornee = R._visDisc
+            R._visRing.Radius = rad
+            R._visRing.InnerRadius = rad * 0.88
+            R._visRing.Height = 0.45
+            R._visRing.Color3 = pal.out
+            R._visRing.AlwaysOnTop = true
+            R._visRing.Transparency = 0
+        end)
+    end
+
+    -- 3) cột mốc ở tâm vòng (thấy từ xa, biết vòng nằm chỗ nào)
+    if R._visCore == nil or R._visCore.Parent == nil then
+        local okC, core = pcall(function()
+            return New("Part", {
+                Name = "Core", Shape = Enum.PartType.Ball, Anchored = true,
+                CanCollide = false, CanQuery = false, CanTouch = false, CastShadow = false,
+                Material = Enum.Material.Neon, Transparency = 0.1, Color3 = pal.out,
+                Size = Vector3.new(2, 2, 2),
+            }, R._vis)
+        end)
+        if okC and core then R._visCore = core end
+        local okP2, pillar = pcall(function()
+            return New("Part", {
+                Name = "Pillar", Anchored = true, CanCollide = false, CanQuery = false,
+                CanTouch = false, CastShadow = false, Material = Enum.Material.Neon,
+                Transparency = 0.4, Color3 = pal.out, Size = Vector3.new(0.5, 30, 0.5),
+            }, R._vis)
+        end)
+        if okP2 and pillar then R._visPillar = pillar end
+    end
+    if R._visCore then
+        pcall(function()
+            R._visCore.CFrame = CFrame.new(R.center + Vector3.new(0, 2, 0))
+            R._visCore.Color3 = pal.out
+        end)
+    end
+    if R._visPillar then
+        pcall(function()
+            R._visPillar.CFrame = CFrame.new(R.center + Vector3.new(0, 15, 0))
+            R._visPillar.Color3 = pal.out
+        end)
+    end
+end
+
+-- ---------------------------------------------------------------- quét trong vòng
+function R.Overlap()
+    local op = nil
+    local okN = pcall(function() op = OverlapParams.new() end)
+    if not okN or op == nil then
+        pcall(function() op = Instance.new("OverlapParams") end)
+    end
+    if op == nil then return nil end
+    pcall(function()
+        op.FilterType = Enum.RaycastFilterType.Exclude
+        local ex = {}
+        if R._gui then ex[#ex + 1] = R._gui end
+        if R._vis then ex[#ex + 1] = R._vis end
+        if R._btnsGui then ex[#ex + 1] = R._btnsGui end
+        if R.skipSelf then
+            local root = R.Root()
+            if root and root.Parent then ex[#ex + 1] = root.Parent end
+        end
+        op.FilterDescendantsInstances = ex
+        op.MaxParts = 250
+    end)
+    return op
+end
+
+function R.Kill(inst)
+    local it = R.items[inst]
+    if not it then return end
+    pcall(function() if it.hl then it.hl:Destroy() end end)
+    pcall(function() if it.bb then it.bb:Destroy() end end)
+    R.items[inst] = nil
+    if it.slot then R._order[it.slot] = nil end
+end
+
+function R.Clear()
+    for inst in pairs(R.items) do R.Kill(inst) end
+    R.items = {}
+    R.list = {}
+    R._order, R._tickIdx, R._pending = {}, 0, {}
+    R._orderN, R._slotN = 0, 0
+    R._sel, R._selPart = nil, nil
+    R._found, R._capped = 0, false
+    if R.RefreshInfo then pcall(R.RefreshInfo) end
+end
+
+function R.Make(inst, part, kind)
+    if inst == nil or part == nil then return end
+    local okP, alive = pcall(function() return part.Parent ~= nil and inst.Parent ~= nil end)
+    if not okP or not alive then return end
+    R.Kill(inst)
+    local g = R.Gui()
+    local pal = R.Pal()
+    -- Folder không phải BasePart/Model nên Adornee phải trỏ vào part bên trong mới hiện
+    local okAM, adornee = pcall(function()
+        return (inst:IsA("BasePart") or inst:IsA("Model")) and inst or part
+    end)
+    if not okAM or adornee == nil then adornee = part end
+    local hl = nil
+    pcall(function()
+        hl = New("Highlight", {
+            Name = "BC_OT_RINGHL", Adornee = adornee,
+            FillColor = pal.fill, FillTransparency = 0.7,
+            OutlineColor = pal.out, OutlineTransparency = 0,
+            DepthMode = R.thru and Enum.HighlightDepthMode.AlwaysOnTop or Enum.HighlightDepthMode.Occluded,
+            }, inst)
+    end)
+    if hl == nil then
+        pcall(function()
+            hl = New("Highlight", {
+                Name = "BC_OT_RINGHL", Adornee = adornee,
+                FillColor = pal.fill, FillTransparency = 0.7,
+                OutlineColor = pal.out, OutlineTransparency = 0,
+                DepthMode = R.thru and Enum.HighlightDepthMode.AlwaysOnTop or Enum.HighlightDepthMode.Occluded,
+            }, g)
+        end)
+    end
+    local bb, lbl = nil, nil
+    pcall(function()
+        bb = New("BillboardGui", {
+            Name = "BC_OT_RINGBB", Adornee = part,
+            Size = UDim2.new(0, 210, 0, 30), StudsOffset = Vector3.new(0, 2.6, 0),
+            AlwaysOnTop = R.thru, MaxDistance = 3000, ResetOnSpawn = false,
+        }, part)
+        lbl = New("TextLabel", {
+            Size = UDim2.new(1, 0, 1, 0), BackgroundTransparency = 1,
+            Text = tostring(inst.Name), TextColor3 = pal.out,
+            Font = Enum.Font.GothamBold, TextSize = 11,
+            TextStrokeColor3 = Color3.fromRGB(0, 0, 0), TextStrokeTransparency = 0.35,
+            TextWrapped = true,
+        }, bb)
+    end)
+    R._slotN = (R._slotN or 0) + 1
+    R._order[R._slotN] = inst
+    R._orderN = R._slotN
+    R.items[inst] = { hl = hl, bb = bb, lbl = lbl, part = part, dist = 0, distC = 0,
+                      kind = kind, slot = R._slotN, txt = nil, adornee = adornee }
+    if hl == nil and bb == nil then
+        R._err = "executor chặn Highlight/BillboardGui — không vẽ được định vị vòng"
+    end
+end
+
+-- Bỏ qua rác của chính hub / Terrain / nhân vật mình (dùng cho cả 2 đường quét)
+function R.SkipPart(inst)
+    if inst == nil then return true end
+    local okN, nm = pcall(function() return tostring(inst.Name or "") end)
+    if not okN then return true end
+    if nm == "" then return true end
+    if nm:sub(1, 3) == "BC_" then return true end
+    local vis = R._vis
+    if vis ~= nil then
+        local okV, inside2 = pcall(function() return inst:IsDescendantOf(vis) end)
+        if okV and inside2 then return true end
+    end
+    local okT, isTerrain = pcall(function() return inst:IsA("Terrain") end)
+    if okT and isTerrain then return true end
+    if R.skipSelf then
+        local root = R.Root()
+        if root and root.Parent then
+            local okD, inside = pcall(function() return inst:IsDescendantOf(root.Parent) end)
+            if okD and inside then return true end
+        end
+    end
+    return false
+end
+
+-- ---------------------------------------------------------------------------
+-- QUÉT BÙ TOÀN MAP theo LÁT (GetChildren từng nhánh — KHÔNG GetDescendants một phát).
+-- Đây là đường quét "không bỏ sót": engine bỏ qua vật CanQuery = false, còn lượt này
+-- chỉ cần toạ độ trong bán kính nên bắt được cả sách trang trí, tường mỏng, đồ nội thất…
+-- ---------------------------------------------------------------------------
+function R.SweepBegin()
+    local s = R._sweep
+    if type(s) ~= "table" then s = {} R._sweep = s end
+    s.parts, s.set, s.done = {}, {}, false
+    s.q, s.qN = { workspace }, 1
+    s.at, s.scanned, s.found, s.n = os.clock(), 0, 0, 0
+    return s
+end
+
+function R.SweepSlice(budget, msCap)
+    local s = R._sweep
+    if type(s) ~= "table" or s.done or s.qN == nil then return false end
+    budget = tonumber(budget) or tonumber(R.sweepBudget) or 220
+    msCap = tonumber(msCap) or tonumber(R.sweepMs) or 1.2
+    local c = R.center
+    local rad = tonumber(R.radius) or 60
+    local t0 = os.clock()
+    local guard = 0
+    while s.qN > 0 and budget > 0 do
+        guard = guard + 1
+        if guard > 20000 then break end
+        local inst = s.q[s.qN]
+        s.q[s.qN] = nil
+        s.qN = s.qN - 1
+        budget = budget - 1
+        local okK, kids = pcall(function() return inst:GetChildren() end)
+        if okK and type(kids) == "table" then
+            for i = 1, #kids do
+                s.qN = s.qN + 1
+                s.q[s.qN] = kids[i]
+            end
+        end
+        if inst ~= workspace then
+            s.scanned = s.scanned + 1
+            local okP, isPart = pcall(function() return inst:IsA("BasePart") end)
+            if okP and isPart and not R.SkipPart(inst) then
+                local ok2, pos = pcall(function() return inst.Position end)
+                if ok2 and pos and c ~= nil then
+                    local ok3, d = pcall(function() return (pos - c).Magnitude end)
+                    if ok3 and d <= rad * 1.15 + 4 and s.set[inst] == nil then
+                        s.set[inst] = true
+                        s.n = s.n + 1
+                        s.parts[s.n] = inst
+                        s.found = s.n
+                    end
+                end
+            end
+        end
+        if (os.clock() - t0) * 1000 > msCap then break end
+    end
+    if s.qN <= 0 then s.done = true end
+    return s.done
+end
+
+-- Chạy trong mỗi khung hình: quét tiếp lượt đang dở, hoặc bắt lượt mới sau sweepEvery giây
+function R.SweepStep()
+    if not R.on or R.center == nil then return end
+    local s = R._sweep
+    if type(s) ~= "table" then s = R.SweepBegin() end
+    if s.done or s.qN == nil then
+        if (os.clock() - (tonumber(s.at) or 0)) >= (tonumber(R.sweepEvery) or 3) then R.SweepBegin() end
+        return
+    end
+    R.SweepSlice()
+end
+
+-- Quét 1 lượt: GetPartBoundsInRadius (engine tự lọc theo bán kính — rất nhẹ)
+function R.Scan()
+    if R.center == nil or not R.on then return 0 end
+    local now = os.clock()
+    local t0 = now
+    R._err = nil
+    -- Nguồn 1: engine (nhanh). Nguồn 2: lượt quét bù toàn map (không bỏ sót).
+    local ok, parts = pcall(function()
+        return workspace:GetPartBoundsInRadius(R.center, R.radius, R.Overlap())
+    end)
+    local cand, seenSet = {}, {}
+    local function addPart(p)
+        if p ~= nil and seenSet[p] == nil then
+            seenSet[p] = true
+            cand[#cand + 1] = p
+        end
+    end
+    if ok and type(parts) == "table" then
+        R._err = nil
+        for i = 1, #parts do addPart(parts[i]) end
+    end
+    local sw = R._sweep
+    if type(sw) ~= "table" then sw = R.SweepBegin() end
+    if sw.parts then
+        for i = 1, #sw.parts do addPart(sw.parts[i]) end
+    end
+    local seen, hits, scanned, skipped = {}, {}, 0, 0
+    local myPos = nil
+    do
+        local root = R.Root()
+        myPos = root and root.Position or nil
+    end
+    for i = 1, #cand do
+        local p = cand[i]
+        if p ~= nil and p.Parent ~= nil then
+            scanned = scanned + 1
+            if R.SkipPart(p) then
+                skipped = skipped + 1
+            else
+                local unit, kind = R.UnitOf(p)
+                if unit ~= nil and not seen[unit] then
+                    seen[unit] = true
+                    local part = (unit == p) and p or R.PartOf(unit)
+                    if part ~= nil and part.Parent ~= nil then
+                        local dC, dM = 0, 0
+                        pcall(function()
+                            dC = (part.Position - R.center).Magnitude
+                            if myPos then dM = (part.Position - myPos).Magnitude end
+                        end)
+                        -- Lọc lại theo bán kính: lượt quét bù có thể còn dữ liệu của vị trí/bán kính
+                        -- CŨ (vòng vừa đi theo bạn hoặc vừa đổi bán kính) — không được để lọt vào danh sách.
+                        local rad = tonumber(R.radius) or 60
+                        if dC <= rad * 1.15 + 4 then
+                            hits[#hits + 1] = { inst = unit, part = part, dist = dC, distM = dM, kind = kind }
+                        end
+                    end
+                end
+            end
+        end
+    end
+    table.sort(hits, function(a, b) return a.dist < b.dist end)
+    local maxN = math.max(1, tonumber(R.maxItems) or 40)
+    local keep, list = {}, {}
+    for i = 1, #hits do
+        if #list >= maxN then break end
+        local h = hits[i]
+        if (not R.onlyPlayers) or h.kind == "player" or h.kind == "npc" then
+            keep[h.inst] = true
+            list[#list + 1] = h
+        end
+    end
+    local sweeping = (type(sw) == "table") and (not sw.done) and ((sw.qN or 0) > 0)
+    -- Khi lượt quét bù còn đang chạy: vật đang hiện mà vẫn trong bán kính thì GIỮ LẠI
+    -- (không xoá oan rồi vài khung hình sau lại hiện -> nhấp nháy), nhưng vẫn tôn trọng
+    -- trần maxItems: chỉ giữ thêm tối đa (maxItems - số đã chọn) vật, xa nhất bị bỏ.
+    local extra = {}
+    if sweeping then
+        for inst in pairs(R.items) do
+            if not keep[inst] then
+                local it = R.items[inst]
+                local d = nil
+                if it ~= nil and it.part ~= nil and it.part.Parent ~= nil then
+                    local okd, dm = pcall(function() return (it.part.Position - R.center).Magnitude end)
+                    if okd and dm ~= nil and dm <= (tonumber(R.radius) or 60) then d = dm end
+                end
+                if d ~= nil then extra[#extra + 1] = { inst = inst, d = d } end
+            end
+        end
+        table.sort(extra, function(a, b) return a.d < b.d end)
+    end
+    local keepN = #list        -- keep là bảng băm nên phải đếm riêng (không dùng #keep)
+    for i = 1, #extra do
+        if keepN < maxN then
+            keep[extra[i].inst] = true
+            keepN = keepN + 1
+        end
+    end
+    for inst in pairs(R.items) do
+        if not keep[inst] then R.Kill(inst) end
+    end
+    R._pending = {}
+    for i = 1, #list do
+        local h = list[i]
+        local it = R.items[h.inst]
+        if it == nil then
+            R._pending[#R._pending + 1] = h
+        else
+            it.part = h.part
+            it.kind = h.kind
+        end
+    end
+    R.list = list
+    R._found = #hits
+    R._scanned = scanned
+    R._skipped = skipped
+    R._capped = (#hits > #list)
+    R._scanMs = ringRound((os.clock() - t0) * 1000)
+    R._lastScan = now
+    if R.RefreshList then pcall(R.RefreshList) end
+    return #hits
+end
+
+-- Tạo marker rải ra nhiều khung hình (mỗi khung tối đa makeBudget cái)
+function R.DrainPending(quota)
+    local pend = R._pending
+    if pend == nil or #pend == 0 then return 0 end
+    quota = tonumber(quota) or tonumber(R.makeBudget) or 6
+    local made = 0
+    while quota > 0 and #pend > 0 do
+        local h = table.remove(pend, 1)
+        if h ~= nil then
+            local okV, alive = pcall(function() return h.inst.Parent ~= nil and h.part.Parent ~= nil end)
+            if okV and alive and R.items[h.inst] == nil then
+                pcall(R.Make, h.inst, h.part, h.kind)
+                made = made + 1
+            end
+        end
+        quota = quota - 1
+    end
+    return made
+end
+-- ---------------------------------------------------------------- nhãn theo vật
+function R.KindTag(kind)
+    if kind == "player" then return "🧑 Người chơi" end
+    if kind == "npc" then return "🤖 NPC" end
+    if kind == "group" then return "📦 Bộ phận" end
+    return "🧱 Vật"
+end
+
+-- Cập nhật MỘT vật: giữ Highlight/nhãn gắn đúng chỗ, đổi chữ khi số liệu đổi
+function R.TickOne(inst, myPos, pal)
+    local it = R.items[inst]
+    if it == nil then return end
+    local part = it.part
+    local okA, alive = pcall(function() return part ~= nil and part.Parent ~= nil and inst.Parent ~= nil end)
+    if not okA or not alive then R.Kill(inst) return end
+    local anchor = (inst:IsA("BasePart") or inst:IsA("Model")) and inst or part
+    local okD, dC = pcall(function() return R.center and (part.Position - R.center).Magnitude or nil end)
+    dC = (okD and dC) or 0
+    local okD2, dM = pcall(function() return myPos and (part.Position - myPos).Magnitude or nil end)
+    dM = (okD2 and dM) or 0
+    it.dist, it.distM = dC, dM
+    local far = (R.center ~= nil) and (dC > (tonumber(R.radius) or 60))
+    if it.hl and it.hl.Parent ~= anchor then
+        local okRe = pcall(function() it.hl.Parent = anchor end)
+        if not okRe then pcall(function() it.hl:Destroy() end) it.hl = nil end
+    end
+    if it.hl == nil then
+        pcall(function()
+            it.hl = New("Highlight", {
+                Name = "BC_OT_RINGHL", Adornee = anchor,
+                FillColor = pal.fill, FillTransparency = 0.7,
+                OutlineColor = pal.out, OutlineTransparency = 0,
+                DepthMode = R.thru and Enum.HighlightDepthMode.AlwaysOnTop or Enum.HighlightDepthMode.Occluded,
+            }, anchor)
+        end)
+    end
+    if it.hl then
+        pcall(function() it.hl.Adornee = anchor end)
+        it.hl.Enabled = not far
+        it.hl.FillColor = pal.fill
+        it.hl.OutlineColor = pal.out
+        pcall(function()
+            it.hl.DepthMode = R.thru and Enum.HighlightDepthMode.AlwaysOnTop or Enum.HighlightDepthMode.Occluded
+        end)
+    end
+    if it.bb then
+        if it.bb.Parent ~= part then pcall(function() it.bb.Parent = part end) end
+        it.bb.Adornee = part
+        it.bb.Enabled = (not far) and R.showLabel
+        it.bb.AlwaysOnTop = R.thru
+    end
+    if it.lbl then
+        local dm, dmm = ringRound(dC), ringRound(dM)
+        if it.txtName ~= inst.Name or it.txtDist ~= dm or it.txtDistM ~= dmm or it.txtKind ~= it.kind or it.txt == nil then
+            it.txtName, it.txtDist, it.txtDistM, it.txtKind = inst.Name, dm, dmm, it.kind
+            it.txt = tostring(inst.Name) .. "  " .. R.KindTag(it.kind)
+                .. "\n⭕ " .. dm .. "m · 🧍 " .. dmm .. "m"
+        end
+        if it.lbl.Text ~= it.txt then it.lbl.Text = it.txt end
+        it.lbl.TextColor3 = pal.out
+    end
+end
+
+-- Cập nhật nhãn XOAY VÒNG (mỗi lượt tối đa labelBudget vật, có trần thời gian)
+function R.Tick()
+    local t0 = os.clock()
+    local order = R._order or {}
+    local n = tonumber(R._orderN) or 0
+    R._tickUpdates = 0
+    if n > 0 then
+        local root = R.Root()
+        local myPos = root and root.Position or nil
+        local pal = R.Pal()
+        local quota = math.min(tonumber(R.labelBudget) or 16, n)
+        local guard = 0
+        while quota > 0 and guard < n * 2 do
+            guard = guard + 1
+            R._tickIdx = (R._tickIdx % n) + 1
+            local inst = order[R._tickIdx]
+            if inst == nil then
+                -- khe trống, đi tiếp
+            elseif R.items[inst] == nil then
+                order[R._tickIdx] = nil
+            else
+                quota = quota - 1
+                R._tickUpdates = R._tickUpdates + 1
+                pcall(R.TickOne, inst, myPos, pal)
+            end
+            if (os.clock() - t0) * 1000 > (R.tickSliceMs or 1.5) then break end
+        end
+    end
+    if R._sel ~= nil then
+        local okS, aliveS = pcall(function() return R._sel.Parent ~= nil end)
+        if not okS or not aliveS then
+            R._sel, R._selPart = nil, nil
+            R._infoAt = os.clock()
+            if R.RefreshInfo then pcall(R.RefreshInfo) end
+        end
+    end
+    if R._sel and R.RefreshInfo and (os.clock() - (R._infoAt or 0)) >= (R.infoEvery or 0.5) then
+        R._infoAt = os.clock()
+        pcall(R.RefreshInfo)
+    end
+end
+
+function R.Bind()
+    if R._bound then return end
+    R._bound = true
+    pcall(function()
+        RunService:BindToRenderStep("BC_Ring", Enum.RenderPriority.Camera.Value - 5, function(dt)
+            pcall(R.Step, dt)
+        end)
+    end)
+end
+
+function R.Unbind()
+    R._bound = false
+    pcall(function() RunService:UnbindFromRenderStep("BC_Ring") end)
+end
+
+-- Mỗi khung hình: không bao giờ làm việc nặng một phát
+function R.Step(dt)
+    local step = tonumber(dt) or 0.016
+    if R.follow then
+        local root = R.Root()
+        if root then R.center = root.Position end
+    end
+    R._visAt = (R._visAt or 0) + step
+    if R._visAt >= 0.25 then
+        R._visAt = 0
+        pcall(R.RefreshVis)
+    end
+    R._acc = (R._acc or 0) + step
+    if R._acc >= (R.labelEvery or 0.25) then
+        R._acc = 0
+        pcall(R.Tick)
+    end
+    if R.on then
+        pcall(R.SweepStep)
+        if R._pending ~= nil and #R._pending > 0 then pcall(R.DrainPending) end
+        R._scanAcc = (R._scanAcc or 0) + step
+        if R._scanAcc >= (R.scanEvery or 0.6) then
+            R._scanAcc = 0
+            pcall(R.Scan)
+        end
+    end
+end
+
+-- ---------------------------------------------------------------- API điều khiển
+function R.Status()
+    if not R.on then
+        if R.center == nil then return "⭕ Định vị vòng: TẮT — bấm 🎯 Đổ vòng để đặt vòng tại chân bạn" end
+        return "⭕ Định vị vòng: TẮT (vòng vẫn ở chỗ cũ — bật lại là quét tiếp)"
+    end
+    local n = 0
+    for _ in pairs(R.items) do n = n + 1 end
+    local t = "⭕ bán kính " .. ringRound(R.radius) .. "m · " .. n .. "/" .. tostring(R._found or 0) .. " đơn vị"
+    if R._capped then t = t .. " (gần tâm nhất " .. tostring(R.maxItems) .. ")" end
+    if R.follow then t = t .. " · 🧲 theo bạn" end
+    if R.onlyPlayers then t = t .. " · 🧑 chỉ người chơi" end
+    t = t .. " · 🎨 " .. R.Pal().name
+    if not R.showVis then t = t .. " · 🖼 vòng đang ẨN trong map (bấm 🖼 Vòng để hiện)" end
+    local sw = R._sweep
+    if type(sw) == "table" and (sw.done == false) and ((sw.qN or 0) > 0) then t = t .. " · 🔄 đang quét bù toàn map…" end
+    do
+        local root = R.Root()
+        if root and R.center then
+            local okD, dd = pcall(function() return (R.center - root.Position).Magnitude end)
+            if okD and dd ~= nil and dd > math.max(30, (tonumber(R.radius) or 60)) then
+                t = t .. " · 📍 tâm vòng cách bạn " .. ringRound(dd) .. "m"
+            end
+        end
+    end
+    if (R._scanMs or 0) > 0 then t = t .. " · quét " .. R._scanMs .. "ms" end
+    if R._scanned and R._scanned > 0 and n == 0 then
+        t = t .. " · ⚠️ trong vòng chưa có gì (đã soi " .. tostring(R._scanned) .. " mảnh)"
+    end
+    if R._err then t = t .. " · ⚠️ " .. R._err end
+    return t
+end
+
+function R.Nearest()
+    for i = 1, #R.list do
+        local h = R.list[i]
+        if h.part and h.part.Parent and h.inst.Parent then return h.inst, h.dist end
+    end
+    return nil
+end
+
+-- 🎯 đổ vòng ngay tại chân mình
+function R.Place()
+    local root = R.Root()
+    if not root then return false, "chưa có nhân vật để đổ vòng" end
+    R.center = root.Position
+    R.on = true
+    R.Bind()
+    pcall(R.Scan)
+    pcall(R.DrainPending, 1e9)
+    pcall(R.RefreshVis)
+    if R.Paint then pcall(R.Paint) end
+    if R.RefreshList then pcall(R.RefreshList) end
+    return true
+end
+
+-- ⏪ (-1) / ⏩ (+1): dịch vòng theo hướng nhìn (song song mặt đất)
+function R.MoveBy(sign)
+    if R.center == nil then
+        local ok, why = R.Place()
+        if not ok then return false, why end
+        if (sign or 1) < 0 then return true, R.center end
+    end
+    if R.follow then R.follow = false end     -- dịch tay thì thôi bám theo
+    local dir = R.Look()
+    R.center = R.center + dir * ((tonumber(R.step) or 14) * (sign or 1))
+    pcall(R.RefreshVis)
+    pcall(R.Scan)
+    pcall(R.DrainPending, 1e9)
+    if R.Paint then pcall(R.Paint) end
+    if R.RefreshList then pcall(R.RefreshList) end
+    return true, R.center
+end
+
+function R.SetRadius(n)
+    local v = ringClamp(n, 5, 2000, R.radius or 60)
+    R.radius = v
+    pcall(R.RefreshVis)
+    if R.on then
+        pcall(R.Scan)
+        pcall(R.DrainPending, 1e9)
+    end
+    if R.Paint then pcall(R.Paint) end
+    if R.RefreshList then pcall(R.RefreshList) end
+    return R.radius
+end
+
+function R.Set(on)
+    on = on and true or false
+    if on and R.center == nil then
+        local ok, why = R.Place()
+        if not ok then return false, why end
+        if R.Paint then pcall(R.Paint) end
+        return true
+    end
+    R.on = on
+    if on then
+        R.Bind()
+        pcall(R.Scan)
+        pcall(R.DrainPending, 1e9)
+        pcall(R.RefreshVis)
+    else
+        R.Clear()
+        pcall(R.RefreshVis)      -- tắt thì xoá luôn vòng nhìn thấy
+        R.Unbind()
+        pcall(R.RefreshVis)     -- RefreshVis tự dọn cả Folder BC_RingVis
+        R._vis, R._visDisc, R._visRing, R._visCore, R._visPillar = nil, nil, nil, nil, nil
+    end
+    if R.Paint then pcall(R.Paint) end
+    if R.RefreshList then pcall(R.RefreshList) end
+    return R.on
+end
+
+function R.Toggle() return R.Set(not R.on) end
+
+function R.SetFollow(on)
+    R.follow = on and true or false
+    if R.follow then
+        local root = R.Root()
+        if root then R.center = root.Position end
+        if not R.on then R.Set(true) end
+    end
+    if R.Paint then pcall(R.Paint) end
+    return R.follow
+end
+
+function R.SetShowVis(on)
+    R.showVis = on and true or false
+    pcall(R.RefreshVis)
+    if R.Paint then pcall(R.Paint) end
+    return R.showVis
+end
+
+function R.SetShowButtons(on)
+    R.showButtons = on and true or false
+    R.Buttons()
+    if R.Paint then pcall(R.Paint) end
+    return R.showButtons
+end
+
+-- 🧑 chỉ định vị người chơi / NPC (bỏ qua vật vô tri)
+function R.SetOnlyPlayers(on)
+    R.onlyPlayers = on and true or false
+    if R.on then
+        pcall(R.Scan)
+        pcall(R.DrainPending, 1e9)
+    end
+    if R.Paint then pcall(R.Paint) end
+    if R.RefreshList then pcall(R.RefreshList) end
+    return R.onlyPlayers
+end
+
+function R.SetEdit(on)
+    R.editMode = on and true or false
+    R.Buttons()
+    if R.Paint then pcall(R.Paint) end
+    return R.editMode
+end
+
+-- ------------------------------------------------------- 3 nút ảo trên màn hình
+function R.BtnGui()
+    if R._btnsGui and R._btnsGui.Parent then return R._btnsGui end
+    R._btnsGui = New("ScreenGui", {
+        Name = "BC_RingBtns", ResetOnSpawn = false, IgnoreGuiInset = true,
+        ZIndexBehavior = Enum.ZIndexBehavior.Sibling,
+    }, playerGui)
+    return R._btnsGui
+end
+
+function R.Viewport()
+    local ok, vp = pcall(function() return camera.ViewportSize end)
+    if ok and vp and vp.X and vp.X > 0 then return vp end
+    return Vector2.new(1280, 720)
+end
+
+function R.ResetButtons()
+    local vp = R.Viewport()
+    local defs = {
+        { key = "drop", x = vp.X - 92, y = math.floor(vp.Y * 0.42) },
+        { key = "back", x = vp.X - 92, y = math.floor(vp.Y * 0.42) + 70 },
+        { key = "fwd",  x = vp.X - 92, y = math.floor(vp.Y * 0.42) + 140 },
+        { key = "lock", x = vp.X - 62, y = math.floor(vp.Y * 0.42) + 210 },
+    }
+    R.btns = {}
+    for i = 1, #defs do R.btns[defs[i].key] = { x = defs[i].x, y = defs[i].y } end
+    R._btnApplied = nil
+    return R.btns
+end
+
+function R.Buttons()
+    local gui = R.BtnGui()
+    if gui == nil then return nil end
+    if R.btns == nil then R.ResetButtons() end
+    gui.Enabled = R.showButtons and true or false
+    if not R.showButtons then return gui end
+    -- tham chiếu & trạng thái để trong BẢNG (không gán field lên Instance — Roblox không cho)
+    R._btnRefs = R._btnRefs or {}
+    R._strokeRefs = R._strokeRefs or {}
+    R._iconRefs = R._iconRefs or {}
+    R._capRefs = R._capRefs or {}
+    R._drag = R._drag or {}
+    local defs = {
+        { key = "drop", icon = "🎯", cap = "Đổ vòng", color = C.ACCENT, size = 56,
+          fn = function()
+              local ok = R.Place()
+              if ok then
+                  D.Say("⭕ đã đổ vòng tại chân bạn (bán kính " .. ringRound(R.radius) .. "m)", C.GREEN)
+              else
+                  D.Say("⚠️ chưa có nhân vật để đổ vòng", C.RED)
+              end
+          end },
+        { key = "back", icon = "⏪", cap = "Lùi", color = C.BLUE, size = 56,
+          fn = function()
+              local ok, res = R.MoveBy(-1)
+              if ok then D.Say("⭕ lùi vòng " .. tostring(ringRound(R.step)) .. "m", C.BLUE)
+              else D.Say("⚠️ " .. tostring(res), C.RED) end
+          end },
+        { key = "fwd", icon = "⏩", cap = "Tới", color = C.GREEN, size = 56,
+          fn = function()
+              local ok, res = R.MoveBy(1)
+              if ok then D.Say("⭕ tới vòng " .. tostring(ringRound(R.step)) .. "m", C.GREEN)
+              else D.Say("⚠️ " .. tostring(res), C.RED) end
+          end },
+        { key = "lock", icon = R.editMode and "🔓" or "🔒", cap = "Chỉnh nút",
+          color = R.editMode and C.YELLOW or C.SURFACE3, size = 38,
+          fn = function()
+              R.SetEdit(not R.editMode)
+              D.Say(R.editMode and "🖐 ĐÃ BẬT chỉnh nút — kéo 3 nút ảo tới vị trí bạn muốn"
+                            or "🔒 ĐÃ KHOÁ nút — không kéo được nữa", R.editMode and C.YELLOW or C.GREEN)
+          end },
+    }
+    for i = 1, #defs do
+        local def = defs[i]
+        local pos = R.btns[def.key] or { x = 40, y = 40 + i * 60 }
+        local btn = R._btnRefs[def.key]
+        if btn == nil or btn.Parent == nil then
+            btn = New("TextButton", {
+                Name = "BC_RingBtn_" .. def.key,
+                Size = UDim2.new(0, def.size, 0, def.size),
+                Position = UDim2.new(0, pos.x, 0, pos.y),
+                Text = "", BackgroundColor3 = C.SURFACE, BackgroundTransparency = 0.12,
+                BorderSizePixel = 0, ZIndex = 60, AutoButtonColor = true,
+            }, gui)
+            Corner(btn, UDim.new(0.5, 0))          -- nút TRÒN
+            local inner = New("Frame", {
+                Name = "Inner", Size = UDim2.new(0, def.size - 16, 0, def.size - 16),
+                Position = UDim2.new(0.5, 0, 0.5, 0), AnchorPoint = Vector2.new(0.5, 0.5),
+                BackgroundColor3 = def.color, BackgroundTransparency = 0.25,
+                BorderSizePixel = 0, ZIndex = 61,
+            }, btn)
+            Corner(inner, UDim.new(0.5, 0))       -- hình TRÒN NHỎ bên trong
+            local icon = New("TextLabel", {
+                Name = "Icon", Size = UDim2.new(1, 0, 1, 0), Text = def.icon,
+                BackgroundTransparency = 1, TextColor3 = D.BestText(def.color),
+                Font = Enum.Font.GothamBold, TextSize = math.floor(def.size * 0.42), ZIndex = 62,
+            }, inner)
+            local cap = New("TextLabel", {
+                Name = "Cap", Size = UDim2.new(1, 8, 0, 12),
+                Position = UDim2.new(0, -4, 1, 0), Text = def.cap,
+                BackgroundTransparency = 1, TextColor3 = C.MUTED,
+                Font = Enum.Font.GothamBold, TextSize = 8,
+                TextStrokeTransparency = 0.4, ZIndex = 61,
+            }, btn)
+            R._strokeRefs[def.key] = Stroke(btn, C.BORDER, 1.4)
+            R._iconRefs[def.key] = icon
+            R._capRefs[def.key] = cap
+            R._drag[def.key] = { dragging = false, moved = false, startInput = nil, startPos = nil }
+            local key = def.key
+            btn.InputBegan:Connect(function(inp)
+                if not R.editMode then return end          -- 🔒 tắt chỉnh = KHÔNG kéo được
+                if inp.UserInputType == Enum.UserInputType.MouseButton1
+                   or inp.UserInputType == Enum.UserInputType.Touch then
+                    local d = R._drag[key]
+                    d.dragging, d.moved = true, false
+                    d.startInput, d.startPos = inp.Position, btn.Position
+                end
+            end)
+            trackConn(UserInputService.InputChanged:Connect(function(inp)
+                local d = R._drag[key]
+                if not d or not d.dragging or d.startInput == nil then return end
+                if inp.UserInputType == Enum.UserInputType.MouseMovement
+                   or inp.UserInputType == Enum.UserInputType.Touch then
+                    local delta = inp.Position - d.startInput
+                    if math.abs(delta.X) + math.abs(delta.Y) > 6 then d.moved = true end
+                    local vp = R.Viewport()
+                    local nx = math.clamp(d.startPos.X.Offset + delta.X, 0, math.max(0, vp.X - def.size))
+                    local ny = math.clamp(d.startPos.Y.Offset + delta.Y, 0, math.max(0, vp.Y - def.size))
+                    btn.Position = UDim2.new(0, nx, 0, ny)
+                end
+            end))
+            trackConn(UserInputService.InputEnded:Connect(function(inp)
+                local d = R._drag[key]
+                if not d then return end
+                if inp.UserInputType == Enum.UserInputType.MouseButton1
+                   or inp.UserInputType == Enum.UserInputType.Touch then
+                    if d.dragging then
+                        local p = btn.Position
+                        R.btns[key] = { x = p.X.Offset, y = p.Y.Offset }
+                    end
+                    d.dragging = false
+                end
+            end))
+            btn.Activated:Connect(function()
+                local d = R._drag[key]
+                if R.editMode and d and d.moved then d.moved = false return end   -- đang kéo thì không kích hoạt
+                pcall(def.fn)
+            end)
+            R._btnRefs[def.key] = btn
+        end
+        -- cập nhật trạng thái hiển thị
+        local inner = btn:FindFirstChild("Inner")
+        if inner then
+            inner.BackgroundColor3 = def.color
+            inner.BackgroundTransparency = def.size < 40 and 0.35 or 0.25
+        end
+        local icon = R._iconRefs[def.key]
+        if icon then
+            icon.Text = def.icon
+            icon.TextColor3 = D.BestText(def.color)
+            icon.TextSize = math.floor(def.size * 0.42)
+        end
+        local cap = R._capRefs[def.key]
+        if cap then cap.Text = def.cap end
+        local st = R._strokeRefs[def.key]
+        if st then
+            st.Color = R.editMode and C.YELLOW or C.BORDER
+            st.Thickness = R.editMode and 2 or 1.4
+        end
+        pcall(function() btn.Size = UDim2.new(0, def.size, 0, def.size) end)
+        local d = R._drag[def.key]
+        if not (d and d.dragging) then
+            local p = R.btns[def.key]
+            if p then btn.Position = UDim2.new(0, p.x, 0, p.y) end
+        end
+    end
+    return gui
+end
+
+-- ------------------------------------------------- API cho khung 🌳 / script khác
+function R.OnOffText()
+    return R.on and "BẬT" or "TẮT"
+end
+-- ------------------------------------------------- KHUNG TRONG TAB 🛠 HỖ TRỢ
+-- Trả về vị trí Y mới (mọi thứ bên dưới — gồm "🎯 Định vị tốc độ game" — tự dịch xuống)
+function R.BuildPanel(tab, y)
+    local ui = R.ui
+    local H = 430
+    local P = New("Frame", {
+        Name = "BC_RingPanel",
+        Size = UDim2.new(1, -16, 0, H), Position = UDim2.new(0, 8, 0, y),
+        BackgroundColor3 = C.SURFACE, BackgroundTransparency = 0.12,
+        BorderSizePixel = 0, ZIndex = 6,
+    }, tab)
+    Corner(P, UDim.new(0, 10))
+    Stroke(P, C.BLUE, 1.2)
+    D.Shade(P, Color3.fromRGB(255, 255, 255), Color3.fromRGB(188, 192, 205), 90)
+    ui.panel = P
+
+    New("TextLabel", {
+        Size = UDim2.new(1, -16, 0, 14), Position = UDim2.new(0, 8, 0, 4),
+        Text = "⭕ ĐỊNH VỊ VÒNG — bắt MỌI thứ trong vòng (vật · người chơi · NPC), tự bám khi chúng di chuyển",
+        BackgroundTransparency = 1, TextColor3 = C.BLUE, Font = Enum.Font.GothamBold, TextSize = 9,
+        TextXAlignment = Enum.TextXAlignment.Left, ZIndex = 7,
+    }, P)
+    New("TextLabel", {
+        Size = UDim2.new(1, -16, 0, 14), Position = UDim2.new(0, 8, 0, 18),
+        Text = "Chỉnh độ to nhỏ của vòng bằng ô bán kính hoặc ➖ ➕ · thông tin vật hiện đầy đủ như 📊 phân tích toạ độ",
+        BackgroundTransparency = 1, TextColor3 = C.MUTED, Font = Enum.Font.GothamMedium, TextSize = 8,
+        TextXAlignment = Enum.TextXAlignment.Left, ZIndex = 7,
+    }, P)
+
+    -- Hàng 1 (y=36): bật/tắt · đổ vòng · lùi · tới · 3 nút ảo
+    ui.btnOn     = Button(P, "⭕ Vòng: TẮT", 8, 36, 124, 24, C.GRAY)
+    ui.btnDrop   = Button(P, "🎯 Đổ vị trí", 136, 36, 104, 24, C.ACCENT)
+    ui.btnBack   = Button(P, "⏪ Lùi", 244, 36, 56, 24, C.BLUE)
+    ui.btnFwd    = Button(P, "⏩ Tới", 304, 36, 56, 24, C.GREEN)
+    ui.btnShown  = Button(P, "👁 Nút ảo", 364, 36, 100, 24, C.GREEN)
+
+    -- Hàng 2 (y=64): bán kính + vòng nhìn thấy + đặt lại nút
+    New("TextLabel", {
+        Size = UDim2.new(0, 76, 0, 22), Position = UDim2.new(0, 8, 0, 66),
+        Text = "⭕ Bán kính:", BackgroundTransparency = 1, TextColor3 = C.MUTED,
+        Font = Enum.Font.GothamMedium, TextSize = 9, TextXAlignment = Enum.TextXAlignment.Left, ZIndex = 7,
+    }, P)
+    ui.radiusIn = New("TextBox", {
+        Name = "BC_RingRadius",
+        Size = UDim2.new(0, 52, 0, 22), Position = UDim2.new(0, 88, 0, 66),
+        Text = tostring(ringRound(R.radius)), PlaceholderText = "60", ClearTextOnFocus = false,
+        BackgroundColor3 = C.SURFACE2, BackgroundTransparency = 0.1, TextColor3 = C.DARK,
+        PlaceholderColor3 = C.GRAY, Font = Enum.Font.GothamMedium, TextSize = 9,
+        TextXAlignment = Enum.TextXAlignment.Left, BorderSizePixel = 0, ZIndex = 7,
+    }, P)
+    Corner(ui.radiusIn, UDim.new(0, 6))
+    New("UIPadding", { PaddingLeft = UDim.new(0, 6) }, ui.radiusIn)
+    ui.btnRadiusSet = Button(P, "✅ Đặt", 144, 66, 52, 22, C.SURFACE3)
+    ui.btnMinus = Button(P, "➖", 200, 66, 30, 22, C.SURFACE3)
+    ui.btnPlus  = Button(P, "➕", 234, 66, 30, 22, C.SURFACE3)
+    ui.btnVis   = Button(P, "🖼 Vòng: BẬT", 268, 66, 96, 22, C.GREEN)
+    ui.btnResetBtn = Button(P, "↩️ Đặt lại", 368, 66, 96, 22, C.SURFACE3)
+
+    -- Hàng 3 (y=92): bám theo · xuyên tường · nhãn · chỉ người chơi · màu
+    ui.btnFollow = Button(P, "🧲 Theo bạn", 8, 92, 110, 22, C.SURFACE3)
+    ui.btnThru   = Button(P, "🕶 Xuyên tường", 122, 92, 110, 22, C.GREEN)
+    ui.btnLabel  = Button(P, "💬 Nhãn", 236, 92, 64, 22, C.GREEN)
+    ui.btnOnly   = Button(P, "🧑 Mọi vật", 304, 92, 110, 22, C.SURFACE3)
+    ui.btnColor  = Button(P, "🎨 Màu", 418, 92, 46, 22, C.PURPLE)
+
+    -- Hàng 4 (y=120): chỉnh vị trí nút ảo
+    ui.btnEdit   = Button(P, "🖐 Chỉnh nút: TẮT", 8, 120, 150, 22, C.SURFACE3)
+
+    ui.statusLbl = New("TextLabel", {
+        Name = "BC_RingStatus",
+        Size = UDim2.new(1, -16, 0, 14), Position = UDim2.new(0, 8, 0, 146),
+        Text = R.Status(), BackgroundTransparency = 1, TextColor3 = C.BLUE,
+        Font = Enum.Font.GothamBold, TextSize = 9,
+        TextXAlignment = Enum.TextXAlignment.Left, ZIndex = 7,
+    }, P)
+
+    New("TextLabel", {
+        Size = UDim2.new(1, -16, 0, 14), Position = UDim2.new(0, 8, 0, 162),
+        Text = "📋 TRONG VÒNG (gần tâm vòng nhất) — 📊 xem toạ độ · 🚀 bay tới · 📋 copy tên",
+        BackgroundTransparency = 1, TextColor3 = C.MUTED, Font = Enum.Font.GothamBold, TextSize = 9,
+        TextXAlignment = Enum.TextXAlignment.Left, ZIndex = 7,
+    }, P)
+    ui.list = New("ScrollingFrame", {
+        Name = "BC_RingList",
+        Size = UDim2.new(1, -16, 0, 76), Position = UDim2.new(0, 8, 0, 178),
+        BackgroundTransparency = 1, BorderSizePixel = 0, ScrollBarThickness = 4,
+        CanvasSize = UDim2.new(0, 0, 0, 0), ZIndex = 7,
+    }, P)
+    New("UIListLayout", { Padding = UDim.new(0, 3), SortOrder = Enum.SortOrder.LayoutOrder }, ui.list)
+
+    New("TextLabel", {
+        Size = UDim2.new(1, -16, 0, 14), Position = UDim2.new(0, 8, 0, 260),
+        Text = "🎯 THÔNG TIN VẬT ĐANG CHỌN (đầy đủ như 📊 phân tích toạ độ)",
+        BackgroundTransparency = 1, TextColor3 = C.BLUE, Font = Enum.Font.GothamBold, TextSize = 9,
+        TextXAlignment = Enum.TextXAlignment.Left, ZIndex = 7,
+    }, P)
+    local info = New("Frame", {
+        Name = "BC_RingInfo",
+        Size = UDim2.new(1, -16, 0, 146), Position = UDim2.new(0, 8, 0, 276),
+        BackgroundColor3 = Color3.fromRGB(20, 25, 35), BackgroundTransparency = 0,
+        BorderSizePixel = 0, ZIndex = 7, Visible = false,
+    }, P)
+    Corner(info, UDim.new(0, 6))
+    Stroke(info, C.BLUE, 1.4)
+    ui.info = info
+    ui.infoLbl = New("TextLabel", {
+        Name = "BC_RingInfoLbl",
+        Size = UDim2.new(1, -16, 0, 102), Position = UDim2.new(0, 8, 0, 6),
+        Text = "bấm 📊 ở 1 dòng trong danh sách để xem toạ độ vật đó",
+        TextColor3 = Color3.fromRGB(255, 255, 255), Font = Enum.Font.Code, TextSize = 10,
+        BackgroundTransparency = 1, TextXAlignment = Enum.TextXAlignment.Left,
+        TextYAlignment = Enum.TextYAlignment.Top, TextWrapped = true, ZIndex = 8,
+    }, info)
+    ui.copyPos = New("TextButton", {
+        Name = "BC_RingCopyPos",
+        Size = UDim2.new(0, 120, 0, 18), Position = UDim2.new(0, 8, 0, 124),
+        Text = "📋 Copy Tọa Độ", BackgroundColor3 = C.BLUE, TextColor3 = D.BestText(C.BLUE),
+        Font = Enum.Font.GothamBold, TextSize = 8, BorderSizePixel = 0, ZIndex = 9,
+    }, info)
+    Corner(ui.copyPos, UDim.new(0, 4)); D.Tactile(ui.copyPos, 0.08)
+    ui.copyPath = New("TextButton", {
+        Name = "BC_RingCopyPath",
+        Size = UDim2.new(0, 120, 0, 18), Position = UDim2.new(0, 134, 0, 124),
+        Text = "📋 Copy Path", BackgroundColor3 = C.PURPLE, TextColor3 = D.BestText(C.PURPLE),
+        Font = Enum.Font.GothamBold, TextSize = 8, BorderSizePixel = 0, ZIndex = 9,
+    }, info)
+    Corner(ui.copyPath, UDim.new(0, 4)); D.Tactile(ui.copyPath, 0.08)
+
+    -- ------------------------------------------------------------------ sự kiện
+    local function noFocus() pcall(ReleaseHubFocus) end
+    ui.btnOn.Activated:Connect(function()
+        noFocus()
+        local ok, why = R.Toggle()
+        if ok == false and why then
+            D.Say("⚠️ " .. tostring(why), C.RED)
+        else
+            D.Say(R.Status(), R.on and C.GREEN or C.YELLOW)
+        end
+        pcall(R.RefreshList)
+    end)
+    ui.btnDrop.Activated:Connect(function()
+        noFocus()
+        local ok, why = R.Place()
+        if ok then D.Say("⭕ đã đổ vòng tại chân bạn — " .. R.Status(), C.GREEN)
+        else D.Say("⚠️ " .. tostring(why), C.RED) end
+        pcall(R.RefreshList)
+    end)
+    ui.btnBack.Activated:Connect(function()
+        noFocus()
+        local ok, why = R.MoveBy(-1)
+        D.Say(ok and ("⭕ lùi vòng " .. tostring(ringRound(R.step)) .. "m — " .. R.Status()) or ("⚠️ " .. tostring(why)),
+              ok and C.BLUE or C.RED)
+        pcall(R.RefreshList)
+    end)
+    ui.btnFwd.Activated:Connect(function()
+        noFocus()
+        local ok, why = R.MoveBy(1)
+        D.Say(ok and ("⭕ tới vòng " .. tostring(ringRound(R.step)) .. "m — " .. R.Status()) or ("⚠️ " .. tostring(why)),
+              ok and C.GREEN or C.RED)
+        pcall(R.RefreshList)
+    end)
+    ui.btnFollow.Activated:Connect(function()
+        noFocus()
+        R.SetFollow(not R.follow)
+        D.Say(R.follow and "🧲 vòng BÁM THEO bạn (vòng đi đâu bạn đi đó)" or "🧲 thôi bám theo bạn", C.YELLOW)
+        pcall(R.RefreshList)
+    end)
+    local function applyRadius()
+        noFocus()
+        local n = tonumber(tostring(ui.radiusIn.Text or ""):match("%-?%d+%.?%d*")) or R.radius
+        local v = R.SetRadius(n)
+        ui.radiusIn.Text = tostring(ringRound(v))
+        D.Say("⭕ bán kính vòng: " .. ringRound(v) .. "m — " .. R.Status(), C.BLUE)
+    end
+    ui.btnRadiusSet.Activated:Connect(applyRadius)
+    ui.radiusIn.FocusLost:Connect(function() applyRadius() end)
+    ui.btnMinus.Activated:Connect(function()
+        noFocus()
+        local v = R.SetRadius((tonumber(R.radius) or 60) - 10)
+        ui.radiusIn.Text = tostring(ringRound(v))
+        D.Say("⭕ bán kính vòng: " .. ringRound(v) .. "m", C.BLUE)
+    end)
+    ui.btnPlus.Activated:Connect(function()
+        noFocus()
+        local v = R.SetRadius((tonumber(R.radius) or 60) + 10)
+        ui.radiusIn.Text = tostring(ringRound(v))
+        D.Say("⭕ bán kính vòng: " .. ringRound(v) .. "m", C.BLUE)
+    end)
+    ui.btnVis.Activated:Connect(function()
+        noFocus()
+        R.SetShowVis(not R.showVis)
+        D.Say(R.showVis and "🖼 hiện vòng trong map: BẬT" or "🖼 hiện vòng trong map: TẮT", C.YELLOW)
+    end)
+    ui.btnEdit.Activated:Connect(function()
+        noFocus()
+        R.SetEdit(not R.editMode)
+        D.Say(R.editMode and "🖐 ĐÃ BẬT chỉnh nút — kéo 3 nút ảo tới vị trí bạn muốn"
+                           or "🔒 ĐÃ KHOÁ nút — không kéo được nữa", R.editMode and C.YELLOW or C.GREEN)
+    end)
+    ui.btnThru.Activated:Connect(function()
+        noFocus()
+        R.thru = not R.thru
+        R.ApplyStyle()
+        D.Say(R.thru and "🕶 xuyên tường: BẬT" or "🕶 xuyên tường: TẮT", C.YELLOW)
+    end)
+    ui.btnLabel.Activated:Connect(function()
+        noFocus()
+        R.showLabel = not R.showLabel
+        R.ApplyStyle()
+        D.Say(R.showLabel and "💬 nhãn: BẬT" or "💬 nhãn: TẮT (chỉ còn Highlight)", C.YELLOW)
+    end)
+    ui.btnOnly.Activated:Connect(function()
+        noFocus()
+        R.SetOnlyPlayers(not R.onlyPlayers)
+        D.Say(R.onlyPlayers and "🧑 chỉ định vị NGƯỜI CHƠI / NPC (bỏ vật vô tri)"
+                            or "🧑 định vị LẠI mọi thứ trong vòng (vật + người)", C.YELLOW)
+        pcall(R.RefreshList)
+    end)
+    ui.btnShown.Activated:Connect(function()
+        noFocus()
+        R.SetShowButtons(not R.showButtons)
+        D.Say(R.showButtons and "👁 3 nút ảo: BẬT" or "👁 3 nút ảo: TẮT", C.YELLOW)
+    end)
+    ui.btnResetBtn.Activated:Connect(function()
+        noFocus()
+        R.ResetButtons()
+        R.Buttons()
+        pcall(R.Paint)
+        D.Say("↩️ đã đặt lại vị trí 3 nút ảo về mặc định", C.GREEN)
+    end)
+    ui.btnColor.Activated:Connect(function()
+        noFocus()
+        local name = R.CycleColor()
+        D.Say("🎨 màu vòng: " .. tostring(name), C.BLUE)
+    end)
+    ui.copyPos.Activated:Connect(function()
+        noFocus()
+        local did, txt = R.CopyCoords()
+        D.Say(did and ("📋 đã copy toạ độ: " .. tostring(txt)) or ("⚠️ " .. tostring(txt)),
+              did and C.GREEN or C.RED)
+    end)
+    ui.copyPath.Activated:Connect(function()
+        noFocus()
+        local did, txt = R.CopyPath()
+        D.Say(did and ("📋 đã copy path: " .. tostring(txt)) or ("⚠️ " .. tostring(txt)),
+              did and C.GREEN or C.RED)
+    end)
+
+    R.Buttons()
+    pcall(R.Paint)
+    pcall(R.RefreshList)
+    return y + H + 8
+end
+
+function R.ApplyStyle()
+    local pal = R.Pal()
+    for _, it in pairs(R.items) do
+        if it.hl then
+            it.hl.FillColor = pal.fill
+            it.hl.OutlineColor = pal.out
+            pcall(function()
+                it.hl.DepthMode = R.thru and Enum.HighlightDepthMode.AlwaysOnTop or Enum.HighlightDepthMode.Occluded
+            end)
+        end
+        if it.bb then
+            it.bb.AlwaysOnTop = R.thru
+            it.bb.Enabled = R.showLabel
+        end
+        if it.lbl then it.lbl.TextColor3 = pal.out end
+    end
+    pcall(R.RefreshVis)
+end
+
+function R.Paint()
+    local ui = R.ui
+    local function setBtn(b, on, textOn, textOff)
+        if b == nil then return end
+        b.Text = on and textOn or textOff
+        b.BackgroundColor3 = on and C.GREEN or C.SURFACE3
+        b.TextColor3 = D.BestText(b.BackgroundColor3)
+    end
+    setBtn(ui.btnOn, R.on, "⭕ Vòng: BẬT", "⭕ Vòng: TẮT")
+    setBtn(ui.btnFollow, R.follow, "🧲 Theo bạn: BẬT", "🧲 Theo bạn: TẮT")
+    setBtn(ui.btnVis, R.showVis, "🖼 Vòng: BẬT", "🖼 Vòng: TẮT")
+    setBtn(ui.btnEdit, R.editMode, "🖐 Chỉnh nút: BẬT", "🖐 Chỉnh nút: TẮT")
+    setBtn(ui.btnThru, R.thru, "🕶 Xuyên tường: BẬT", "🕶 Xuyên tường: TẮT")
+    setBtn(ui.btnLabel, R.showLabel, "💬 Nhãn: BẬT", "💬 Nhãn: TẮT")
+    setBtn(ui.btnShown, R.showButtons, "👁 3 nút ảo: BẬT", "👁 3 nút ảo: TẮT")
+    setBtn(ui.btnOnly, R.onlyPlayers, "🧑 Chỉ người chơi", "🧑 Mọi vật")
+    if ui.btnColor then ui.btnColor.Text = "🎨 Màu" end    -- tên màu hiện ở dòng trạng thái
+    if ui.statusLbl then ui.statusLbl.Text = R.Status() end
+    if ui.radiusIn then
+        local focused = false
+        pcall(function() focused = ui.radiusIn:IsFocused() end)
+        if not focused then ui.radiusIn.Text = tostring(ringRound(R.radius)) end
+    end
+end
+
+function R.RefreshList()
+    local ui = R.ui
+    local list = ui.list
+    if not (list and list.Parent) then return end
+    if ui.statusLbl then ui.statusLbl.Text = R.Status() end
+    local shown = math.max(0, math.min(#R.list, 3))
+    local sig = {}
+    for i = 1, shown do
+        local h = R.list[i]
+        sig[i] = tostring(h.inst.Name) .. "|" .. tostring(h.inst) .. "|" .. tostring(ringRound(h.dist))
+    end
+    local s = table.concat(sig, "#")
+    if #R.list == 0 then s = "EMPTY:" .. tostring(R.on) .. ":" .. tostring(R._scanned or 0) end
+    if s == R._rowSig then return end
+    R._rowSig = s
+    for _, ch in ipairs(list:GetChildren()) do
+        if not ch:IsA("UIListLayout") then pcall(function() ch:Destroy() end) end
+    end
+    if #R.list == 0 then
+        New("TextLabel", {
+            Name = "RRowEmpty",
+            Size = UDim2.new(1, 0, 0, 56), LayoutOrder = 1,
+            Text = R.on and ("⭕ Chưa có gì trong vòng (đã soi " .. tostring(R._scanned or 0) .. " mảnh)\\n"
+                    .. "Tăng bán kính, hoặc bấm 🎯 Đổ vị trí / ⏪ ⏩ để dịch vòng tới chỗ đông vật.")
+                or "⭕ Vòng đang TẮT — bấm ⭕ Vòng hoặc 🎯 Đổ vị trí để bắt đầu.",
+            TextWrapped = true, BackgroundColor3 = C.SURFACE2, BackgroundTransparency = 0.15,
+            TextColor3 = C.MUTED, Font = Enum.Font.GothamMedium, TextSize = 9,
+            BorderSizePixel = 0, ZIndex = 8, TextXAlignment = Enum.TextXAlignment.Left,
+        }, list)
+        return
+    end
+    for i = 1, shown do
+        local h = R.list[i]
+        local inst = h.inst
+        local row = New("Frame", {
+            Name = "RRow_" .. tostring(i),
+            Size = UDim2.new(1, 0, 0, 26), LayoutOrder = i,
+            BackgroundColor3 = C.SURFACE2, BackgroundTransparency = 0.18,
+            BorderSizePixel = 0, ZIndex = 8,
+        }, list)
+        Corner(row, UDim.new(0, 6))
+        Stroke(row, (R._sel == inst) and C.ACCENT or C.BORDER, 1)
+        New("TextLabel", {
+            Name = "RName",
+            Size = UDim2.new(1, -250, 1, 0), Position = UDim2.new(0, 7, 0, 0),
+            Text = string.format("#%d  %s  %s  (%s · ⭕%dm · 🧍%dm)", i, tostring(inst.Name),
+                R.KindTag(h.kind), tostring(inst.ClassName or "?"), ringRound(h.dist), ringRound(h.distM or 0)),
+            BackgroundTransparency = 1, TextColor3 = C.DARK, Font = Enum.Font.GothamBold,
+            TextSize = 8, TextXAlignment = Enum.TextXAlignment.Left, ZIndex = 9,
+            TextTruncate = Enum.TextTruncate.AtEnd,
+        }, row)
+        local bSee = New("TextButton", {
+            Name = "RSee",
+            Size = UDim2.new(0, 56, 0, 20), Position = UDim2.new(1, -244, 0, 3),
+            Text = "📊 Xem", BackgroundColor3 = C.BLUE, TextColor3 = D.BestText(C.BLUE),
+            Font = Enum.Font.GothamBold, TextSize = 8, BorderSizePixel = 0, ZIndex = 9,
+        }, row)
+        Corner(bSee, UDim.new(0, 5)); D.Tactile(bSee, 0.08)
+        bSee.Activated:Connect(function()
+            pcall(ReleaseHubFocus)
+            R.Select(inst)
+            D.Say("📊 đang xem '" .. tostring(inst.Name) .. "' — số liệu cập nhật theo vật", C.BLUE)
+            pcall(R.RefreshList)
+        end)
+        local bFly = New("TextButton", {
+            Name = "RFly",
+            Size = UDim2.new(0, 84, 0, 20), Position = UDim2.new(1, -176, 0, 3),
+            Text = "🚀 Bay", BackgroundColor3 = C.ACCENT, TextColor3 = D.BestText(C.ACCENT),
+            Font = Enum.Font.GothamBold, TextSize = 8, BorderSizePixel = 0, ZIndex = 9,
+        }, row)
+        Corner(bFly, UDim.new(0, 5)); D.Tactile(bFly, 0.08)
+        bFly.Activated:Connect(function()
+            pcall(ReleaseHubFocus)
+            if S.Move and S.Move.FlyToObject then
+                local ok, res = S.Move.FlyToObject(inst)
+                D.Say(ok and ("🚀 đang bay tới '" .. tostring(inst.Name) .. "'") or ("⚠️ " .. tostring(res)),
+                      ok and C.GREEN or C.RED)
+            else
+                D.Say("⚠️ không tìm thấy phần bay (MV.FlyToObject)", C.RED)
+            end
+            pcall(R.RefreshList)
+        end)
+        local bCopy = New("TextButton", {
+            Name = "RCopy",
+            Size = UDim2.new(0, 86, 0, 20), Position = UDim2.new(1, -88, 0, 3),
+            Text = "📋 Tên", BackgroundColor3 = C.SURFACE3, TextColor3 = D.BestText(C.SURFACE3),
+            Font = Enum.Font.GothamBold, TextSize = 8, BorderSizePixel = 0, ZIndex = 9,
+        }, row)
+        Corner(bCopy, UDim.new(0, 5)); D.Tactile(bCopy, 0.08)
+        bCopy.Activated:Connect(function()
+            pcall(ReleaseHubFocus)
+            local did = S.CopyToClipboard and S.CopyToClipboard(tostring(inst.Name))
+            D.Say(did and ("📋 đã copy tên '" .. tostring(inst.Name) .. "'")
+                      or "⚠️ executor không có setclipboard", did and C.GREEN or C.RED)
+        end)
+    end
+    pcall(function() list.CanvasSize = UDim2.new(0, 0, 0, math.max(0, shown * 29)) end)
+end
+
+function R.RefreshInfo()
+    local ui = R.ui
+    if ui.info == nil then return end
+    local sel, part = R._sel, R._selPart
+    if sel == nil or sel.Parent == nil then
+        R._sel, R._selPart = nil, nil
+        ui.info.Visible = false
+        return
+    end
+    if part == nil or part.Parent == nil then
+        part = R.PartOf(sel)
+        R._selPart = part
+    end
+    local rows = R.Info(sel, part)
+    local out = {}
+    for i = 1, #rows do out[i] = rows[i].k .. ": " .. rows[i].v end
+    local txt = table.concat(out, "\n")
+    if ui.infoLbl and ui.infoLbl.Text ~= txt then ui.infoLbl.Text = txt end
+    ui.info.Visible = true
+end
+
+-- ráp khung vào tab 🛠 Hỗ Trợ — nằm NGAY TRÊN phần "🎯 Định vị tốc độ game"
+local okBuild, newY = pcall(R.BuildPanel, supportTab, posY)
+if okBuild and type(newY) == "number" then
+    posY = newY
+else
+    -- KHÔNG im lặng: bản trước nuốt lỗi nên "bấm ⭕ mà không có gì xảy ra" rất khó lần ra
+    local loi = "[BC Hub] ⭕ KHÔNG dựng được khung định vị vòng: " .. tostring(newY)
+    if type(warn) == "function" then warn(loi) else print(loi) end
+    R.buildError = tostring(newY)
+end
+_G.BananaCatHub_Ring = S.Ring   -- cho script khác / test đọc trạng thái định vị vòng
+end   -- hết khối ⭕ định vị vòng
 -- ---------- widget trong tab 🛠 Hỗ Trợ ----------
 Label(supportTab, "🎯 Định vị tốc độ game (mặc định · hiện tại · cao nhất)", posY)
 posY = posY + 18
@@ -8247,6 +9884,168 @@ function MV.FlyToPlayer(p)
     return true, p
 end
 
+-- ---------- v5.1: 🚀 BAY TỚI VẬT ĐANG ĐỊNH VỊ (bám theo vật, tự dừng nếu vật biến mất) ----------
+MV.objectFlySpeed = mvClamp(MV.objectFlySpeed, 1, 2000, 60)
+MV._objFlyTarget = MV._objFlyTarget or nil
+MV._objFlyActive = MV._objFlyActive == true
+MV._objFlyBV = MV._objFlyBV or nil
+MV._objFlyBG = MV._objFlyBG or nil
+MV._objFlyNcPrev = MV._objFlyNcPrev or nil
+MV._objFlyHum = MV._objFlyHum or nil
+MV._objFlyPS = MV._objFlyPS
+MV._objFlyAR = MV._objFlyAR
+
+function MV.SetObjectFlySpeed(n)
+    local v = tonumber(n)
+    if v == nil or v ~= v then return false, "nhập tốc độ bay 1-2000" end
+    MV.objectFlySpeed = mvClamp(v, 1, 2000, MV.objectFlySpeed or 60)
+    return true, MV.objectFlySpeed
+end
+
+-- Vật cần bay tới có thể là BasePart hoặc Model -> luôn hỏi lại mỗi khung hình
+-- nên vật bị dựng lại/đổi part vẫn bám đúng.
+function MV._ObjFlyPart()
+    local t = MV._objFlyTarget
+    if t == nil then return nil end
+    local ok, part = pcall(function()
+        if S.ObjTrack and S.ObjTrack.PartOf then return S.ObjTrack.PartOf(t) end
+        if t:IsA("BasePart") then return t end
+        if t.PrimaryPart then return t.PrimaryPart end
+        return t:FindFirstChildWhichIsA("BasePart")
+    end)
+    if ok and part and part.Parent then return part end
+    return nil
+end
+
+function MV._EnsureObjFlyBV()
+    local r = MV.Root()
+    if not r then return nil, nil end
+    if MV._objFlyBV and MV._objFlyBV.Parent == r and MV._objFlyBG and MV._objFlyBG.Parent == r then
+        local h = MV.Hum()
+        if h and MV._objFlyHum ~= h then
+            MV._objFlyHum = h
+            pcall(function() MV._objFlyPS = h.PlatformStand end)
+            pcall(function() MV._objFlyAR = h.AutoRotate end)
+            pcall(function() h.PlatformStand = true; h.AutoRotate = false end)
+        end
+        return MV._objFlyBV, MV._objFlyBG
+    end
+    pcall(function() if MV._objFlyBV then MV._objFlyBV:Destroy() end end)
+    pcall(function() if MV._objFlyBG then MV._objFlyBG:Destroy() end end)
+    MV._objFlyBV, MV._objFlyBG = nil, nil
+    local bv = New("BodyVelocity", {
+        Name = "BC_ObjFlyVel", MaxForce = Vector3.new(1e9, 1e9, 1e9), Velocity = Vector3.new(0, 0, 0)
+    }, r)
+    local bg = New("BodyGyro", {
+        Name = "BC_ObjFlyGyro", MaxTorque = Vector3.new(1e9, 1e9, 1e9), P = 1e4, D = 50
+    }, r)
+    MV._objFlyBV, MV._objFlyBG = bv, bg
+    local h = MV.Hum()
+    if h then
+        MV._objFlyHum = h
+        pcall(function() MV._objFlyPS = h.PlatformStand end)
+        pcall(function() MV._objFlyAR = h.AutoRotate end)
+        pcall(function() h.PlatformStand = true; h.AutoRotate = false end)
+    end
+    return bv, bg
+end
+
+function MV.StopObjectFly()
+    MV._objFlyActive = false
+    MV._objFlyTarget = nil
+    pcall(function() RunService:UnbindFromRenderStep("BC_ObjFly") end)
+    pcall(function() if MV._objFlyBV then MV._objFlyBV:Destroy() end end)
+    pcall(function() if MV._objFlyBG then MV._objFlyBG:Destroy() end end)
+    MV._objFlyBV, MV._objFlyBG = nil, nil
+    local h = MV._objFlyHum
+    local safeOn = MV.Safe and MV.Safe.on == true
+    if h and h.Parent and not MV.fly and not MV._playerFlyActive and not MV._glassFlyActive and not safeOn then
+        if MV._objFlyPS ~= nil then pcall(function() h.PlatformStand = MV._objFlyPS end) end
+        if MV._objFlyAR ~= nil then pcall(function() h.AutoRotate = MV._objFlyAR end) end
+    end
+    MV._objFlyHum, MV._objFlyPS, MV._objFlyAR = nil, nil, nil
+    if MV._objFlyNcPrev ~= nil then
+        local was = MV._objFlyNcPrev
+        MV._objFlyNcPrev = nil
+        if not MV._playerFlyActive and not MV._glassFlyActive and not safeOn then
+            pcall(function() MV.SetNoclip(was) end)
+        end
+    end
+    pcall(function() if S.ObjTrack and S.ObjTrack.OnFlyChange then S.ObjTrack.OnFlyChange() end end)
+    return true
+end
+
+function MV._ObjectFlyStep(dt)
+    if not MV._objFlyActive then return end
+    local part = MV._ObjFlyPart()
+    if not part then
+        pcall(MV.StopObjectFly)
+        pcall(function() if D.Say then D.Say("🌳 vật đang bay tới đã biến mất — đã dừng bay", C.YELLOW) end end)
+        return
+    end
+    local myRoot = MV.Root()
+    if not myRoot then return end   -- respawn: giữ mục tiêu, khung sau gắn lực vào root mới
+    local want = part.Position + Vector3.new(0, 3.2, 0)
+    local pos = myRoot.Position
+    local dx, dy, dz = want.X - pos.X, want.Y - pos.Y, want.Z - pos.Z
+    local dist = math.sqrt(dx * dx + dy * dy + dz * dz)
+    local speed = mvClamp(MV.objectFlySpeed, 1, 2000, 60)
+    local close = (dist <= 2.5)
+    if close then speed = math.max(2, speed * 0.15)
+    elseif dist < 5 then speed = math.max(6, speed * 0.45) end
+    pcall(function() MV.SetNoclip(true) end)
+    local bv, bg = MV._EnsureObjFlyBV()
+    local dir = Vector3.new(0, 0, 0)
+    if dist > 0.1 then dir = Vector3.new(dx / dist, dy / dist, dz / dist) end
+    if bv then
+        local pv = nil
+        pcall(function() pv = part.AssemblyLinearVelocity end)
+        if close and pv then
+            bv.Velocity = pv + dir * speed
+        else
+            bv.Velocity = dir * speed
+        end
+    end
+    if bg and (dist > 0.05) then
+        pcall(function() bg.CFrame = CFrame.new(pos, Vector3.new(want.X, pos.Y, want.Z)) end)
+    end
+    if not bv and dist > 0.1 then
+        local step = math.min(dist, speed * (tonumber(dt) or 0.05))
+        pcall(function() myRoot.CFrame = CFrame.new(pos + dir * step) end)
+    end
+end
+
+function MV.FlyToObject(target, speed)
+    if target == nil then return false, "chưa có vật để bay tới" end
+    if not MV.Root() then return false, "chưa có nhân vật để bay" end
+    local part = nil
+    pcall(function()
+        if S.ObjTrack and S.ObjTrack.PartOf then part = S.ObjTrack.PartOf(target) end
+    end)
+    if not part then return false, "vật không còn trong game" end
+    if speed ~= nil then pcall(function() MV.SetObjectFlySpeed(speed) end) end
+    if MV.fly then pcall(function() MV.SetFly(false) end) end
+    if MV._playerFlyActive then pcall(function() MV.StopPlayerFly() end) end
+    if MV._glassFlyActive then pcall(function() MV.StopGlassFly() end) end
+    if MV._objFlyNcPrev == nil then MV._objFlyNcPrev = (MV.noclip == true) end
+    MV._objFlyTarget = target
+    MV._objFlyActive = true
+    pcall(function() MV.SetNoclip(true) end)
+    pcall(function() MV._EnsureObjFlyBV() end)
+    pcall(function() RunService:UnbindFromRenderStep("BC_ObjFly") end)
+    local okBind = pcall(function()
+        RunService:BindToRenderStep("BC_ObjFly", Enum.RenderPriority.Camera.Value - 1, function(dt)
+            pcall(MV._ObjectFlyStep, dt)
+        end)
+    end)
+    if not okBind then
+        MV.StopObjectFly()
+        return false, "executor không bind được bay tới vật"
+    end
+    pcall(function() if S.ObjTrack and S.ObjTrack.OnFlyChange then S.ObjTrack.OnFlyChange() end end)
+    return true, target
+end
+
 -- ---------- ⬆⬇ nâng/hạ: thảm thì đổi độ cao, bay thì đẩy người ----------
 function MV.Nudge(dy)
     if MV.carpet then
@@ -8336,6 +10135,7 @@ function MV.StopAll()
     if MV.Safe and MV.Safe.on then pcall(function() MV.Safe.Stop() end) end
     pcall(function() MV.StopGlassFly() end)
     pcall(function() MV.StopPlayerFly() end)
+    pcall(function() MV.StopObjectFly() end)   -- v5.1: tắt luôn bay tới vật đang định vị
     MV.SetFly(false)
     MV.SetCarpet(false)
     MV.SetNoclip(false)
@@ -8363,6 +10163,7 @@ S.MoveActionState = {
     glow     = function() return S.Glow and S.Glow.on   end,
     freecam  = function() return S.Free and S.Free.on end,
     safefly  = function() return S.Move.Safe and S.Move.Safe.on end,
+    objtrack = function() return S.ObjTrack and S.ObjTrack.on end,   -- v5.1: 🌳 định vị vật theo tên
 }
 
 function MV.Refresh()
@@ -8822,6 +10623,12 @@ S.ScriptHubList = {
      desc="Bật là TỰ BAY + TỰ NÉ NGƯỜI CHƠI và mọi vật có dấu hiệu chuyển động (kể cả vật bị script/tween kéo đi) trong bán kính bạn chỉnh: càng gần đẩy càng mạnh, quá gần thì vọt lên trên. 🔲 Có BỨC TƯỜNG TRONG SUỐT HÌNH VUÔNG bao quanh cho thấy vùng né · 🧱 tự bật Xuyên Tường để đẩy bạn QUA vật cản. Chỉnh 💨 tốc độ · 📏 khoảng cách né · 🌀 né gắt ở khung 🛡 ngay đầu danh sách."},
     {icon="📍", name="Định Vị Người Chơi", cat="Định vị", ord=17, action="loc_all",
      desc="Xuyên tường thấy TẤT CẢ người chơi. Bấm lại để TẮT. Chọn từng người / khoảng cách: tab 👥 Người Chơi."},
+    {icon="🌳", name="Định Vị Vật Theo Tên", cat="Định vị", ord=18.5, action="objfind",
+     desc="Nhập tên vật (VD: cây) để định vị MỌI vật khớp trong server, bám theo vật khi nó di chuyển. Bấm để mở ô nhập ở tab 👥 Người Chơi."},
+    {icon="🚀", name="Bay Tới Vật Đang Định Vị", cat="Định vị", ord=18.6, action="objfly",
+     desc="Bay xuyên vật cản tới vật gần nhất trong danh sách 🌳 đang định vị; vật di chuyển thì bay theo, vật biến mất thì tự dừng."},
+    {icon="🧹", name="Tắt Định Vị Vật", cat="Định vị", ord=18.7, action="objclear",
+     desc="Xoá toàn bộ định vị vật theo tên (không ảnh hưởng 📍 định vị người chơi và 👣 xem người chơi)."},
     {icon="👣", name="Xem Người Chơi", cat="Định vị", ord=19, action="spec_on",
      desc="Bám camera theo người gần nhất. Bấm lại để TRẢ CAMERA. Danh sách chọn người: tab 👥."},
 }
@@ -9093,6 +10900,24 @@ function S.RunHubAction(id)
         pcall(function() S.Move.StopAll() end)
         S.Rebuild()
         return "🛑 đã tắt hết: " .. S.Move.Status()
+    -- ---------- v5.1: 🌳 ĐỊNH VỊ VẬT THEO TÊN ----------
+    elseif id == "objfind" then
+        pcall(function() if S.ObjTrack.Focus then S.ObjTrack.Focus() end end)
+        S.Rebuild()
+        return "🌳 định vị vật: gõ tên vào ô 🔎 (VD: cây) · " .. S.ObjTrack.Status()
+    elseif id == "objfly" then
+        local target = select(1, S.ObjTrack.Nearest())
+        if not target then return "⚠️ chưa có vật nào đang định vị — mở 🌳 ở tab 👥 Người Chơi và nhập tên vật" end
+        local okFly, resFly = S.Move.FlyToObject(target)
+        S.Rebuild()
+        if not okFly then return "⚠️ " .. tostring(resFly) end
+        return "🚀 đang bay tới '" .. tostring(target.Name) .. "' (vật đi đâu bay theo đó · bấm ⏹ Dừng bay để dừng)"
+    elseif id == "objclear" then
+        local n = 0
+        for _ in pairs(S.ObjTrack.items) do n = n + 1 end
+        pcall(function() S.ObjTrack.Set(false) end)
+        S.Rebuild()
+        return "🧹 đã xoá " .. tostring(n) .. " định vị vật theo tên"
     end
     return "⚠️ không rõ thao tác: " .. tostring(id)
 end
@@ -10400,6 +12225,7 @@ do
         Name = "PlayerNote",
         Size = UDim2.new(1, -16, 0, 14), Position = UDim2.new(0, 8, 0, 26),
         Text = "📍 = thấy người khác xuyên tường · 👣 = bám camera theo 1 người để xem họ đang làm gì."
+             .. "  🌳 = định vị MỌI vật theo tên (VD: cây) và bám theo vật đang di chuyển."
              .. "  (Các nút tắt/mở nhanh vẫn có thẻ trong 📚 Script Hub.)",
         BackgroundTransparency = 1, TextColor3 = C.MUTED, Font = Enum.Font.GothamMedium, TextSize = 8,
         TextXAlignment = Enum.TextXAlignment.Left, ZIndex = 7,
@@ -11935,6 +13761,7 @@ do
             if S.Loc.RefreshList then S.Loc.RefreshList() end
             if S.Spec.RefreshList then S.Spec.RefreshList() end
             if S.GlassRefreshList then S.GlassRefreshList() end
+            if S.ObjTrack and S.ObjTrack.RefreshList then pcall(S.ObjTrack.RefreshList) end   -- v5.1: 🌳
         end)
     end)
 end
@@ -12454,6 +14281,1583 @@ S.RebuildHubList()
 
 D.SyncPageChips()
 S.SyncServerPanel()   -- v4.6.3: hiện mã server (JobId) lên khung 🌐 SERVER
+
+do   -- gói gọn trong 1 khối: tiết kiệm "local" ở cấp cao nhất của chunk
+-- ============================================================================
+-- ---------- 🌳 ĐỊNH VỊ VẬT THEO TÊN (v5.1) — nhập tên là thấy MỌI vật khớp ---
+-- Quét workspace để tìm mọi BasePart/Model có tên khớp (không phân biệt hoa
+-- thường, không dấu), vẽ Highlight + nhãn + (tuỳ chọn) hộp bao quanh GẮN THẲNG
+-- vào vật nên vật di chuyển tới đâu định vị đi theo tới đó. Định kỳ quét lại
+-- nên vật mới xuất hiện hoặc vật bị xoá đều tự cập nhật.
+-- ============================================================================
+S.ObjTrack = {
+    on = false,           -- đang định vị hay không
+    query = "",           -- người dùng gõ vào ô 🔎
+    keys = {},            -- ["cay"], ["cay","da"]...
+    maxDist = 0,          -- 0 = không giới hạn khoảng cách (stud)
+    maxItems = 60,        -- định vị tối đa bao nhiêu vật (gần nhất trước)
+    showRows = 8,         -- số dòng hiện trong bảng
+    thru = true,          -- xuyên tường (thấy cả vật sau tường)
+    showLabel = true,     -- nhãn tên + khoảng cách
+    showBox = false,      -- hộp bao quanh vật (BoxHandleAdornment)
+    showXYZ = true,       -- hiện toạ độ X/Y/Z dưới nhãn (giống khung 🎯 Phân Tích Toạ Độ)
+    skipPlayers = true,   -- bỏ qua nhân vật người chơi (đã có 📍 riêng)
+    color = 1,
+    items = {},           -- [instance] = { hl, bb, lbl, box, part, dist }
+    list = {},            -- danh sách gần nhất trước (dùng cho bảng + bay tới)
+    lastScan = 0,
+    rescanEvery = 1.5,    -- (giữ cho tương thích) giây: nhịp quét cũ
+    -- ===== TỐI ƯU CHỐNG KHỰNG (v5.1.2): quét chia nhỏ theo từng khung hình =====
+    scanIdle = 2.0,       -- giây: nghỉ giữa 2 lượt quét (trước là 1,5)
+    scanBudget = 180,     -- mỗi khung hình xử lý tối đa bấy nhiêu vật
+    scanSliceMs = 1.2,    -- trần thời gian 1 lát quét (ms) — vượt là nhả ra cho khung hình
+    makeBudget = 8,       -- mỗi khung hình tạo tối đa 8 định vị mới (rải ra, không dồn)
+    tickSliceMs = 1.5,    -- trần thời gian 1 lượt cập nhật nhãn (ms)
+    labelBudget = 20,     -- mỗi lượt cập nhật tối đa 20 vật (xoay vòng)
+    infoEvery = 0.5,      -- giây: làm mới khung 🎯 (trước là mỗi 0,2s)
+    labelEvery = 0.25,    -- giây: cập nhật khoảng cách + nhãn
+    pathKeys = {},        -- từ khoá dạng PATH dán vào (VD: workspace.rung cay.thancay)
+    entries = {},         -- nhiều mục ghim cùng lúc: { {raw="cây",kind="name"}, {raw="Workspace.Rừng Cây",kind="path"} }
+    -- trạng thái nội bộ cho quét chia lát + vòng xoay
+    _order = {}, _tickIdx = 0, _pending = {}, _queue = {}, _qN = 0,
+    _pathSet = {}, _pathN = 0, _chars = {},
+    _nc = setmetatable({}, { __mode = "k" }),   -- đệm tên đã chuẩn hoá theo từng vật
+    _gui = nil, _acc = 0, _scanAcc = 0, _bound = false,
+    _scanned = 0, _renderErr = false,
+    _sel = nil, _selPart = nil,   -- vật đang xem thông tin (khung 🎯 giống phân tích toạ độ)
+    _found = 0, _scanMs = 0, _capped = false, _err = nil, _rowSig = nil,
+}
+local OT = S.ObjTrack
+OT.palette = {
+    { name = "Xanh nước", fill = Color3.fromRGB(0, 170, 255), out = Color3.fromRGB(186, 231, 255) },
+    { name = "Xanh ngọc", fill = Color3.fromRGB(0, 255, 170), out = Color3.fromRGB(255, 255, 255) },
+    { name = "Cam",       fill = Color3.fromRGB(255, 165, 0), out = Color3.fromRGB(255, 240, 210) },
+    { name = "Hồng",      fill = Color3.fromRGB(255, 105, 180), out = Color3.fromRGB(255, 214, 236) },
+    { name = "Tím",       fill = Color3.fromRGB(170, 120, 255), out = Color3.fromRGB(232, 222, 255) },
+    { name = "Vàng",      fill = Color3.fromRGB(255, 225, 80), out = Color3.fromRGB(255, 252, 214) },
+    { name = "Đỏ",        fill = Color3.fromRGB(255, 70, 70), out = Color3.fromRGB(255, 214, 214) },
+    { name = "Xanh dương", fill = Color3.fromRGB(90, 170, 255), out = Color3.fromRGB(222, 240, 255) },
+}
+function OT.Pal()
+    local i = tonumber(OT.color) or 1
+    return OT.palette[i] or OT.palette[1]
+end
+local function otRound(n) return math.floor((tonumber(n) or 0) + 0.5) end
+
+-- Toạ độ 1 dòng "X 12.3 · Y 5.0 · Z -8.4" — y như khung 📍 Toạ Độ của hub.
+local function otXYZ(part)
+    local ok, pos = pcall(function() return part.Position end)
+    if not ok or not pos then return "" end
+    return string.format("X %.1f · Y %.1f · Z %.1f", pos.X, pos.Y, pos.Z)
+end
+
+-- Đường dẫn đầy đủ kiểu "Workspace.Rừng Cây.ThanCay"
+function OT.PathOf(inst)
+    if inst == nil then return "nil" end
+    local parts, cur, guard = {}, inst, 0
+    while cur and cur ~= game and guard < 40 do
+        table.insert(parts, 1, tostring(cur.Name))
+        cur = cur.Parent
+        guard = guard + 1
+    end
+    return table.concat(parts, ".")
+end
+
+-- Bảng thông tin 1 vật: ĐÚNG các dòng của khung "🎯 VẬT THỂ ĐƯỢC CHỌN" (phân tích toạ độ).
+function OT.Info(inst, part)
+    if inst == nil then return {} end
+    if part == nil then part = OT.PartOf(inst) end
+    local rows = {}
+    local function add(k, v) rows[#rows + 1] = { k = k, v = tostring(v) } end
+    add("Name", tostring(inst.Name))
+    add("Class", tostring(inst.ClassName))
+    add("Path", OT.PathOf(inst))
+    if part then
+        local okP, pos = pcall(function() return part.Position end)
+        if okP and pos then add("Position", string.format("%.3f, %.3f, %.3f", pos.X, pos.Y, pos.Z)) end
+        local okS, size = pcall(function() return part.Size end)
+        if okS and size then add("Size", string.format("%.3f, %.3f, %.3f", size.X, size.Y, size.Z)) end
+        local okC, cf = pcall(function() return part.CFrame end)
+        if okC and cf then
+            pcall(function()
+                local rx, ry, rz = cf:ToOrientation()
+                add("Rotation", string.format("P=%.1f° Y=%.1f° R=%.1f°", math.deg(rx), math.deg(ry), math.deg(rz)))
+            end)
+            pcall(function()
+                local look = cf.LookVector
+                add("Look", string.format("%.3f, %.3f, %.3f", look.X, look.Y, look.Z))
+            end)
+        end
+        local okM, mat = pcall(function() return part.Material end)
+        if okM and mat then add("Material", tostring(mat):gsub("Enum.Material.", "")) end
+        local okCol, col = pcall(function() return part.Color end)
+        if okCol and col then
+            add("Color", string.format("R=%d G=%d B=%d",
+                math.floor(col.R * 255), math.floor(col.G * 255), math.floor(col.B * 255)))
+        end
+    end
+    return rows
+end
+
+-- Chọn 1 vật để hiện thông tin (giống chọn vật bằng 🎯 Phân Tích Vật Thể)
+function OT.Select(inst)
+    if inst == nil or inst.Parent == nil then
+        OT._sel, OT._selPart = nil, nil
+    else
+        OT._sel = inst
+        OT._selPart = OT.PartOf(inst)
+    end
+    if OT.RefreshInfo then pcall(OT.RefreshInfo) end
+    return OT._sel
+end
+
+function OT.CopyCoords(inst)
+    local part = (inst and OT.PartOf(inst)) or OT._selPart
+    if part == nil then return false, "chưa chọn vật nào" end
+    local ok, pos = pcall(function() return part.Position end)
+    if not ok or not pos then return false, "vật không còn toạ độ" end
+    local txt = string.format("%.3f, %.3f, %.3f", pos.X, pos.Y, pos.Z)
+    local did = (S.CopyToClipboard and S.CopyToClipboard(txt)) or false
+    return did, txt
+end
+
+function OT.CopyPath(inst)
+    local target = inst or OT._sel
+    if target == nil then return false, "chưa chọn vật nào" end
+    local txt = OT.PathOf(target)
+    local did = (S.CopyToClipboard and S.CopyToClipboard(txt)) or false
+    return did, txt
+end
+
+-- Bảng "bỏ dấu" tiếng Việt: gõ "cay" vẫn khớp "Cây", gõ "da" khớp "Đá".
+local OT_FOLD = {}
+do
+    local groups = {
+        ["a"] = "áàảãạăắằẳẵặâấầẩẫậÁÀẢÃẠĂẮẰẲẴẶÂẤẦẨẪẬ",
+        ["e"] = "éèẻẽẹêếềểễệÉÈẺẼẸÊẾỀỂỄỆ",
+        ["i"] = "íìỉĩịÍÌỈĨỊ",
+        ["o"] = "óòỏõọôốồổỗộơớờởỡợÓÒỎÕỌÔỐỒỔỖỘƠỚỜỞỠỢ",
+        ["u"] = "úùủũụưứừửữựÚÙỦŨỤƯỨỪỬỮỰ",
+        ["y"] = "ýỳỷỹỵÝỲỶỸỴ",
+        ["d"] = "đĐ",
+    }
+    if type(utf8) == "table" and type(utf8.codes) == "function" then
+        pcall(function()
+            for base, chars in pairs(groups) do
+                for _, cp in utf8.codes(chars) do OT_FOLD[cp] = base end
+            end
+        end)
+    end
+end
+
+function OT.Norm(s)
+    local t = tostring(s or "")
+    if t == "" then return "" end
+    local out, k = {}, 0
+    local okUtf = false
+    if type(utf8) == "table" and type(utf8.codes) == "function" and type(utf8.char) == "function" then
+        okUtf = pcall(function()
+            for _, cp in utf8.codes(t) do
+                k = k + 1
+                out[k] = OT_FOLD[cp] or utf8.char(cp)
+            end
+        end)
+        if not okUtf then out, k = {}, 0 end
+    end
+    if not okUtf then k = 1; out[1] = t end
+    local s2 = table.concat(out, "", 1, k):gsub("%s+", " ")
+    return (s2:lower())
+end
+
+-- Gõ tên thường (cây) hoặc dán cả PATH (Workspace.Rừng Cây.ThanCay / game.Workspace.Cây) đều được.
+function OT.Split(q)
+    local out, paths = {}, {}
+    for part in tostring(q or ""):gmatch("[^,;]+") do
+        local k = (OT.Norm(part):gsub("^%s+", ""):gsub("%s+$", ""))
+        if #k > 0 then
+            local hasPath = k:find(".", 1, true) ~= nil or k:find("/", 1, true) ~= nil
+                        or k:find("\\", 1, true) ~= nil
+            if hasPath then
+                local full = k:gsub("[/\\]", ".")
+                if full:sub(1, 5) == "game." then full = full:sub(6) end   -- "game.Workspace.…" -> "workspace.…"
+                paths[#paths + 1] = full
+                local last = full:match("([^%.]+)$")
+                if last and #last > 0 then out[#out + 1] = last end
+            else
+                out[#out + 1] = k
+            end
+        end
+    end
+    OT.pathKeys = paths
+    return out
+end
+
+-- Tên đã chuẩn hoá được ĐỆM LẠI theo vật: đổi tên mới tính lại.
+-- (Trước đây mỗi lượt quét phải chuẩn hoá lại tên của CẢ workspace -> khựng theo chu kỳ.)
+function OT.NormCached(inst)
+    local nm = inst.Name
+    if type(nm) ~= "string" then return "" end
+    local c = OT._nc[inst]
+    if c ~= nil and c.raw == nm then return c.norm end
+    local norm = OT.Norm(nm)
+    OT._nc[inst] = { raw = nm, norm = norm }
+    return norm
+end
+
+function OT.MatchesNorm(n)
+    if n == "" or #OT.keys == 0 then return false end
+    local keys = OT.keys
+    for i = 1, #keys do
+        if n:find(keys[i], 1, true) then return true end
+    end
+    return false
+end
+
+-- Dán PATH thì đi thẳng theo từng đoạn tên (không phải quét cả workspace để dò path nữa)
+function OT.ResolvePath(key)
+    local segs = {}
+    for s in tostring(key or ""):gmatch("[^%.]+") do
+        s = s:gsub("^%s+", ""):gsub("%s+$", "")
+        if #s > 0 then segs[#segs + 1] = s end
+    end
+    if #segs == 0 then return nil end
+    local cur, i = game, 1
+    if segs[1] == "workspace" then cur, i = workspace, 2
+    elseif segs[1] == "game" then i = 2 end
+    while i <= #segs do
+        if cur == nil then return nil end
+        local found = nil
+        local okK, kids = pcall(function() return cur:GetChildren() end)
+        if not okK or type(kids) ~= "table" then return nil end
+        for k = 1, #kids do
+            if OT.Norm(kids[k].Name) == segs[i] then found = kids[k] break end
+        end
+        if found == nil then return nil end
+        cur, i = found, i + 1
+    end
+    return cur
+end
+
+function OT.RefreshPaths()
+    OT._pathSet = {}
+    OT._pathN = 0
+    local keys = OT.pathKeys or {}
+    for i = 1, #keys do
+        local ok, inst = pcall(OT.ResolvePath, keys[i])
+        if ok and inst ~= nil then
+            OT._pathSet[inst] = true
+            OT._pathN = OT._pathN + 1
+        end
+    end
+end
+
+-- Vật này có phải "ứng viên" không (khớp TÊN hoặc nằm trong PATH đã dán)
+function OT.Candidate(inst)
+    if OT._pathN > 0 and OT._pathSet[inst] then return true end
+    return OT.MatchesNorm(OT.NormCached(inst))
+end
+OT.Hit = OT.Candidate   -- tương thích tên hàm cũ
+
+-- ============================================================================
+-- NHIỀU MỤC CHẠY CÙNG LÚC (v5.1.3): ghim từng tên/path thành "mục", mỗi mục có nút ✕
+-- để xoá riêng. Tất cả mục + ô nhập đang gõ đều được gộp vào keys/pathKeys mỗi lượt quét.
+-- ============================================================================
+function OT.IsPathLike(raw)
+    local t = tostring(raw or "")
+    return t:find(".", 1, true) ~= nil or t:find("/", 1, true) ~= nil or t:find("\\", 1, true) ~= nil
+end
+
+-- Chuẩn hoá 1 mục để so trùng (bỏ dấu, gộp / \ thành ., bỏ tiền tố game.)
+function OT.EntryKey(raw)
+    local t = tostring(raw or ""):gsub("^%s+", ""):gsub("%s+$", "")
+    t = OT.Norm(t)
+    if OT.IsPathLike(t) then
+        t = t:gsub("[/\\]", ".")
+        if t:sub(1, 5) == "game." then t = t:sub(6) end
+    end
+    return t
+end
+
+-- Gộp MỌI mục đã ghim + ô nhập đang gõ thành keys (tên) và pathKeys (path)
+function OT.RebuildKeys()
+    local keys, paths = {}, {}
+    local function push(raw)
+        raw = tostring(raw or "")
+        if raw:gsub("%s", "") == "" then return end
+        if OT.IsPathLike(raw) then
+            local key = OT.EntryKey(raw)
+            local ok, inst = pcall(OT.ResolvePath, key)
+            if ok and inst ~= nil then          -- path còn trong game -> theo path
+                paths[#paths + 1] = key
+                return
+            end
+            -- path không resolve được: vẫn thử như TÊN (VD tên vật có dấu chấm) để không mất tính năng
+        end
+        local k = OT.Norm(raw):gsub("^%s+", ""):gsub("%s+$", "")
+        if #k > 0 then keys[#keys + 1] = k end
+    end
+    for i = 1, #OT.entries do push(OT.entries[i].raw) end
+    for part in tostring(OT.query or ""):gmatch("[^,;]+") do push(part) end   -- gõ là thấy ngay (như cũ)
+    OT.keys, OT.pathKeys = keys, paths
+    return #keys, #paths
+end
+
+-- Ghim 1 mục mới. Trả về (ok, kind|why)
+function OT.AddEntry(raw)
+    raw = tostring(raw or ""):gsub("^%s+", ""):gsub("%s+$", "")
+    if raw == "" then return false, "chưa nhập gì" end
+    local key = OT.EntryKey(raw)
+    for i = 1, #OT.entries do
+        if OT.EntryKey(OT.entries[i].raw) == key then
+            return false, "mục này đã có trong danh sách rồi"
+        end
+    end
+    local kind = OT.IsPathLike(raw) and "path" or "name"
+    if kind == "path" then
+        local ok, inst = pcall(OT.ResolvePath, key)
+        if not ok or inst == nil then kind = "name" end   -- chưa resolve được -> vẫn nhận, xét như tên
+    end
+    OT.entries[#OT.entries + 1] = { raw = raw, kind = kind }
+    OT._tagSig = nil
+    OT.RebuildKeys()
+    OT.on = true
+    OT.Bind()
+    pcall(OT.Rescan, true)          -- quét ngay: vừa ghim mục là thấy vật luôn (khỏi chờ 2s)
+    if OT.RefreshTags then pcall(OT.RefreshTags) end
+    return true, kind
+end
+
+-- Xoá 1 mục; hết mục thì tự tắt định vị
+function OT.RemoveEntry(i)
+    i = tonumber(i) or 0
+    if i < 1 or i > #OT.entries then return false, "mục không tồn tại" end
+    local raw = OT.entries[i].raw
+    table.remove(OT.entries, i)
+    OT._tagSig = nil
+    OT.RebuildKeys()
+    if #OT.keys == 0 and #(OT.pathKeys or {}) == 0 then
+        OT.Set(false)
+    elseif OT.on then
+        pcall(OT.Rescan, true)
+    end
+    if OT.RefreshTags then pcall(OT.RefreshTags) end
+    return true, raw
+end
+
+function OT.ClearEntries()
+    OT.entries = {}
+    OT.query = ""
+    OT._tagSig = nil
+    OT.RebuildKeys()
+    if OT.RefreshTags then pcall(OT.RefreshTags) end
+end
+
+function OT.Matches(name)
+    local n = OT.Norm(name)
+    if n == "" or #OT.keys == 0 then return false end
+    for i = 1, #OT.keys do
+        if n:find(OT.keys[i], 1, true) then return true end
+    end
+    return false
+end
+
+-- Vật nào để gắn nhãn: BasePart -> chính nó; Model -> PrimaryPart / part đầu tiên.
+function OT.PartOf(inst, depth)
+    if inst == nil then return nil end
+    depth = tonumber(depth) or 0
+    if depth > 4 then return nil end
+    local okA, isA = pcall(function() return inst:IsA("BasePart") end)
+    if okA and isA then return inst end
+    local okP, pp = pcall(function() return inst.PrimaryPart end)
+    if okP and pp and pp.Parent then return pp end
+    local okW, found = pcall(function() return inst:FindFirstChildWhichIsA("BasePart", true) end)   -- true = tìm sâu (Model/Folder lồng nhau)
+    if not okW then okW, found = pcall(function() return inst:FindFirstChildWhichIsA("BasePart") end) end
+    if okW and found and found.Parent then return found end
+    local okC, kids = pcall(function() return inst:GetChildren() end)
+    if okC and type(kids) == "table" then
+        for i = 1, #kids do
+            local p = OT.PartOf(kids[i], depth + 1)
+            if p then return p end
+        end
+    end
+    return nil
+end
+
+function OT.RefreshChars()   -- lấy nhân vật người chơi 1 lần cho cả lượt quét
+    local out = {}
+    if OT.skipPlayers then
+        local okL, list = pcall(function() return Players:GetPlayers() end)
+        if okL and type(list) == "table" then
+            for i = 1, #list do
+                local c = nil
+                pcall(function() c = list[i].Character end)
+                if c ~= nil then out[#out + 1] = c end
+            end
+        end
+    end
+    OT._chars = out
+end
+
+function OT.Skip(inst)
+    if inst == nil then return true end
+    local chars = OT._chars
+    if chars == nil then
+        OT.RefreshChars()
+        chars = OT._chars
+    end
+    for i = 1, #chars do
+        local okD, inside = pcall(function() return inst:IsDescendantOf(chars[i]) end)
+        if okD and inside then return true end
+    end
+    return false
+end
+
+function OT.Gui()
+    if OT._gui and OT._gui.Parent then return OT._gui end
+    OT._gui = New("ScreenGui", {
+        Name = "BC_ObjTrackESP", ResetOnSpawn = false,
+        ZIndexBehavior = Enum.ZIndexBehavior.Sibling,
+    }, targetGui)
+    return OT._gui
+end
+
+function OT.Kill(inst)
+    local it = OT.items[inst]
+    if not it then return end
+    pcall(function() if it.hl then it.hl:Destroy() end end)
+    pcall(function() if it.bb then it.bb:Destroy() end end)
+    pcall(function() if it.box then it.box:Destroy() end end)
+    OT.items[inst] = nil
+    if it.slot then OT._order[it.slot] = nil end   -- để lượt cập nhật nhãn xoay vòng khỏi quét nhầm
+end
+
+function OT.Clear()
+    for inst in pairs(OT.items) do OT.Kill(inst) end
+    OT.items = {}
+    OT._order, OT._tickIdx, OT._pending = {}, 0, {}
+    OT._passing = false
+    OT._queue, OT._qN = {}, 0
+    OT._sel, OT._selPart = nil, nil
+    OT.list = {}
+    OT._found = 0
+    OT._capped = false
+    OT._rowSig = nil
+    pcall(function() if OT._gui then OT._gui:ClearAllChildren() end end)
+end
+
+function OT._MakeBox(part, pal)
+    local ok, box = pcall(function()
+        -- BoxHandleAdornment là lớp tạo được bằng Instance.new; nếu executor chặn thì bỏ qua hộp.
+        return New("BoxHandleAdornment", {   -- phải nằm trong Workspace mới hiện -> gắn vào part
+            Name = "BC_OT_BOX", Adornee = part,
+            Size = part.Size + Vector3.new(0.4, 0.4, 0.4),
+            Color3 = pal.fill, Transparency = 0.35,
+            AlwaysOnTop = OT.thru, ZIndex = 3, Visible = OT.showBox,
+        }, part)
+    end)
+    if ok and box then return box end
+    return nil
+end
+
+function OT.Make(inst, part)
+    if inst == nil or part == nil then return end
+    local okP, alive = pcall(function() return (part.Parent ~= nil) and (inst.Parent ~= nil) end)
+    if not okP or not alive then return end
+    OT.Kill(inst)
+    local g = OT.Gui()
+    local pal = OT.Pal()
+
+    -- ⚠️ QUAN TRỌNG: Highlight phải nằm trong Workspace mới render. Gắn vào PlayerGui là
+    -- "nhập tên mà không thấy gì" — nên gắn thẳng vào vật (giống 🎯 Phân Tích Vật Thể).
+    -- Folder không phải BasePart/Model nên Adornee phải trỏ vào part bên trong mới hiện
+    local okAM, adornee = pcall(function()
+        return (inst:IsA("BasePart") or inst:IsA("Model")) and inst or part
+    end)
+    if not okAM or adornee == nil then adornee = part end
+    local hl = nil
+    local okH = pcall(function()
+        hl = New("Highlight", {
+            Name = "BC_OT_HL", Adornee = adornee,
+            FillColor = pal.fill, FillTransparency = 0.7,   -- giống hệt Highlight của 🎯 Phân Tích Vật Thể
+            OutlineColor = pal.out, OutlineTransparency = 0,
+            DepthMode = OT.thru and Enum.HighlightDepthMode.AlwaysOnTop or Enum.HighlightDepthMode.Occluded,
+        }, inst)
+    end)
+    if not okH then
+        hl = nil
+        pcall(function()   -- executor chặn gắn vào vật -> thử lại vào GUI (một số bản vẫn hiện)
+            hl = New("Highlight", {
+                Name = "BC_OT_HL", Adornee = adornee,
+                FillColor = pal.fill, FillTransparency = 0.7,
+                OutlineColor = pal.out, OutlineTransparency = 0,
+                DepthMode = OT.thru and Enum.HighlightDepthMode.AlwaysOnTop or Enum.HighlightDepthMode.Occluded,
+            }, g)
+        end)
+    end
+
+    -- Nhãn BillboardGui: gắn vào part (nằm trong Workspace) nên chắc chắn hiện + bám theo vật
+    local bb, lbl = nil, nil
+    pcall(function()
+        bb = New("BillboardGui", {
+            Name = "BC_OT_BB", Adornee = part,
+            Size = UDim2.new(0, 210, 0, OT.showXYZ and 46 or 30), StudsOffset = Vector3.new(0, 2.4, 0),
+            AlwaysOnTop = OT.thru, MaxDistance = 3000, ResetOnSpawn = false,
+        }, part)
+        lbl = New("TextLabel", {
+            Size = UDim2.new(1, 0, 1, 0), BackgroundTransparency = 1,
+            Text = tostring(inst.Name), TextColor3 = pal.out,
+            Font = Enum.Font.GothamBold, TextSize = 11,
+            TextStrokeColor3 = Color3.fromRGB(0, 0, 0), TextStrokeTransparency = 0.35,
+            TextWrapped = true,
+        }, bb)
+    end)
+    if bb == nil then
+        pcall(function()   -- dự phòng: nếu không gắn được vào part thì để trong GUI
+            bb = New("BillboardGui", {
+                Name = "BC_OT_BB", Adornee = part,
+                Size = UDim2.new(0, 210, 0, OT.showXYZ and 46 or 30), StudsOffset = Vector3.new(0, 2.4, 0),
+                AlwaysOnTop = OT.thru, MaxDistance = 3000, ResetOnSpawn = false,
+            }, g)
+            lbl = New("TextLabel", {
+                Size = UDim2.new(1, 0, 1, 0), BackgroundTransparency = 1,
+                Text = tostring(inst.Name), TextColor3 = pal.out,
+                Font = Enum.Font.GothamBold, TextSize = 11,
+                TextStrokeColor3 = Color3.fromRGB(0, 0, 0), TextStrokeTransparency = 0.35,
+                TextWrapped = true,
+            }, bb)
+        end)
+    end
+
+    local box = nil
+    if OT.showBox then box = OT._MakeBox(part, pal) end
+    OT._slotN = (OT._slotN or 0) + 1
+    OT._order[OT._slotN] = inst
+    OT._orderN = OT._slotN
+    OT.items[inst] = { hl = hl, bb = bb, lbl = lbl, box = box, part = part, dist = 0,
+                       adornee = adornee, slot = OT._slotN, txt = nil }
+    OT._renderErr = (hl == nil and bb == nil)
+    if OT._renderErr then OT._err = "executor chặn Highlight/BillboardGui — không vẽ được định vị" end
+end
+
+-- Cập nhật nhãn/khoảng cách + xoá vật đã biến mất. Highlight và nhãn gắn vào vật
+-- nên vật tự di chuyển theo, không cần bám bằng tay.
+-- Cập nhật nhãn XOAY VÒNG: mỗi lượt chỉ đụng tối đa labelBudget vật, có trần thời gian.
+-- (Trước đây mỗi 0,2s là cập nhật HẾT mọi vật -> vừa đi vừa khựng.)
+-- Cập nhật MỘT vật (tách riêng cho gọn + đỡ lồng nhiều tầng).
+function OT.TickOne(inst, myPos, pal)
+    local it = OT.items[inst]
+    if it == nil then return end
+    local part = it.part
+    local okA, alive = pcall(function() return part ~= nil and part.Parent ~= nil and inst.Parent ~= nil end)
+    if not okA or not alive then OT.Kill(inst) return end
+    local okD, d = pcall(function() return myPos and (part.Position - myPos).Magnitude or nil end)
+    d = (okD and d) or nil
+    it.dist = d or 0
+    local far = (OT.maxDist > 0 and d ~= nil and d > OT.maxDist)
+    -- Highlight/nhãn/hộp phải nằm trong Workspace mới hiện -> giữ luôn gắn đúng chỗ
+    local anchor = it.adornee or inst
+    if it.hl and it.hl.Parent ~= anchor then
+        local okRe = pcall(function() it.hl.Parent = anchor end)
+        if not okRe then
+            pcall(function() it.hl:Destroy() end)
+            it.hl = nil
+        end
+    end
+    if it.hl == nil then
+        pcall(function()
+            it.hl = New("Highlight", {
+                Name = "BC_OT_HL", Adornee = anchor,
+                FillColor = pal.fill, FillTransparency = 0.7,
+                OutlineColor = pal.out, OutlineTransparency = 0,
+                DepthMode = OT.thru and Enum.HighlightDepthMode.AlwaysOnTop or Enum.HighlightDepthMode.Occluded,
+            }, anchor)
+        end)
+    end
+    if it.hl then
+        pcall(function() it.hl.Adornee = anchor end)
+        it.hl.Enabled = not far
+        it.hl.FillColor = pal.fill
+        it.hl.OutlineColor = pal.out
+        pcall(function()
+            it.hl.DepthMode = OT.thru and Enum.HighlightDepthMode.AlwaysOnTop or Enum.HighlightDepthMode.Occluded
+        end)
+    end
+    if it.bb then
+        if it.bb.Parent ~= part then pcall(function() it.bb.Parent = part end) end
+        it.bb.Adornee = part
+        it.bb.Enabled = (not far) and OT.showLabel
+        it.bb.AlwaysOnTop = OT.thru
+        pcall(function() it.bb.Size = UDim2.new(0, 210, 0, OT.showXYZ and 46 or 30) end)
+    end
+    if it.box then
+        if it.box.Parent ~= part then pcall(function() it.box.Parent = part end) end
+        it.box.Adornee = part
+        pcall(function() it.box.Size = part.Size + Vector3.new(0.4, 0.4, 0.4) end)
+        it.box.Visible = (not far) and OT.showBox
+        it.box.Color3 = pal.fill
+        it.box.AlwaysOnTop = OT.thru
+    end
+    if it.lbl then
+        -- chỉ dựng lại chuỗi khi số liệu ĐỔI (đỡ rác bộ nhớ + đỡ vẽ lại chữ mỗi khung hình)
+        local dm = otRound(d or 0)
+        if it.txtName ~= inst.Name or it.txtDist ~= dm then
+            it.txtName, it.txtDist = inst.Name, dm
+            it.txtXYZ = OT.showXYZ and otXYZ(part) or nil
+        elseif OT.showXYZ then
+            it.txtXYZ = otXYZ(part)
+        end
+        local txt = tostring(inst.Name) .. (d and ("  📏 " .. dm .. "m") or "  📏 --m")
+        if OT.showXYZ and it.txtXYZ ~= nil and it.txtXYZ ~= "" then txt = txt .. "\n🧭 " .. it.txtXYZ end
+        if it.txt ~= txt then it.txt = txt end
+        if it.lbl.Text ~= it.txt then it.lbl.Text = it.txt end
+        it.lbl.TextColor3 = pal.out
+    end
+end
+
+-- Cập nhật nhãn XOAY VÒNG: mỗi lượt chỉ đụng tối đa labelBudget vật, có trần thời gian.
+-- (Trước đây mỗi 0,2s là cập nhật HẾT mọi vật -> vừa đi vừa khựng.)
+function OT.Tick()
+    local t0 = os.clock()
+    local order = OT._order or {}
+    local n = tonumber(OT._orderN) or 0
+    OT._tickUpdates = 0
+    if n > 0 then
+        local myRoot = S.Move and S.Move.Root and S.Move.Root() or nil
+        local myPos = myRoot and myRoot.Position or nil
+        local pal = OT.Pal()
+        local quota = math.min(tonumber(OT.labelBudget) or 20, n)
+        local guard = 0
+        while quota > 0 and guard < n * 2 do
+            guard = guard + 1
+            OT._tickIdx = (OT._tickIdx % n) + 1
+            local inst = order[OT._tickIdx]
+            if inst == nil then
+                -- khe trống (vật đã bị xoá) — đi tiếp
+            elseif OT.items[inst] == nil then
+                order[OT._tickIdx] = nil
+            else
+                quota = quota - 1
+                OT._tickUpdates = OT._tickUpdates + 1
+                pcall(OT.TickOne, inst, myPos, pal)
+            end
+            if (os.clock() - t0) * 1000 > (OT.tickSliceMs or 1.5) then break end   -- nhả khung hình
+        end
+    end
+    -- vật đang xem bị xoá -> ẩn khung 🎯 NGAY (không chờ hết 0,5s)
+    if OT._sel ~= nil then
+        local okS, aliveS = pcall(function() return OT._sel.Parent ~= nil end)
+        if not okS or not aliveS then
+            OT._sel, OT._selPart = nil, nil
+            OT._infoAt = os.clock()
+            if OT.RefreshInfo then pcall(OT.RefreshInfo) end   -- ẩn khung 🎯 ngay
+        end
+    end
+    -- khung 🎯 thông tin vật đang chọn: làm mới thưa hơn (0,5s) cho khỏi nặng
+    if OT._sel and OT.RefreshInfo and (os.clock() - (OT._infoAt or 0)) >= (OT.infoEvery or 0.5) then
+        OT._infoAt = os.clock()
+        pcall(OT.RefreshInfo)
+    end
+end
+
+-- ============================================================================
+-- QUÉT CHIA NHỎ THEO TỪNG KHUNG HÌNH (không còn GetDescendants() một phát)
+-- Mỗi khung hình chỉ xử lý ~scanBudget vật trong ~scanSliceMs, nên dù map có
+-- hàng chục nghìn vật thì cũng không khựng. Không dùng workspace:GetDescendants()
+-- nữa (nó tạo mảng khổng lồ mỗi lượt -> đúng thủ phạm gây khựng theo chu kỳ).
+-- ============================================================================
+function OT.ScanBegin()
+    OT.RefreshPaths()
+    OT.RefreshChars()
+    local root = S.Move and S.Move.Root and S.Move.Root() or nil
+    OT._myPos = root and root.Position or nil
+    OT._queue = { workspace }      -- ngăn xếp: cha LUÔN được xét trước con
+    OT._qN = 1
+    OT._hits = {}
+    OT._scanned, OT._skipped = 0, 0
+    OT._passing = true
+    OT._passT0 = os.clock()
+    OT._err = nil
+end
+
+-- Phân loại 1 vật khớp: BasePart -> chính nó; Model/Folder -> part đại diện.
+-- Part nằm trong Model/Folder cũng khớp tên thì bỏ qua (cấp trên đã đại diện) — chống trùng.
+function OT.ScanHit(inst)
+    local okP, posOrBool = pcall(function() return inst:IsA("BasePart") end)
+    if okP and posOrBool then
+        local anc, guard, covered = inst.Parent, 0, false
+        while anc and guard < 32 do
+            guard = guard + 1
+            if anc == workspace then break end
+            if OT.Candidate(anc) then
+                local okM, isM = pcall(function() return anc:IsA("Model") or anc:IsA("Folder") end)
+                if okM and isM then covered = true break end
+            end
+            anc = anc.Parent
+        end
+        if covered then
+            OT._skipped = OT._skipped + 1
+            return
+        end
+        local okP2, pos = pcall(function() return inst.Position end)
+        local d = 0
+        if okP2 and pos and OT._myPos then d = (pos - OT._myPos).Magnitude end
+        if OT.maxDist <= 0 or d <= OT.maxDist then
+            OT._hits[#OT._hits + 1] = { inst = inst, part = inst, dist = d }
+        end
+        return
+    end
+    local okM, isM = pcall(function() return inst:IsA("Model") end)
+    local okF, isF = false, false
+    if not (okM and isM) then okF, isF = pcall(function() return inst:IsA("Folder") end) end
+    if not ((okM and isM) or (okF and isF)) then return end
+    local part = OT.PartOf(inst)
+    if part == nil or part.Parent == nil then return end
+    local okP3, pos = pcall(function() return part.Position end)
+    local d = 0
+    if okP3 and pos and OT._myPos then d = (pos - OT._myPos).Magnitude end
+    if OT.maxDist <= 0 or d <= OT.maxDist then
+        OT._hits[#OT._hits + 1] = { inst = inst, part = part, dist = d }
+    end
+end
+
+-- Xử lý 1 lát. budget = số vật, msCap = trần thời gian (ms), runToEnd = chạy hết ngay.
+function OT.ScanSlice(budget, msCap, runToEnd)
+    if not OT._passing then return true end
+    budget = tonumber(budget) or tonumber(OT.scanBudget) or 180
+    msCap = tonumber(msCap) or tonumber(OT.scanSliceMs) or 1.2
+    local t0 = os.clock()
+    local done = 0
+    while OT._qN > 0 do
+        local inst = OT._queue[OT._qN]
+        OT._queue[OT._qN] = nil
+        OT._qN = OT._qN - 1
+        local okK, kids = pcall(function() return inst:GetChildren() end)   -- đẩy con vào ngăn xếp
+        if okK and type(kids) == "table" then
+            for i = 1, #kids do
+                OT._qN = OT._qN + 1
+                OT._queue[OT._qN] = kids[i]
+            end
+        end
+        if inst ~= workspace then
+            OT._scanned = OT._scanned + 1
+            if OT.Candidate(inst) and not OT.Skip(inst) then
+                OT.ScanHit(inst)
+            end
+        end
+        done = done + 1
+        if not runToEnd and (done >= budget or (os.clock() - t0) * 1000 > msCap) then
+            return false   -- hết ngân sách khung hình này, khung sau quét tiếp
+        end
+    end
+    OT.ScanFinish()
+    return true
+end
+
+-- Chốt 1 lượt quét: sắp theo khoảng cách, bỏ vật cũ, xếp hàng tạo vật mới (rải ra)
+function OT.ScanFinish()
+    OT._passing = false
+    local hits = OT._hits or {}
+    table.sort(hits, function(a, b) return a.dist < b.dist end)
+    local maxN = math.max(1, tonumber(OT.maxItems) or 60)
+    local keep, list = {}, {}
+    local n = 0
+    for i = 1, #hits do
+        local h = hits[i]
+        local okV, alive = pcall(function() return h.inst.Parent ~= nil and h.part.Parent ~= nil end)
+        if okV and alive then
+            n = n + 1
+            if n <= maxN then
+                keep[h.inst] = true
+                list[#list + 1] = h
+            end
+        end
+    end
+    for inst in pairs(OT.items) do
+        if not keep[inst] then OT.Kill(inst) end
+    end
+    OT._pending = {}
+    for i = 1, #list do
+        local h = list[i]
+        local it = OT.items[h.inst]
+        if it == nil then
+            OT._pending[#OT._pending + 1] = h
+        else
+            it.part = h.part
+        end
+    end
+    OT.list = list
+    OT._found = #hits
+    OT._capped = (#hits > #list)
+    OT._scanMs = otRound((os.clock() - (OT._passT0 or os.clock())) * 1000)
+    OT._lastScan = os.clock()
+    if OT.RefreshList then pcall(OT.RefreshList) end
+    return #hits
+end
+
+-- Tạo định vị mới rải ra nhiều khung hình (mỗi khung tối đa makeBudget vật)
+function OT.DrainPending(quota)
+    local pend = OT._pending
+    if pend == nil or #pend == 0 then return 0 end
+    quota = tonumber(quota) or tonumber(OT.makeBudget) or 8
+    local made = 0
+    while quota > 0 and #pend > 0 do
+        local h = table.remove(pend, 1)
+        if h ~= nil then
+            local okV, alive = pcall(function() return h.inst.Parent ~= nil and h.part.Parent ~= nil end)
+            if okV and alive and OT.items[h.inst] == nil then
+                pcall(OT.Make, h.inst, h.part)
+                made = made + 1
+            end
+        end
+        quota = quota - 1
+    end
+    return made
+end
+
+-- API cũ: quét & chốt NGAY (nút 🔄, gõ tên, test). Chỉ dùng cho hành động người dùng bấm.
+function OT.Rescan(force)
+    if not OT.on and not (force and (#OT.keys > 0 or #(OT.pathKeys or {}) > 0)) then return 0 end
+    if not force and (os.clock() - (OT._lastScan or 0)) < OT.rescanEvery then return OT._found or 0 end
+    pcall(OT.ScanBegin)
+    if not OT._passing then return OT._found or 0 end
+    OT.ScanSlice(1e9, 1e9, true)    -- chạy hết ngay (runToEnd)
+    if OT._passing then OT.ScanFinish() end
+    OT.DrainPending(1e9)            -- tạo hết ngay cho hành động có chủ đích
+    return OT._found or 0
+end
+
+-- Vòng lặp mỗi khung hình: KHÔNG bao giờ làm việc nặng một phát.
+--  • tạo định vị mới: rải ra makeBudget vật / khung hình
+--  • quét: chia lát scanBudget vật, tối đa scanSliceMs mỗi khung hình
+--  • nhãn: xoay vòng labelBudget vật mỗi labelEvery giây
+function OT.Step(dt)
+    local step = tonumber(dt) or 0.016
+    OT._acc = (OT._acc or 0) + step
+    if OT._acc >= OT.labelEvery then
+        OT._acc = 0
+        pcall(OT.Tick)
+    end
+    if OT.on then
+        if OT._pending ~= nil and #OT._pending > 0 then pcall(OT.DrainPending) end
+        if not OT._passing then
+            OT._scanAcc = (OT._scanAcc or 0) + step
+            if OT._scanAcc >= (OT.scanIdle or 2.0) then
+                OT._scanAcc = 0
+                pcall(OT.ScanBegin)
+            end
+        end
+        if OT._passing then pcall(OT.ScanSlice) end   -- quét tiếp lát nữa
+    end
+end
+
+function OT.Bind()
+    if OT._bound then return end
+    OT._bound = true
+    pcall(function()
+        RunService:BindToRenderStep("BC_ObjTrack", Enum.RenderPriority.Camera.Value - 6, function(dt)
+            pcall(OT.Step, dt)
+        end)
+    end)
+end
+
+function OT.Unbind()
+    OT._bound = false
+    pcall(function() RunService:UnbindFromRenderStep("BC_ObjTrack") end)
+end
+
+function OT.Set(on)
+    on = on and true or false
+    if on and #OT.keys == 0 then
+        OT.on = false
+        OT.Unbind()
+        OT.Clear()
+        pcall(function() if S.Move and S.Move.StopObjectFly then S.Move.StopObjectFly() end end)
+        return false, "chưa nhập tên vật (ô 🔎 Tên vật)"
+    end
+    OT.on = on
+    if on then
+        OT.Bind()
+        OT.Rescan(true)
+        return true
+    end
+    OT.Clear()
+    OT.Unbind()
+    -- tắt định vị thì dừng luôn 🚀 bay tới vật (không còn vật để bám theo)
+    pcall(function() if S.Move and S.Move.StopObjectFly then S.Move.StopObjectFly() end end)
+    if OT.RefreshList then pcall(OT.RefreshList) end
+    return false
+end
+
+function OT.Toggle() return OT.Set(not OT.on) end
+
+-- Gõ tên là tự bật định vị (chờ 0,35s sau phím cuối cho khỏi quét liên tục)
+function OT.SetQuery(q)
+    OT.query = tostring(q or "")
+    OT.RebuildKeys()   -- gộp ô nhập đang gõ + các mục đã ghim
+    S.Debounce("objtrack", 0.35, function()
+        if #OT.keys == 0 and #(OT.pathKeys or {}) == 0 then
+            if OT.on then OT.Set(false) end
+            OT.Clear()
+            if OT.RefreshList then pcall(OT.RefreshList) end
+            return
+        end
+        OT.on = true
+        OT.Bind()
+        local n = OT.Rescan(true)
+        if n == 0 then
+            pcall(function()
+                if D.Say then
+                    D.Say("⚠️ không thấy vật nào khớp \"" .. tostring(OT.query) .. "\" — thử tên ngắn hơn (VD: cây)", C.RED)
+                end
+            end)
+        end
+        if OT.RefreshList then pcall(OT.RefreshList) end
+    end)
+    return OT.keys
+end
+
+function OT.SetMaxDist(n)
+    local v = tonumber(n) or 0
+    if v ~= v or v < 0 then v = 0 end
+    if v > 100000 then v = 100000 end
+    OT.maxDist = v
+    if OT.on then OT.Rescan(true) end
+    return OT.maxDist
+end
+
+function OT.CycleColor()
+    OT.color = ((tonumber(OT.color) or 1) % #OT.palette) + 1
+    OT.ApplyStyle()
+    return OT.Pal().name
+end
+
+function OT.ApplyStyle()
+    local pal = OT.Pal()
+    for _, it in pairs(OT.items) do
+        if it.hl then
+            it.hl.FillColor = pal.fill
+            it.hl.OutlineColor = pal.out
+            pcall(function()
+                it.hl.DepthMode = OT.thru and Enum.HighlightDepthMode.AlwaysOnTop or Enum.HighlightDepthMode.Occluded
+            end)
+        end
+        if it.bb then
+            it.bb.AlwaysOnTop = OT.thru
+            it.bb.Enabled = OT.showLabel
+        end
+        if it.lbl then it.lbl.TextColor3 = pal.out end
+        if OT.showBox and it.box == nil and it.part then
+            it.box = OT._MakeBox(it.part, pal)
+        elseif it.box then
+            it.box.Visible = OT.showBox
+            it.box.Color3 = pal.fill
+        end
+    end
+end
+
+function OT.Nearest()
+    local best, bestH = nil, nil
+    for i = 1, #OT.list do
+        local h = OT.list[i]
+        if h.part and h.part.Parent and h.inst.Parent then
+            if best == nil or h.dist < best then best, bestH = h.dist, h end
+        end
+    end
+    return bestH and bestH.inst or nil, bestH
+end
+
+function OT.Status()
+    if #OT.keys == 0 and #(OT.pathKeys or {}) == 0 then return "🌳 Định vị vật: chưa nhập tên" end
+    local n = 0
+    for _ in pairs(OT.items) do n = n + 1 end
+    if n == 0 and (OT._found or 0) == 0 then
+        return "⚠️ không thấy vật nào khớp \"" .. tostring(OT.query)
+            .. "\" (đã quét " .. tostring(OT._scanned or 0)
+            .. " vật) — thử tên ngắn hơn (VD: cây) hoặc dán đúng path"
+    end
+    local t = "🌳 " .. table.concat(OT.keys, " + ")
+    if #OT.entries > 0 then t = t .. " （" .. #OT.entries .. " mục đã ghim）" end
+    t = t .. " · theo " .. n .. "/" .. (OT._found or 0) .. " vật"
+    if (OT._skipped or 0) > 0 then t = t .. " (gộp " .. OT._skipped .. " part con)" end
+    if OT._capped then t = t .. " (gần nhất " .. tostring(OT.maxItems) .. ")" end
+    if OT.maxDist > 0 then t = t .. " · ≤" .. otRound(OT.maxDist) .. "m" end
+    if (OT._scanMs or 0) > 0 then t = t .. " · quét " .. OT._scanMs .. "ms" end
+    if S.Move and S.Move._objFlyActive and S.Move._objFlyTarget then
+        t = t .. " · 🚀 bay tới " .. tostring(S.Move._objFlyTarget.Name)
+    end
+    if OT._err then t = t .. " · ⚠️ " .. OT._err end
+    return t
+end
+
+function OT.OnFlyChange()
+    if OT.RefreshList then pcall(OT.RefreshList) end
+end
+end
+
+-- ---------- 🌳 KHUNG ĐỊNH VỊ VẬT THEO TÊN (trong trang 👥 NGƯỜI CHƠI) ----------
+do
+    local OT = S.ObjTrack
+    local function otRound(n) return math.floor((tonumber(n) or 0) + 0.5) end
+    local function otAlive(inst) return inst ~= nil and inst.Parent ~= nil end
+    local P = New("Frame", {
+        Name = "HubObjTrack_Panel",
+        Size = UDim2.new(1, -16, 0, 452),
+        Position = UDim2.new(0, 8, 0, D.playerY or 46),
+        LayoutOrder = 4,
+        BackgroundColor3 = C.SURFACE, BackgroundTransparency = 0.12, BorderSizePixel = 0, ZIndex = 6,
+    }, D.playerTab)
+    D.playerY = (D.playerY or 46) + 452 + 8
+    Corner(P, UDim.new(0, 10))
+    Stroke(P, C.HAIRLINE, 1)
+    D.Shade(P, Color3.fromRGB(255, 255, 255), Color3.fromRGB(188, 192, 205), 90)
+
+    New("TextLabel", {
+        Size = UDim2.new(1, -16, 0, 14), Position = UDim2.new(0, 8, 0, 4),
+        Text = "🌳 ĐỊNH VỊ VẬT THEO TÊN (nhập tên là thấy MỌI vật khớp · bám theo vật đang di chuyển)",
+        BackgroundTransparency = 1, TextColor3 = C.ACCENT, Font = Enum.Font.GothamBold, TextSize = 10,
+        TextXAlignment = Enum.TextXAlignment.Left, ZIndex = 7,
+    }, P)
+    New("TextLabel", {
+        Size = UDim2.new(1, -16, 0, 22), Position = UDim2.new(0, 8, 0, 20),
+        Text = "Gõ tên vật vào ô 🔎 (VD: cây, đá, rương). Nhiều tên thì cách nhau dấu phẩy. Giống tên không cần dấu: gõ "
+            .. "\"cay\" vẫn khớp \"Cây\". Bấm Enter (hoặc ➕ Thêm mục) để GHIM lại thành 1 mục — ghim được "
+            .. "NHIỀU mục cùng lúc, mỗi mục có nút ✕ để xoá riêng. Vật mới xuất hiện hay bị xoá đều tự cập nhật.",
+        TextWrapped = true, BackgroundTransparency = 1, TextColor3 = C.MUTED,
+        Font = Enum.Font.GothamMedium, TextSize = 8, TextXAlignment = Enum.TextXAlignment.Left,
+        TextYAlignment = Enum.TextYAlignment.Top, ZIndex = 7,
+    }, P)
+
+    local function otAct(txt, x, y, w, color)
+        local b = New("TextButton", {
+            Size = UDim2.new(0, w, 0, 22), Position = UDim2.new(0, x, 0, y),
+            Text = txt, BackgroundColor3 = color, TextColor3 = D.BestText(color),
+            Font = Enum.Font.GothamBold, TextSize = 9, BorderSizePixel = 0, ZIndex = 8,
+        }, P)
+        Corner(b, UDim.new(0, 6))
+        D.Shade(b, Color3.fromRGB(255, 255, 255), Color3.fromRGB(182, 187, 201), 90)
+        D.Tactile(b, 0.08)
+        return b
+    end
+    local function otLab(txt, x, y, w)
+        New("TextLabel", {
+            Size = UDim2.new(0, w, 0, 22), Position = UDim2.new(0, x, 0, y),
+            Text = txt, BackgroundTransparency = 1, TextColor3 = C.MUTED,
+            Font = Enum.Font.GothamMedium, TextSize = 9,
+            TextXAlignment = Enum.TextXAlignment.Left, ZIndex = 7,
+        }, P)
+    end
+    local function otInput(txt, x, y, w, ph)
+        local box = New("TextBox", {
+            Size = UDim2.new(0, w, 0, 22), Position = UDim2.new(0, x, 0, y),
+            Text = txt, PlaceholderText = ph or "", ClearTextOnFocus = false,
+            BackgroundColor3 = C.SURFACE2, BackgroundTransparency = 0.1, TextColor3 = C.DARK,
+            PlaceholderColor3 = C.GRAY, Font = Enum.Font.GothamMedium, TextSize = 9,
+            TextXAlignment = Enum.TextXAlignment.Left, BorderSizePixel = 0, ZIndex = 7,
+        }, P)
+        Corner(box, UDim.new(0, 6))
+        New("UIPadding", { PaddingLeft = UDim.new(0, 6) }, box)
+        return box
+    end
+
+    otLab("🔎 Tên vật:", 8, 46, 66)
+    local queryIn = otInput(S.ObjTrack.query or "", 76, 46, 246, "VD: cây, đá, rương...")
+    local toggleBtn = otAct("🌳 Định vị: TẮT", 330, 46, 140, C.GREEN)
+    local rescanBtn = otAct("🔄 Quét lại", 478, 46, 118, C.BLUE)
+
+    local boxBtn = otAct("🔲 Hộp: TẮT", 8, 74, 88, C.SURFACE3)
+    local thruBtn = otAct("🕶 Xuyên tường: BẬT", 100, 74, 136, C.GREEN)
+    local labelBtn = otAct("💬 Nhãn: BẬT", 240, 74, 98, C.GREEN)
+    local colorBtn = otAct("🎨 " .. S.ObjTrack.Pal().name, 342, 74, 148, C.PURPLE)
+    local clearBtn = otAct("🧹 Xoá hết", 494, 74, 102, C.RED)
+
+    otLab("📏 Xa nhất:", 8, 102, 66)
+    local distIn = otInput(S.ObjTrack.maxDist > 0 and tostring(S.ObjTrack.maxDist) or "0", 74, 102, 46, "0")
+    local distApply = otAct("✅ Đặt", 126, 102, 52, C.SURFACE3)
+    local flyBtn = otAct("🚀 Bay tới gần nhất", 186, 102, 142, C.ACCENT)
+    local flyStop = otAct("⏹ Dừng bay", 334, 102, 84, C.SURFACE3)
+    otLab("🚀 Tốc độ:", 424, 102, 66)
+    local speedIn = otInput(tostring(S.Move.objectFlySpeed or 60), 492, 102, 48, "60")
+    local speedApply = otAct("✅", 546, 102, 50, C.GREEN)
+
+    local statusLbl = New("TextLabel", {
+        Size = UDim2.new(1, -16, 0, 16), Position = UDim2.new(0, 8, 0, 128),
+        Text = S.ObjTrack.Status(), BackgroundTransparency = 1, TextColor3 = C.ACCENT,
+        Font = Enum.Font.GothamBold, TextSize = 9,
+        TextXAlignment = Enum.TextXAlignment.Left, ZIndex = 7,
+    }, P)
+    local xyzBtn = otAct("🧭 Nhãn toạ độ: BẬT", 8, 146, 168, C.GREEN)
+    local skipBtn = otAct("🚫 Bỏ qua người chơi: BẬT", 180, 146, 190, C.GREEN)
+    -- ➕ Hàng "MỤC ĐANG CHẠY": ghim nhiều tên/path, mỗi mục bấm ✕ để xoá riêng
+    S.ObjTrack.BuildTagsUI = function()
+        local tagsY = 172
+        local addBtn = otAct("➕ Thêm mục", 8, tagsY, 118, C.ACCENT)
+        addBtn.Name = "OTAdd"
+        local tags = New("ScrollingFrame", {
+            Name = "OTTags",
+            Size = UDim2.new(1, -142, 0, 28), Position = UDim2.new(0, 130, 0, tagsY),
+            BackgroundColor3 = C.SURFACE2, BackgroundTransparency = 0.25, BorderSizePixel = 0,
+            ScrollBarThickness = 3, CanvasSize = UDim2.new(0, 0, 0, 0), ZIndex = 7,
+            ScrollingDirection = Enum.ScrollingDirection.X,
+        }, P)
+        Corner(tags, UDim.new(0, 6))
+        New("UIListLayout", {
+            Padding = UDim.new(0, 4), FillDirection = Enum.FillDirection.Horizontal,
+            SortOrder = Enum.SortOrder.LayoutOrder, VerticalAlignment = Enum.VerticalAlignment.Center,
+        }, tags)
+        New("UIPadding", { PaddingLeft = UDim.new(0, 6), PaddingRight = UDim.new(0, 6), PaddingTop = UDim.new(0, 5) }, tags)
+
+        local function refreshTags()
+            if not (tags and tags.Parent) then return end
+            local entries = S.ObjTrack.entries or {}
+            local sig = {}
+            for i = 1, #entries do sig[i] = tostring(entries[i].kind) .. ":" .. tostring(entries[i].raw) end
+            sig = table.concat(sig, "|")
+            if sig == S.ObjTrack._tagSig then return end     -- không đổi thì khỏi dựng lại
+            S.ObjTrack._tagSig = sig
+            for _, ch in ipairs(tags:GetChildren()) do
+                if not ch:IsA("UIListLayout") and not ch:IsA("UIPadding") then
+                    pcall(function() ch:Destroy() end)
+                end
+            end
+            if #entries == 0 then
+                New("TextLabel", {
+                    Name = "OTTagHint", Size = UDim2.new(1, -8, 0, 16),
+                    Text = "chưa ghim mục nào — gõ tên/path rồi Enter (hoặc bấm ➕ Thêm mục) để chạy NHIỀU mục cùng lúc",
+                    BackgroundTransparency = 1, TextColor3 = C.MUTED, Font = Enum.Font.GothamMedium,
+                    TextSize = 8, TextXAlignment = Enum.TextXAlignment.Left, ZIndex = 8,
+                }, tags)
+                pcall(function() tags.CanvasSize = UDim2.new(0, 0, 0, 0) end)
+                return
+            end
+            local w = 0
+            for i = 1, #entries do
+                local e = entries[i]
+                local txt = tostring(e.raw)
+                local short = (#txt > 30) and (txt:sub(1, 27) .. "...") or txt
+                local label = ((e.kind == "path") and "📁 " or "🏷 ") .. short
+                local width = math.max(60, math.min(240, 30 + #label * 5))
+                local bg = (e.kind == "path") and C.BLUE or C.SURFACE3
+                local tag = New("TextButton", {
+                    Name = "OTTag_" .. tostring(i),
+                    Size = UDim2.new(0, width, 0, 18), LayoutOrder = i,
+                    Text = "✕ " .. label, BackgroundColor3 = bg, TextColor3 = D.BestText(bg),
+                    Font = Enum.Font.GothamBold, TextSize = 8, BorderSizePixel = 0, ZIndex = 8,
+                    TextTruncate = Enum.TextTruncate.AtEnd,
+                }, tags)
+                Corner(tag, UDim.new(0, 5)); D.Tactile(tag, 0.08)
+                tag.Activated:Connect(function()
+                    ReleaseHubFocus()
+                    local okR, raw = S.ObjTrack.RemoveEntry(i)
+                    if okR then
+                        D.Say("🗑 đã xoá mục '" .. tostring(raw) .. "' — các mục còn lại vẫn chạy", C.YELLOW)
+                    else
+                        D.Say("⚠️ " .. tostring(raw), C.RED)
+                    end
+                    pcall(S.ObjTrack.RefreshTags)
+                    pcall(S.ObjTrack.RefreshList)
+                end)
+                w = w + width + 4
+            end
+            pcall(function() tags.CanvasSize = UDim2.new(0, w + 20, 0, 0) end)
+        end
+        S.ObjTrack.RefreshTags = refreshTags
+
+        addBtn.Activated:Connect(function()
+            ReleaseHubFocus()
+            local raw = tostring(queryIn.Text or "")
+            local okA, kindOrWhy = S.ObjTrack.AddEntry(raw)
+            if okA then
+                queryIn.Text = ""
+                S.ObjTrack.SetQuery("")
+                D.Say("➕ đã thêm mục '" .. raw .. "' — đang chạy cùng " ..
+                      tostring(#S.ObjTrack.entries) .. " mục", C.GREEN)
+            else
+                D.Say("⚠️ " .. tostring(kindOrWhy), C.RED)
+            end
+            pcall(S.ObjTrack.RefreshTags)
+            pcall(S.ObjTrack.RefreshList)
+        end)
+    end
+    S.ObjTrack.BuildTagsUI()
+
+    local list = New("ScrollingFrame", {
+        Name = "ObjTrackList", Size = UDim2.new(1, -16, 0, 84), Position = UDim2.new(0, 8, 0, 206),
+        BackgroundTransparency = 1, BorderSizePixel = 0, ScrollBarThickness = 4,
+        CanvasSize = UDim2.new(0, 0, 0, 0), ZIndex = 7,
+    }, P)
+    New("UIListLayout", { Padding = UDim.new(0, 3), SortOrder = Enum.SortOrder.LayoutOrder }, list)
+
+    -- 🎯 Khung thông tin vật đang chọn — y hệt khung "🎯 VẬT THỂ ĐƯỢC CHỌN" của phần
+    -- "Phân Tích Vật Thể": Name/Class/Position/Size/Rotation/Look/Material/Color/Path,
+    -- cập nhật theo vật đang chuyển động + 2 nút Copy Tọa Độ / Copy Path.
+    -- (gói trong 1 hàm riêng: mỗi hàm chỉ được 200 local — xem chú thích ở tests/luau/README.md)
+    -- Gán vào field của bảng thay vì "local function ...": KHÔNG chiếm slot local của khối này.
+    S.ObjTrack.BuildInfoUI = function()
+    local info = New("Frame", {
+        Name = "OTInfo",
+        Size = UDim2.new(1, -16, 0, 148), Position = UDim2.new(0, 8, 0, 296),
+        BackgroundColor3 = Color3.fromRGB(20, 25, 35), BackgroundTransparency = 0,
+        BorderSizePixel = 0, ZIndex = 7, Visible = false,
+    }, P)
+    Corner(info, UDim.new(0, 6))
+    Stroke(info, C.BLUE, 1.5)
+    New("TextLabel", {
+        Size = UDim2.new(1, -16, 0, 16), Position = UDim2.new(0, 8, 0, 4),
+        Text = "🎯 VẬT THỂ ĐƯỢC CHỌN (giống khung phân tích toạ độ — bấm 📊 ở danh sách)",
+        TextColor3 = Color3.fromRGB(150, 210, 255), Font = Enum.Font.GothamBold, TextSize = 9,
+        BackgroundTransparency = 1, TextXAlignment = Enum.TextXAlignment.Left, ZIndex = 8,
+    }, info)
+    local infoLbl = New("TextLabel", {
+        Size = UDim2.new(1, -16, 0, 104), Position = UDim2.new(0, 8, 0, 22),
+        Text = "bấm 📊 ở 1 dòng trong danh sách để xem toạ độ vật đó",
+        TextColor3 = Color3.fromRGB(255, 255, 255), Font = Enum.Font.Code, TextSize = 10,
+        BackgroundTransparency = 1, TextXAlignment = Enum.TextXAlignment.Left,
+        TextYAlignment = Enum.TextYAlignment.Top, TextWrapped = true, ZIndex = 8,
+    }, info)
+    local copyPosBtn = New("TextButton", {
+        Size = UDim2.new(0, 120, 0, 18), Position = UDim2.new(0, 8, 0, 128),
+        Text = "📋 Copy Tọa Độ", BackgroundColor3 = C.BLUE, TextColor3 = D.BestText(C.BLUE),
+        Font = Enum.Font.GothamBold, TextSize = 8, BorderSizePixel = 0, ZIndex = 9,
+    }, info)
+    Corner(copyPosBtn, UDim.new(0, 4)); D.Tactile(copyPosBtn, 0.08)
+    local copyPathBtn = New("TextButton", {
+        Size = UDim2.new(0, 120, 0, 18), Position = UDim2.new(0, 134, 0, 128),
+        Text = "📋 Copy Path", BackgroundColor3 = C.PURPLE, TextColor3 = D.BestText(C.PURPLE),
+        Font = Enum.Font.GothamBold, TextSize = 8, BorderSizePixel = 0, ZIndex = 9,
+    }, info)
+    Corner(copyPathBtn, UDim.new(0, 4)); D.Tactile(copyPathBtn, 0.08)
+
+    local function refreshInfo()
+        local sel, part = OT._sel, OT._selPart
+        if sel == nil or not otAlive(sel) then
+            OT._sel, OT._selPart = nil, nil
+            info.Visible = false
+            return
+        end
+        if part == nil or not otAlive(part) then
+            part = OT.PartOf(sel)
+            OT._selPart = part
+        end
+        local rows = OT.Info(sel, part)
+        local out = {}
+        for i = 1, #rows do out[i] = rows[i].k .. ": " .. rows[i].v end
+        local txt = table.concat(out, "\n")
+        if infoLbl.Text ~= txt then infoLbl.Text = txt end   -- chỉ ghi khi số liệu đổi
+        info.Visible = true
+    end
+    OT.RefreshInfo = refreshInfo
+    infoLbl.Name, copyPosBtn.Name, copyPathBtn.Name = "OTInfoLbl", "OTCopyPos", "OTCopyPath"
+
+    copyPosBtn.Activated:Connect(function()
+        ReleaseHubFocus()
+        local did, txt = OT.CopyCoords()
+        D.Say(did and ("📋 đã copy toạ độ: " .. tostring(txt)) or ("⚠️ " .. tostring(txt)),
+              did and C.GREEN or C.RED)
+    end)
+    copyPathBtn.Activated:Connect(function()
+        ReleaseHubFocus()
+        local did, txt = OT.CopyPath()
+        D.Say(did and ("📋 đã copy path: " .. tostring(txt)) or ("⚠️ " .. tostring(txt)),
+              did and C.GREEN or C.RED)
+    end)
+    end
+    S.ObjTrack.BuildInfoUI()
+
+    -- đặt tên control để dễ soi lỗi / kiểm thử tự động
+    queryIn.Name, toggleBtn.Name, rescanBtn.Name = "OTQuery", "OTToggle", "OTRescan"
+    statusLbl.Name, clearBtn.Name = "OTStatus", "OTClear"
+    xyzBtn.Name, skipBtn.Name = "OTXyz", "OTSkip"
+
+    local function paint()
+        toggleBtn.Text = OT.on and "🌳 Định vị: BẬT" or "🌳 Định vị: TẮT"
+        toggleBtn.BackgroundColor3 = OT.on and C.GREEN or C.SURFACE3
+        toggleBtn.TextColor3 = D.BestText(toggleBtn.BackgroundColor3)
+        boxBtn.Text = OT.showBox and "🔲 Hộp: BẬT" or "🔲 Hộp: TẮT"
+        boxBtn.BackgroundColor3 = OT.showBox and C.GREEN or C.SURFACE3
+        boxBtn.TextColor3 = D.BestText(boxBtn.BackgroundColor3)
+        thruBtn.Text = OT.thru and "🕶 Xuyên tường: BẬT" or "🕶 Xuyên tường: TẮT"
+        thruBtn.BackgroundColor3 = OT.thru and C.GREEN or C.SURFACE3
+        thruBtn.TextColor3 = D.BestText(thruBtn.BackgroundColor3)
+        labelBtn.Text = OT.showLabel and "💬 Nhãn: BẬT" or "💬 Nhãn: TẮT"
+        labelBtn.BackgroundColor3 = OT.showLabel and C.GREEN or C.SURFACE3
+        labelBtn.TextColor3 = D.BestText(labelBtn.BackgroundColor3)
+        colorBtn.Text = "🎨 " .. OT.Pal().name
+        xyzBtn.Text = OT.showXYZ and "🧭 Nhãn toạ độ: BẬT" or "🧭 Nhãn toạ độ: TẮT"
+        xyzBtn.BackgroundColor3 = OT.showXYZ and C.GREEN or C.SURFACE3
+        xyzBtn.TextColor3 = D.BestText(xyzBtn.BackgroundColor3)
+        skipBtn.Text = OT.skipPlayers and "🚫 Bỏ qua người chơi: BẬT" or "🚫 Bỏ qua người chơi: TẮT"
+        skipBtn.BackgroundColor3 = OT.skipPlayers and C.GREEN or C.SURFACE3
+        skipBtn.TextColor3 = D.BestText(skipBtn.BackgroundColor3)
+        local flying = (S.Move and S.Move._objFlyActive == true)
+        flyStop.BackgroundColor3 = flying and C.RED or C.SURFACE3
+        flyStop.TextColor3 = D.BestText(flyStop.BackgroundColor3)
+        statusLbl.Text = OT.Status()
+        statusLbl.TextColor3 = OT.on and C.GREEN or C.ACCENT
+    end
+
+    S.ObjTrack.RefreshList = function()
+        if not (list and list.Parent) then return end
+        if not (D.playerTab and D.playerTab.Visible) then return end
+        local shown = math.max(0, math.min(#OT.list, tonumber(OT.showRows) or 8))
+        local sigParts = {}
+        for i = 1, shown do
+            local h = OT.list[i]
+            sigParts[i] = tostring(h.inst.Name) .. "|" .. tostring(h.inst)
+        end
+        local sig = table.concat(sigParts, "#")
+        if #OT.list == 0 then sig = "EMPTY:" .. tostring(OT.query) .. ":" .. tostring(OT._scanned or 0) end
+        if sig ~= OT._rowSig then
+            OT._rowSig = sig
+            for _, child in ipairs(list:GetChildren()) do
+                if not child:IsA("UIListLayout") then pcall(function() child:Destroy() end) end
+            end
+            if #OT.list == 0 then
+                -- nói rõ vì sao trống, thay vì để người dùng tưởng tính năng hỏng
+                New("TextLabel", {
+                    Name = "OTEmpty",
+                    Size = UDim2.new(1, 0, 0, 60), LayoutOrder = 1,
+                    Text = "⚠️ Không có vật nào khớp \"" .. tostring(OT.query) .. "\"\n"
+                        .. "Đã quét " .. tostring(OT._scanned or 0) .. " vật trong Workspace.\n"
+                        .. "Thử tên ngắn hơn (VD: cây) hoặc dán đúng Path (VD: Workspace.Rừng Cây).",
+                    TextWrapped = true, BackgroundColor3 = C.SURFACE2, BackgroundTransparency = 0.15,
+                    TextColor3 = C.RED, Font = Enum.Font.GothamMedium, TextSize = 9,
+                    BorderSizePixel = 0, ZIndex = 8, TextXAlignment = Enum.TextXAlignment.Left,
+                }, list)
+            end
+            for i = 1, shown do
+                local h = OT.list[i]
+                local inst = h.inst
+                local row = New("Frame", {
+                    Name = "OTRow_" .. tostring(i),
+                    Size = UDim2.new(1, 0, 0, 26), LayoutOrder = i,
+                    BackgroundColor3 = C.SURFACE2, BackgroundTransparency = 0.18,
+                    BorderSizePixel = 0, ZIndex = 8,
+                }, list)
+                Corner(row, UDim.new(0, 6))
+                Stroke(row, (S.Move and S.Move._objFlyTarget == inst) and C.ACCENT or C.BORDER, 1)
+                New("TextLabel", {
+                    Name = "OTName",
+                    Size = UDim2.new(1, -250, 1, 0), Position = UDim2.new(0, 7, 0, 0),
+                    Text = string.format("#%d  %s  (%s, %dm)", i, tostring(inst.Name),
+                        tostring(inst.ClassName or "?"), otRound(h.dist)),
+                    BackgroundTransparency = 1, TextColor3 = C.DARK, Font = Enum.Font.GothamBold,
+                    TextSize = 8, TextXAlignment = Enum.TextXAlignment.Left, ZIndex = 9,
+                }, row)
+                local infoRow = New("TextButton", {
+                    Name = "OTInfoRow",
+                    Size = UDim2.new(0, 56, 0, 20), Position = UDim2.new(1, -244, 0, 3),
+                    Text = "📊 Xem", BackgroundColor3 = C.BLUE, TextColor3 = D.BestText(C.BLUE),
+                    Font = Enum.Font.GothamBold, TextSize = 8, BorderSizePixel = 0, ZIndex = 9,
+                }, row)
+                Corner(infoRow, UDim.new(0, 5)); D.Tactile(infoRow, 0.08)
+                infoRow.Activated:Connect(function()
+                    ReleaseHubFocus()
+                    S.ObjTrack.Select(inst)
+                    D.Say("📊 đang xem '" .. tostring(inst.Name) .. "' — số liệu cập nhật theo vật", C.BLUE)
+                    pcall(S.ObjTrack.RefreshList)
+                end)
+                local flyRow = New("TextButton", {
+                    Name = "OTFlyRow",
+                    Size = UDim2.new(0, 84, 0, 20), Position = UDim2.new(1, -176, 0, 3),
+                    Text = "🚀 Bay", BackgroundColor3 = C.ACCENT, TextColor3 = D.BestText(C.ACCENT),
+                    Font = Enum.Font.GothamBold, TextSize = 8, BorderSizePixel = 0, ZIndex = 9,
+                }, row)
+                Corner(flyRow, UDim.new(0, 5)); D.Tactile(flyRow, 0.08)
+                flyRow.Activated:Connect(function()
+                    ReleaseHubFocus()
+                    local ok, res = S.Move.FlyToObject(inst)
+                    if ok then
+                        D.Say("🚀 đang bay tới '" .. tostring(inst.Name) .. "' · bấm ⏹ Dừng bay để dừng", C.GREEN)
+                    else
+                        D.Say("⚠️ " .. tostring(res), C.RED)
+                    end
+                    pcall(S.ObjTrack.RefreshList)
+                end)
+                local copyRow = New("TextButton", {
+                    Name = "OTCopyRow",
+                    Size = UDim2.new(0, 86, 0, 20), Position = UDim2.new(1, -88, 0, 3),
+                    Text = "📋 Tên", BackgroundColor3 = C.SURFACE3, TextColor3 = D.BestText(C.SURFACE3),
+                    Font = Enum.Font.GothamBold, TextSize = 8, BorderSizePixel = 0, ZIndex = 9,
+                }, row)
+                Corner(copyRow, UDim.new(0, 5)); D.Tactile(copyRow, 0.08)
+                copyRow.Activated:Connect(function()
+                    ReleaseHubFocus()
+                    local did = S.CopyToClipboard(tostring(inst.Name))
+                    D.Say(did and ("📋 đã copy tên '" .. tostring(inst.Name) .. "'")
+                              or "⚠️ executor không có setclipboard", did and C.GREEN or C.RED)
+                end)
+            end
+            pcall(function() list.CanvasSize = UDim2.new(0, 0, 0, math.max(0, shown * 29)) end)
+        end
+        paint()
+    end
+
+    S.OpenObjectPanel = function()
+        local ok = S.OpenPlayerTab and S.OpenPlayerTab() or false
+        if S.ObjTrack.RefreshTags then pcall(S.ObjTrack.RefreshTags) end
+        pcall(S.ObjTrack.RefreshList)
+        return ok
+    end
+    S.ObjTrack.Focus = function()
+        if S.OpenObjectPanel then pcall(S.OpenObjectPanel) end
+        pcall(function() if queryIn and queryIn.Parent then queryIn:CaptureFocus() end end)
+    end
+
+    queryIn:GetPropertyChangedSignal("Text"):Connect(function()
+        S.ObjTrack.SetQuery(queryIn.Text)
+    end)
+    queryIn.FocusLost:Connect(function(enterPressed)
+        ReleaseHubFocus()
+        if enterPressed then
+            -- Enter = GHIM mục này lại (chạy chung với các mục khác), không thay thế mục cũ
+            local raw = tostring(queryIn.Text or "")
+            local okA, kindOrWhy = S.ObjTrack.AddEntry(raw)
+            if okA then
+                queryIn.Text = ""
+                S.ObjTrack.SetQuery("")
+                D.Say("➕ đã ghim mục '" .. raw .. "' (Enter) — đang chạy cùng " ..
+                      tostring(#S.ObjTrack.entries) .. " mục", C.GREEN)
+            else
+                D.Say("⚠️ " .. tostring(kindOrWhy), C.RED)
+            end
+            pcall(S.ObjTrack.RefreshTags)
+            pcall(S.ObjTrack.RefreshList)
+            return
+        end
+        S.ObjTrack.SetQuery(queryIn.Text)
+        pcall(S.ObjTrack.RefreshList)
+    end)
+    toggleBtn.Activated:Connect(function()
+        ReleaseHubFocus()
+        local ok, why = S.ObjTrack.Toggle()
+        if ok == false and why then
+            D.Say("⚠️ " .. tostring(why), C.RED)
+        else
+            D.Say(S.ObjTrack.Status(), ok and C.GREEN or C.YELLOW)
+        end
+        pcall(S.ObjTrack.RefreshList)
+    end)
+    rescanBtn.Activated:Connect(function()
+        ReleaseHubFocus()
+        if #S.ObjTrack.keys == 0 then
+            D.Say("⚠️ nhập tên vật trước đã (VD: cây)", C.RED)
+        else
+            local n = S.ObjTrack.Rescan(true)
+            D.Say("🔄 quét lại: thấy " .. tostring(n) .. " vật khớp · " .. S.ObjTrack.Status(), C.ACCENT)
+        end
+        pcall(S.ObjTrack.RefreshList)
+    end)
+    boxBtn.Activated:Connect(function()
+        ReleaseHubFocus()
+        S.ObjTrack.showBox = not S.ObjTrack.showBox
+        S.ObjTrack.ApplyStyle()
+        D.Say(S.ObjTrack.showBox and "🔲 hộp bao quanh vật: BẬT" or "🔲 hộp bao quanh vật: TẮT", C.YELLOW)
+        pcall(S.ObjTrack.RefreshList)
+    end)
+    thruBtn.Activated:Connect(function()
+        ReleaseHubFocus()
+        S.ObjTrack.thru = not S.ObjTrack.thru
+        S.ObjTrack.ApplyStyle()
+        D.Say(S.ObjTrack.thru and "🕶 xuyên tường: BẬT (thấy cả vật sau tường)" or "🕶 xuyên tường: TẮT", C.YELLOW)
+        pcall(S.ObjTrack.RefreshList)
+    end)
+    labelBtn.Activated:Connect(function()
+        ReleaseHubFocus()
+        S.ObjTrack.showLabel = not S.ObjTrack.showLabel
+        S.ObjTrack.ApplyStyle()
+        D.Say(S.ObjTrack.showLabel and "💬 nhãn tên + khoảng cách: BẬT" or "💬 nhãn: TẮT (chỉ còn Highlight)", C.YELLOW)
+        pcall(S.ObjTrack.RefreshList)
+    end)
+    colorBtn.Activated:Connect(function()
+        ReleaseHubFocus()
+        local name = S.ObjTrack.CycleColor()
+        D.Say("🎨 màu định vị: " .. tostring(name), C.ACCENT)
+        pcall(S.ObjTrack.RefreshList)
+    end)
+    clearBtn.Activated:Connect(function()
+        ReleaseHubFocus()
+        local n = 0
+        for _ in pairs(S.ObjTrack.items) do n = n + 1 end
+        local nE = #(S.ObjTrack.entries or {})
+        S.ObjTrack.ClearEntries()
+        S.ObjTrack.Set(false)
+        D.Say("🧹 đã xoá " .. tostring(n) .. " định vị vật + " .. tostring(nE) .. " mục đã ghim", C.GREEN)
+        pcall(S.ObjTrack.RefreshList)
+    end)
+    distApply.Activated:Connect(function()
+        ReleaseHubFocus()
+        local n = tonumber(tostring(distIn.Text or ""):match("%-?%d+%.?%d*")) or 0
+        local v = S.ObjTrack.SetMaxDist(n)
+        distIn.Text = tostring(otRound(v))
+        D.Say(v > 0 and ("📏 chỉ định vị vật trong " .. otRound(v) .. "m") or "📏 không giới hạn khoảng cách",
+              C.ACCENT)
+        pcall(S.ObjTrack.RefreshList)
+    end)
+    distIn.FocusLost:Connect(function()
+        ReleaseHubFocus()
+        local n = tonumber(tostring(distIn.Text or ""):match("%-?%d+%.?%d*")) or 0
+        distIn.Text = tostring(otRound(S.ObjTrack.SetMaxDist(n)))
+        pcall(S.ObjTrack.RefreshList)
+    end)
+    flyBtn.Activated:Connect(function()
+        ReleaseHubFocus()
+        local target = select(1, S.ObjTrack.Nearest())
+        if not target then
+            D.Say("⚠️ chưa có vật nào đang định vị — nhập tên vật trước", C.RED)
+        else
+            local ok, res = S.Move.FlyToObject(target)
+            if ok then
+                D.Say("🚀 đang bay tới '" .. tostring(target.Name) .. "' · bấm ⏹ Dừng bay để dừng", C.GREEN)
+            else
+                D.Say("⚠️ " .. tostring(res), C.RED)
+            end
+        end
+        pcall(S.ObjTrack.RefreshList)
+    end)
+    flyStop.Activated:Connect(function()
+        ReleaseHubFocus()
+        S.Move.StopObjectFly()
+        D.Say("⏹ đã dừng bay tới vật", C.YELLOW)
+        pcall(S.ObjTrack.RefreshList)
+    end)
+    speedApply.Activated:Connect(function()
+        ReleaseHubFocus()
+        local n = tonumber(tostring(speedIn.Text or ""):match("%-?%d+%.?%d*")) or 60
+        local ok, value = S.Move.SetObjectFlySpeed(n)
+        if ok then
+            speedIn.Text = tostring(value)
+            D.Say("🚀 tốc độ bay tới vật: " .. tostring(value), C.GREEN)
+        else
+            D.Say("⚠️ " .. tostring(value), C.RED)
+        end
+    end)
+    speedIn.FocusLost:Connect(function()
+        ReleaseHubFocus()
+        speedIn.Text = tostring(S.Move.objectFlySpeed or 60)
+    end)
+
+    skipBtn.Activated:Connect(function()
+        ReleaseHubFocus()
+        OT.skipPlayers = not OT.skipPlayers
+        if OT.on then pcall(OT.Rescan, true) end
+        D.Say(OT.skipPlayers and "🚫 bỏ qua nhân vật người chơi: BẬT" or "🚫 bỏ qua nhân vật người chơi: TẮT", C.YELLOW)
+        pcall(S.ObjTrack.RefreshList)
+    end)
+    xyzBtn.Activated:Connect(function()
+        ReleaseHubFocus()
+        OT.showXYZ = not OT.showXYZ
+        pcall(OT.Tick)
+        D.Say(OT.showXYZ and "🧭 hiện toạ độ X/Y/Z trên nhãn: BẬT" or "🧭 hiện toạ độ trên nhãn: TẮT", C.YELLOW)
+        pcall(S.ObjTrack.RefreshList)
+    end)
+    paint()
+    pcall(S.ObjTrack.RefreshList)
+    pcall(function()
+        if D.playerTab then D.playerTab.CanvasSize = UDim2.new(0, 0, 0, (D.playerY or 600) + 16) end
+    end)
+end
+
+_G.BananaCatHub_ObjTrack = S.ObjTrack   -- v5.1: cho script khác đọc trạng thái định vị vật
 
 do
     local setTab = AddTab("Thiết Lập", "⚙️", 6)   -- v4.15: 5 -> 6 (👥 chen vào ô 4)
