@@ -12,9 +12,10 @@ nguyên không, khung/tab có dựng đủ không, và tính năng mới 🌳 đ
 
 ```bash
 cd tests/luau
-npm install                                # cài @luau-rs/luau (Luau 0.739 → WASM)
-node chay-test.mjs                         # chạy test-tinh-nang.lua trên ../../script.js
+npm install                                # cài @luau-rs/luau (Luau 0.739 → WASM) + luau-parser
+node chay-test.mjs                         # 161 test hành vi trên ../../script.js
 node kiem-tra-cu-phap.mjs                  # chỉ kiểm tra compile
+node kiem-tra-cau-truc.mjs                 # kiểm tra cấu trúc (hàm không bị lồng)
 ```
 
 Tuỳ chọn:
@@ -33,9 +34,10 @@ script in ra dòng lỗi và vị trí (trong `script.js` hay trong file test).
 | File | Vai trò |
 |---|---|
 | `gia-lap-roblox.lua` | Giả lập API Roblox đủ để load + chạy hub: Instance, Signal, GUI, `task.*`, `RunService`, `Players`, `workspace`, `TweenService`… |
-| `test-tinh-nang.lua` | 139 test: API sống sót, tính năng cũ còn nguyên, 🌳 định vị vật theo tên, màu xanh nước + khung 🎯 thông tin/toạ độ giống "phân tích toạ độ", Highlight nằm trong Workspace (nếu gắn vào PlayerGui là KHÔNG hiện), dán path, Folder, 🚀 bay tới vật, luồng UI thật trong tab 👥, bố cục khung, và mọi thẻ 📚 Script Hub vẫn chạy không lỗi |
+| `test-tinh-nang.lua` | 161 test: API sống sót, tính năng cũ còn nguyên, 🌳 định vị vật theo tên, màu xanh nước + khung 🎯 thông tin/toạ độ giống "phân tích toạ độ", Highlight nằm trong Workspace (nếu gắn vào PlayerGui là KHÔNG hiện), dán path, Folder, 🚀 bay tới vật, luồng UI thật trong tab 👥, bố cục khung, và mọi thẻ 📚 Script Hub vẫn chạy không lỗi |
 | `chay-test.mjs` | Nạp giả lập + hub + test trong cùng một chunk Luau rồi in kết quả |
 | `kiem-tra-cu-phap.mjs` | Compile `script.js` bằng Luau thật (cổng chặn cú pháp) |
+| `kiem-tra-cau-truc.mjs` | Soi cây cú pháp: mọi `function X.Y()` phải ở **cấp cao nhất**. Chỉ cần lệch 1 chữ `end` là một loạt hàm bị lồng vào hàm khác → **không bao giờ được định nghĩa** mà script vẫn compile OK (đúng lỗi từng làm 🌳 định vị vật không chạy) |
 
 ## Lưu ý kỹ thuật
 
@@ -50,6 +52,10 @@ script in ra dòng lỗi và vị trí (trong `script.js` hay trong file test).
   `do…end` / hàm riêng — thêm control mới cho một khung là rất dễ vượt trần. Khi thấy lỗi
   `Out of local registers`, hãy gom nhóm control vào một hàm `local function …(...) … end` rồi
   gọi ngay, thay vì khai báo thêm `local` ở cấp khối.
+- **Hiệu năng có test riêng**: nhóm 13d/13e kiểm tra lượt quét bị chia lát (≤ ngân sách mỗi
+  khung hình), không gọi `workspace:GetDescendants()`, đệm tên (quét lại map 1.500 vật mà 0 lần
+  chuẩn hoá lại tên), tạo marker rải ra từng khung hình, nhãn cập nhật xoay vòng, và khung 🎯
+  làm mới thưa. Đổi ngân sách `OT.scanBudget` / `OT.labelBudget` / `OT.makeBudget` là test bắt được ngay.
 - Test bám theo **giá trị thật** của vật (toạ độ/kích thước/màu) nên khi sửa hub phải cập nhật
   kỳ vọng cho khớp, đừng nới lỏng test.
 - Test không cần mạng và không chạm vào Roblox thật.

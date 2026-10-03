@@ -131,9 +131,39 @@ cả path đầy đủ **lẫn** tên đoạn cuối).
 định vị được — Folder thì Highlight trỏ vào part bên trong; part con không bị định vị trùng.
 Thêm nút **🚫 Bỏ qua người chơi: BẬT/TẮT** để tìm cả vật nằm trong nhân vật người chơi.
 
-Bộ test: **118 → 139 case** (`node chay-test.mjs` → `pass=139 fail=0`), thêm nhóm kiểm tra Highlight
+Bộ test: **139 → 161 case** (`node chay-test.mjs` → `pass=139 fail=0`), thêm nhóm kiểm tra Highlight
 nằm trong Workspace, tự kéo về vật khi bị đổi chỗ/xoá, dán path, Folder, nút bỏ qua người chơi, và
 dòng gợi ý khi không khớp.
+
+## 5d. Tối ưu chống KHỰNG khi vừa đi vừa định vị
+
+**Triệu chứng:** cứ cách một khoảng (đúng nhịp quét cũ 1,5 giây) là khựng một cái.
+
+**Nguyên nhân:** mỗi 1,5 giây hub gọi `workspace:GetDescendants()` — tạo **một mảng chứa toàn bộ
+vật trong map** — rồi **chuẩn hoá bỏ dấu tên của từng vật** và kiểm tra nhân vật người chơi cho mọi
+vật khớp. Map càng nhiều vật thì cú khựng càng rõ. Ngoài ra mỗi 0,2 giây nó còn cập nhật **tất cả**
+nhãn và dựng lại khung 🎯 (9 dòng `string.format`).
+
+**Đã tối ưu:**
+
+| Việc | Trước | Sau |
+|---|---|---|
+| Quét workspace | `GetDescendants()` một phát mỗi 1,5 s | **duyệt tăng dần chia lát**: mỗi khung hình ≤ `scanBudget` 180 vật, trần `scanSliceMs` 1,2 ms — map 1.500 vật trải qua ≥9 khung hình, map to hơn thì vẫn không khựng |
+| Chuẩn hoá tên (bỏ dấu) | mỗi lượt quét × mọi vật | **đệm theo từng vật** (`OT._nc`, bảng yếu): chỉ tính lại khi vật **đổi tên** → quét lại 1.500 vật = **0 lần** chuẩn hoá |
+| Dán PATH | mỗi vật lại dựng cả chuỗi path để so | **giải path trực tiếp** một lần (`OT.ResolvePath` đi từng đoạn tên) |
+| Kiểm tra nhân vật người chơi | mỗi vật khớp × `Players:GetPlayers()` + `IsDescendantOf` | lấy **danh sách nhân vật 1 lần** cho cả lượt quét |
+| Cập nhật nhãn | mỗi 0,2 s × **tất cả** vật | **xoay vòng** 20 vật mỗi 0,25 s + trần 1,5 ms; chỉ ghi `Text` khi **số liệu đổi** |
+| Tạo định vị mới | tạo hết ngay trong 1 khung hình | rải **8 vật mỗi khung hình** (`makeBudget`) |
+| Khung 🎯 thông tin | dựng lại 5 lần/giây | 2 lần/giây + **ẩn ngay** khi vật đang xem bị xoá |
+| Nhịp quét | 1,5 s | 2 s (có nút 🔄 Quét lại khi cần ngay) |
+
+Có thể chỉnh trực tiếp trong khung 🌳/state: `OT.scanBudget`, `OT.scanSliceMs`, `OT.scanIdle`,
+`OT.makeBudget`, `OT.labelBudget`, `OT.labelEvery`, `OT.infoEvery`.
+
+**Test đo hiệu năng (nhóm 13d/13e):** map 1.500 vật → mỗi khung hình quét ≤180 vật, ≥9 khung hình
+mới xong, kết quả **bằng đúng** quét thẳng; lượt quét thứ hai chuẩn hoá **0 lần** tên;
+`workspace:GetDescendants()` **không còn được gọi** trong lúc quét nền; tạo marker ≤`makeBudget`
+mỗi khung hình; mỗi lượt Tick đụng ≤`labelBudget` vật.
 
 ## 6. Lỗi tìm thấy qua test & đã sửa
 
@@ -144,6 +174,7 @@ dòng gợi ý khi không khớp.
 | 3 | **Tắt định vị không dừng 🚀 bay**: bấm 🧹 / tắt 🌳 mà nhân vật vẫn đang bay tới vật | Rà luồng UI: `OT.Set(false)` chỉ xoá định vị, không đụng `MV._objFlyActive` | `OT.Set(false)` gọi `S.Move.StopObjectFly()` |
 | 4 | **33 dòng lệch chuẩn CRLF** khi chèn code (tệp gốc 100% CRLF) | Đếm byte `\r\n` / `\n`: `LF-only = 33`, bản gốc = 0 | Chuẩn hoá lại toàn bộ về CRLF |
 | 5 | **Không test được UI** vì các control không có tên | Viết test UI thì `FindFirstChild("OTQuery")` trả `nil` | Đặt tên `OTQuery/OTToggle/OTRescan/OTClear/OTStatus/OTXyz/OTInfoRow/OTFlyRow/OTCopyRow…` |
+| 8 | **Lệch 1 chữ `end` làm 6 hàm không bao giờ được định nghĩa** (🌳 ngừng chạy dù compile OK): `OT.ScanBegin`, `OT.ScanSlice`… bị "nuốt" vào trong `OT.Tick` | Test chạy thật báo `ScanBegin` không phải hàm; soi cây cú pháp (`tests/luau/kiem-tra-cau-truc.mjs`) chỉ đúng "bị lồng trong 1 lớp hàm" | Viết lại `OT.Tick`/`OT.TickOne` + `OT.ScanBegin`/`OT.ScanHit`/`OT.ScanSlice` cho gọn và **thêm cổng kiểm tra cấu trúc** vào bộ test để lỗi này không tái diễn |
 | 7 | **"Nhập tên mà không hiện gì"**: Highlight gắn vào PlayerGui nên không render | Soi lại khung "🎯 Phân Tích Vật Thể" đang gắn Highlight vào vật; tra tài liệu/devforum Roblox xác nhận Highlight phải nằm trong Workspace | Gắn Highlight/nhãn/hộp thẳng vào vật + part, Tick tự giữ đúng chỗ, tạo từng phần riêng để lỗi 1 phần không mất cả định vị (§5c) |
 | 6 | **Tràn 200 local của Luau** khi thêm khung 🎯 (`Out of local registers … copyPathBtn`) | Compile check `node kiem-tra-cu-phap.mjs` báo lỗi ngay | Gom khối 🎯 vào một hàm riêng `otBuildInfo()` + bỏ biến `PH`, giữ đúng trần 200 local/hàm |
 

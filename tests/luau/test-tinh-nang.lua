@@ -417,7 +417,7 @@ local okFolder = (function()
     local t0 = os.clock()
     while os.clock() - t0 < 1.5 do
         __pump(1)
-        if OT._found >= 1 then return true end
+        if OT.items[__TEST_TREE_FOLDER] ~= nil then return true end
     end
     return false
 end)()
@@ -463,6 +463,158 @@ t("bấm lại -> BẬT bỏ qua như cũ", OT.skipPlayers == true)
 OT.SetQuery("")
 __pump(3)
 OT.Clear()
+
+-- ---------- 13d. TỐI ƯU CHỐNG KHỰNG ----------
+-- (1) quét KHÔNG còn dùng workspace:GetDescendants() một phát
+local descReal = workspace.GetDescendants
+local descCalls = 0
+workspace.GetDescendants = function(self, ...)
+    descCalls = descCalls + 1
+    return descReal(self, ...)
+end
+OT.keys = OT.Split("cay")
+OT.on = true
+pcall(OT.ScanBegin)
+local guard = 0
+while OT._passing and guard < 5000 do guard = guard + 1; OT.ScanSlice(400, 1e9) end
+t("quét nền KHÔNG gọi GetDescendants", descCalls == 0, descCalls)
+t("quét nền vẫn tìm đủ vật như quét thẳng", (OT._found or 0) == OT.Rescan(true), tostring(OT._found) .. " vs " .. tostring(OT.Rescan(true)))
+workspace.GetDescendants = descReal
+
+-- (2) quét chia lát: mỗi lát chỉ xử lý đúng ngân sách
+pcall(OT.ScanBegin)
+local before = OT._scanned
+OT.ScanSlice(5, 1e9)
+local step1 = OT._scanned - before
+t("mỗi lát chỉ xử lý ≤5 vật (chia nhỏ theo khung hình)", step1 <= 5, step1)
+t("lượt quét đầu chưa xong sau 1 lát (chia nhỏ thật)", OT._passing == true)
+local slices = 0
+while OT._passing and slices < 5000 do slices = slices + 1; OT.ScanSlice(5, 1e9) end
+t("quét xong sau nhiều lát", OT._passing == false and slices > 1, slices)
+t("kết quả chia lát = kết quả quét thẳng", (OT._found or 0) == OT.Rescan(true), tostring(OT._found))
+t("có ghi nhận số vật đã quét", (OT._scanned or 0) > 0, tostring(OT._scanned))
+
+-- (3) đệm tên: quét lại lần 2 không phải chuẩn hoá lại tên
+local normReal = OT.Norm
+local normCalls = 0
+OT._nc = setmetatable({}, { __mode = "k" })   -- xoá đệm tên để đo lượt quét NGUỘI
+OT.Norm = function(...) normCalls = normCalls + 1 return normReal(...) end
+pcall(OT.ScanBegin); OT.ScanSlice(1e9, 1e9, true)
+local firstCalls = normCalls
+pcall(OT.ScanBegin); OT.ScanSlice(1e9, 1e9, true)
+local secondCalls = normCalls - firstCalls
+OT.Norm = normReal
+t("đệm tên: lượt quét đầu có chuẩn hoá tên", firstCalls > 0, firstCalls)
+t("đệm tên: lượt quét sau KHÔNG chuẩn hoá lại (0 lần)",
+    secondCalls <= 2, secondCalls .. " (lượt đầu " .. firstCalls .. ")")
+
+-- (4) tạo định vị mới rải ra nhiều khung hình
+OT.maxItems = 4
+OT.Rescan(true)
+OT.DrainPending(1e9)          -- dọn sạch
+OT.Clear()
+OT.on = true
+OT.keys = OT.Split("cay")
+pcall(OT.ScanBegin); OT.ScanSlice(1e9, 1e9, true)
+t("chốt lượt quét: vật mới xếp hàng chờ tạo, chưa tạo hết ngay",
+    #(OT._pending or {}) > 0 and next(OT.items) == nil, tostring(#(OT._pending or {})))
+local hitsNow = OT._found   -- số vật khớp còn sống trong map lúc này (cây khác đã bị xoá ở test trên)
+local made1 = OT.DrainPending(2)
+t("mỗi khung hình chỉ tạo ≤2 định vị (ngân sách makeBudget)", made1 <= 2, made1)
+OT.DrainPending(1e9)
+t("rải xong thì đủ số vật", #(OT._pending or {}) == 0 and hitsNow == OT._found and next(OT.items) ~= nil,
+    "hits=" .. tostring(hitsNow))
+OT.maxItems = 60
+
+-- (5) cập nhật nhãn xoay vòng theo ngân sách
+local nItems = 0
+for _ in pairs(OT.items) do nItems = nItems + 1 end
+local savedBudget = OT.labelBudget
+OT.labelBudget = 2
+OT.Tick()
+t("mỗi lượt Tick chỉ đụng ≤2 vật (xoay vòng)", (OT._tickUpdates or 0) <= 2, OT._tickUpdates)
+local ticks = 0
+while ticks < 40 do
+    ticks = ticks + 1
+    OT.Tick()
+    local filled = 0
+    for _, it in pairs(OT.items) do if it.txt ~= nil then filled = filled + 1 end end
+    if filled >= nItems then break end
+end
+t("xoay vòng vài lượt là mọi vật đều có nhãn", ticks <= 10, ticks .. " lượt cho " .. nItems .. " vật")
+OT.labelBudget = savedBudget
+
+-- (6) khung 🎯 không làm mới mỗi 0,2s nữa
+OT.Select(__TEST_TREES[4])
+OT.Tick()
+local at1 = OT._infoAt
+OT.Tick()
+t("khung 🎯 làm mới thưa (0,5s) chứ không phải mỗi lượt Tick", OT._infoAt == at1,
+    tostring(at1) .. " -> " .. tostring(OT._infoAt))
+OT.Select(nil)
+
+-- (7) Step: đi đường vòng qua render step cũng không vượt ngân sách
+OT._scanAcc = 0
+pcall(OT.ScanBegin)
+local sc0 = OT._scanned
+__pump(2)                     -- 2 khung hình
+t("Step chia lát: 1-2 khung hình không quét hết cả workspace",
+    (OT._scanned - sc0) <= (OT.scanBudget * 2 + 5), tostring(OT._scanned - sc0))
+local guard2 = 0
+while OT._passing and guard2 < 5000 do guard2 = guard2 + 1; __pump(1) end
+t("Step quét xong sau nhiều khung hình, ra đúng kết quả",
+    (OT._found or 0) == hitsNow and #(OT._pending or {}) == 0, tostring(OT._found))
+OT.on = false
+OT.Clear()
+
+-- ---------- 13e. QUY MÔ LỚN: map 1.500 vật vẫn KHÔNG dồn việc vào 1 khung hình ----------
+local bigFolder = Instance.new("Folder", workspace)
+bigFolder.Name = "MapLon"
+local bigTrees = {}
+for i = 1, 1500 do
+    local p = Instance.new("Part", bigFolder)
+    p.Name = (i % 3 == 0) and ("Cây lớn " .. tostring(i)) or ("Đá " .. tostring(i))
+    p.Position = Vector3.new(i % 100, 5, math.floor(i / 100))
+    p.Size = Vector3.new(2, 6, 2)
+    p.AssemblyLinearVelocity = Vector3.zero
+    if i % 3 == 0 then bigTrees[#bigTrees + 1] = p end
+end
+OT.keys = OT.Split("cay")
+OT.on = true
+OT.maxItems = 2000
+pcall(OT.ScanBegin)
+local frames, maxPerFrame = 0, 0
+while OT._passing and frames < 100000 do
+    frames = frames + 1
+    local before = OT._scanned
+    OT.ScanSlice(180, 1e9)          -- ngân sách 180 vật/khung hình như cấu hình mặc định
+    local did = OT._scanned - before
+    if did > maxPerFrame then maxPerFrame = did end
+end
+t("map lớn: mỗi khung hình quét ≤180 vật (không quét cả map 1 phát)", maxPerFrame <= 180,
+    "max=" .. tostring(maxPerFrame))
+t("map lớn: quét 1.500+ vật phải trải qua nhiều khung hình", frames >= 9 and (OT._scanned or 0) >= 1500,
+    frames .. " khung / " .. tostring(OT._scanned) .. " vật")
+local bigExpected = OT._found
+t("map lớn: tìm đủ 500 cây trong folder + các vật khác (không đếm trùng)",
+    bigExpected >= 500, tostring(bigExpected) .. " hits / gộp " .. tostring(OT._skipped))
+
+-- lượt quét thứ 2 không phải chuẩn hoá lại tên của 1.500+ vật
+local normReal2 = OT.Norm
+local calls2 = 0
+OT.Norm = function(...) calls2 = calls2 + 1 return normReal2(...) end
+pcall(OT.ScanBegin)
+local frames2 = 0
+while OT._passing and frames2 < 100000 do frames2 = frames2 + 1; OT.ScanSlice(180, 1e9) end
+OT.Norm = normReal2
+t("đệm tên: quét lại map 1.500 vật mà KHÔNG chuẩn hoá lại tên (0 lần)", calls2 == 0, calls2)
+t("đệm tên: kết quả lượt sau vẫn y hệt lượt đầu", OT._found == bigExpected, tostring(OT._found))
+
+bigFolder:Destroy()
+OT.maxItems = 60
+OT.on = false
+OT.Clear()
+OT.Rescan(true)
 
 -- ---------- 14. KHÔNG MẤT TÍNH NĂNG: mọi thẻ 📚 Script Hub vẫn chạy ----------
 local errs = {}

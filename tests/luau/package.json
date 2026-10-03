@@ -5,9 +5,10 @@
   "description": "Chạy thử script.js (hub taodepzai) bằng Luau WASM + giả lập API Roblox",
   "scripts": {
     "test": "node chay-test.mjs",
-    "check": "node kiem-tra-cu-phap.mjs"
+    "check": "node kiem-tra-cu-phap.mjs && node kiem-tra-cau-truc.mjs"
   },
   "dependencies": {
-    "@luau-rs/luau": "^0.739.0"
+    "@luau-rs/luau": "^0.739.0",
+    "luau-parser": "^1.0.3"
   }
 }

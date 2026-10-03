@@ -12685,9 +12685,21 @@ S.ObjTrack = {
     items = {},           -- [instance] = { hl, bb, lbl, box, part, dist }
     list = {},            -- danh sách gần nhất trước (dùng cho bảng + bay tới)
     lastScan = 0,
-    rescanEvery = 1.5,    -- giây: quét lại workspace
-    labelEvery = 0.2,     -- giây: cập nhật khoảng cách + nhãn
+    rescanEvery = 1.5,    -- (giữ cho tương thích) giây: nhịp quét cũ
+    -- ===== TỐI ƯU CHỐNG KHỰNG (v5.1.2): quét chia nhỏ theo từng khung hình =====
+    scanIdle = 2.0,       -- giây: nghỉ giữa 2 lượt quét (trước là 1,5)
+    scanBudget = 180,     -- mỗi khung hình xử lý tối đa bấy nhiêu vật
+    scanSliceMs = 1.2,    -- trần thời gian 1 lát quét (ms) — vượt là nhả ra cho khung hình
+    makeBudget = 8,       -- mỗi khung hình tạo tối đa 8 định vị mới (rải ra, không dồn)
+    tickSliceMs = 1.5,    -- trần thời gian 1 lượt cập nhật nhãn (ms)
+    labelBudget = 20,     -- mỗi lượt cập nhật tối đa 20 vật (xoay vòng)
+    infoEvery = 0.5,      -- giây: làm mới khung 🎯 (trước là mỗi 0,2s)
+    labelEvery = 0.25,    -- giây: cập nhật khoảng cách + nhãn
     pathKeys = {},        -- từ khoá dạng PATH dán vào (VD: workspace.rung cay.thancay)
+    -- trạng thái nội bộ cho quét chia lát + vòng xoay
+    _order = {}, _tickIdx = 0, _pending = {}, _queue = {}, _qN = 0,
+    _pathSet = {}, _pathN = 0, _chars = {},
+    _nc = setmetatable({}, { __mode = "k" }),   -- đệm tên đã chuẩn hoá theo từng vật
     _gui = nil, _acc = 0, _scanAcc = 0, _bound = false,
     _scanned = 0, _renderErr = false,
     _sel = nil, _selPart = nil,   -- vật đang xem thông tin (khung 🎯 giống phân tích toạ độ)
@@ -12858,21 +12870,71 @@ function OT.Split(q)
     return out
 end
 
--- Khớp theo TÊN hoặc theo PATH đầy đủ của vật
-function OT.Hit(inst)
-    if inst == nil then return false end
-    local okN, nm = pcall(function() return inst.Name end)
-    if okN and type(nm) == "string" and OT.Matches(nm) then return true end
-    if #(OT.pathKeys or {}) > 0 then
-        local okP, path = pcall(function() return OT.Norm(OT.PathOf(inst)):gsub("%s+", "") end)
-        if okP and path then
-            for i = 1, #OT.pathKeys do
-                if path:find((OT.pathKeys[i]:gsub("%s+", "")), 1, true) then return true end
-            end
-        end
+-- Tên đã chuẩn hoá được ĐỆM LẠI theo vật: đổi tên mới tính lại.
+-- (Trước đây mỗi lượt quét phải chuẩn hoá lại tên của CẢ workspace -> khựng theo chu kỳ.)
+function OT.NormCached(inst)
+    local nm = inst.Name
+    if type(nm) ~= "string" then return "" end
+    local c = OT._nc[inst]
+    if c ~= nil and c.raw == nm then return c.norm end
+    local norm = OT.Norm(nm)
+    OT._nc[inst] = { raw = nm, norm = norm }
+    return norm
+end
+
+function OT.MatchesNorm(n)
+    if n == "" or #OT.keys == 0 then return false end
+    local keys = OT.keys
+    for i = 1, #keys do
+        if n:find(keys[i], 1, true) then return true end
     end
     return false
 end
+
+-- Dán PATH thì đi thẳng theo từng đoạn tên (không phải quét cả workspace để dò path nữa)
+function OT.ResolvePath(key)
+    local segs = {}
+    for s in tostring(key or ""):gmatch("[^%.]+") do
+        s = s:gsub("^%s+", ""):gsub("%s+$", "")
+        if #s > 0 then segs[#segs + 1] = s end
+    end
+    if #segs == 0 then return nil end
+    local cur, i = game, 1
+    if segs[1] == "workspace" then cur, i = workspace, 2
+    elseif segs[1] == "game" then i = 2 end
+    while i <= #segs do
+        if cur == nil then return nil end
+        local found = nil
+        local okK, kids = pcall(function() return cur:GetChildren() end)
+        if not okK or type(kids) ~= "table" then return nil end
+        for k = 1, #kids do
+            if OT.Norm(kids[k].Name) == segs[i] then found = kids[k] break end
+        end
+        if found == nil then return nil end
+        cur, i = found, i + 1
+    end
+    return cur
+end
+
+function OT.RefreshPaths()
+    OT._pathSet = {}
+    OT._pathN = 0
+    local keys = OT.pathKeys or {}
+    for i = 1, #keys do
+        local ok, inst = pcall(OT.ResolvePath, keys[i])
+        if ok and inst ~= nil then
+            OT._pathSet[inst] = true
+            OT._pathN = OT._pathN + 1
+        end
+    end
+end
+
+-- Vật này có phải "ứng viên" không (khớp TÊN hoặc nằm trong PATH đã dán)
+function OT.Candidate(inst)
+    if OT._pathN > 0 and OT._pathSet[inst] then return true end
+    return OT.MatchesNorm(OT.NormCached(inst))
+end
+OT.Hit = OT.Candidate   -- tương thích tên hàm cũ
 
 function OT.Matches(name)
     local n = OT.Norm(name)
@@ -12905,20 +12967,31 @@ function OT.PartOf(inst, depth)
     return nil
 end
 
-function OT.Skip(inst)
-    if inst == nil then return true end
+function OT.RefreshChars()   -- lấy nhân vật người chơi 1 lần cho cả lượt quét
+    local out = {}
     if OT.skipPlayers then
         local okL, list = pcall(function() return Players:GetPlayers() end)
         if okL and type(list) == "table" then
             for i = 1, #list do
                 local c = nil
                 pcall(function() c = list[i].Character end)
-                if c then
-                    local okD, inside = pcall(function() return inst:IsDescendantOf(c) end)
-                    if okD and inside then return true end
-                end
+                if c ~= nil then out[#out + 1] = c end
             end
         end
+    end
+    OT._chars = out
+end
+
+function OT.Skip(inst)
+    if inst == nil then return true end
+    local chars = OT._chars
+    if chars == nil then
+        OT.RefreshChars()
+        chars = OT._chars
+    end
+    for i = 1, #chars do
+        local okD, inside = pcall(function() return inst:IsDescendantOf(chars[i]) end)
+        if okD and inside then return true end
     end
     return false
 end
@@ -12939,11 +13012,15 @@ function OT.Kill(inst)
     pcall(function() if it.bb then it.bb:Destroy() end end)
     pcall(function() if it.box then it.box:Destroy() end end)
     OT.items[inst] = nil
+    if it.slot then OT._order[it.slot] = nil end   -- để lượt cập nhật nhãn xoay vòng khỏi quét nhầm
 end
 
 function OT.Clear()
     for inst in pairs(OT.items) do OT.Kill(inst) end
     OT.items = {}
+    OT._order, OT._tickIdx, OT._pending = {}, 0, {}
+    OT._passing = false
+    OT._queue, OT._qN = {}, 0
     OT._sel, OT._selPart = nil, nil
     OT.list = {}
     OT._found = 0
@@ -13037,169 +13114,306 @@ function OT.Make(inst, part)
 
     local box = nil
     if OT.showBox then box = OT._MakeBox(part, pal) end
-    OT.items[inst] = { hl = hl, bb = bb, lbl = lbl, box = box, part = part, dist = 0, adornee = adornee }
+    OT._slotN = (OT._slotN or 0) + 1
+    OT._order[OT._slotN] = inst
+    OT._orderN = OT._slotN
+    OT.items[inst] = { hl = hl, bb = bb, lbl = lbl, box = box, part = part, dist = 0,
+                       adornee = adornee, slot = OT._slotN, txt = nil }
     OT._renderErr = (hl == nil and bb == nil)
     if OT._renderErr then OT._err = "executor chặn Highlight/BillboardGui — không vẽ được định vị" end
 end
 
 -- Cập nhật nhãn/khoảng cách + xoá vật đã biến mất. Highlight và nhãn gắn vào vật
 -- nên vật tự di chuyển theo, không cần bám bằng tay.
-function OT.Tick()
-    local root = S.Move and S.Move.Root and S.Move.Root() or nil
-    local myPos = root and root.Position or nil
-    local pal = OT.Pal()
-    for inst, it in pairs(OT.items) do
-        local part = it.part
-        local okA, alive = pcall(function() return part ~= nil and part.Parent ~= nil and inst.Parent ~= nil end)
-        if not okA or not alive then
-            OT.Kill(inst)
-        else
-            local okD, d = pcall(function() return myPos and (part.Position - myPos).Magnitude or nil end)
-            d = (okD and d) or nil
-            it.dist = d or 0
-            local far = (OT.maxDist > 0 and d ~= nil and d > OT.maxDist)
-            -- giữ mọi thứ gắn đúng chỗ (Highlight trong PlayerGui là KHÔNG hiện)
-            local anchor = it.adornee or inst
-            if it.hl and it.hl.Parent ~= anchor then
-                local okRe = pcall(function() it.hl.Parent = anchor end)
-                if not okRe then
-                    pcall(function() it.hl:Destroy() end)
-                    it.hl = nil
-                end
-            end
-            if it.hl == nil then
-                pcall(function()
-                    it.hl = New("Highlight", {
-                        Name = "BC_OT_HL", Adornee = anchor,
-                        FillColor = pal.fill, FillTransparency = 0.7,
-                        OutlineColor = pal.out, OutlineTransparency = 0,
-                        DepthMode = OT.thru and Enum.HighlightDepthMode.AlwaysOnTop or Enum.HighlightDepthMode.Occluded,
-                    }, anchor)
-                end)
-            end
-            if it.hl then pcall(function() it.hl.Adornee = anchor end) end
-            if it.bb and it.bb.Parent ~= part then pcall(function() it.bb.Parent = part end) end
-            if it.box and it.box.Parent ~= part then pcall(function() it.box.Parent = part end) end
-            if it.hl then
-                it.hl.Enabled = not far
-                it.hl.FillColor = pal.fill
-                it.hl.OutlineColor = pal.out
-                pcall(function()
-                    it.hl.DepthMode = OT.thru and Enum.HighlightDepthMode.AlwaysOnTop or Enum.HighlightDepthMode.Occluded
-                end)
-            end
-            if it.bb then
-                it.bb.Adornee = part
-                it.bb.Enabled = (not far) and OT.showLabel
-                it.bb.AlwaysOnTop = OT.thru
-                pcall(function() it.bb.Size = UDim2.new(0, 210, 0, OT.showXYZ and 46 or 30) end)
-            end
-            if it.lbl then
-                local txt = tostring(inst.Name)
-                    .. (d and ("  📏 " .. otRound(d) .. "m") or "  📏 --m")
-                if OT.showXYZ then
-                    local xyz = otXYZ(part)
-                    if xyz ~= "" then txt = txt .. "\n🧭 " .. xyz end
-                end
-                it.lbl.Text = txt
-                it.lbl.TextColor3 = pal.out
-            end
-            if it.box then
-                it.box.Adornee = part
-                pcall(function() it.box.Size = part.Size + Vector3.new(0.4, 0.4, 0.4) end)
-                it.box.Visible = (not far) and OT.showBox
-                it.box.Color3 = pal.fill
-                it.box.AlwaysOnTop = OT.thru
-            end
+-- Cập nhật nhãn XOAY VÒNG: mỗi lượt chỉ đụng tối đa labelBudget vật, có trần thời gian.
+-- (Trước đây mỗi 0,2s là cập nhật HẾT mọi vật -> vừa đi vừa khựng.)
+-- Cập nhật MỘT vật (tách riêng cho gọn + đỡ lồng nhiều tầng).
+function OT.TickOne(inst, myPos, pal)
+    local it = OT.items[inst]
+    if it == nil then return end
+    local part = it.part
+    local okA, alive = pcall(function() return part ~= nil and part.Parent ~= nil and inst.Parent ~= nil end)
+    if not okA or not alive then OT.Kill(inst) return end
+    local okD, d = pcall(function() return myPos and (part.Position - myPos).Magnitude or nil end)
+    d = (okD and d) or nil
+    it.dist = d or 0
+    local far = (OT.maxDist > 0 and d ~= nil and d > OT.maxDist)
+    -- Highlight/nhãn/hộp phải nằm trong Workspace mới hiện -> giữ luôn gắn đúng chỗ
+    local anchor = it.adornee or inst
+    if it.hl and it.hl.Parent ~= anchor then
+        local okRe = pcall(function() it.hl.Parent = anchor end)
+        if not okRe then
+            pcall(function() it.hl:Destroy() end)
+            it.hl = nil
         end
     end
-    -- khung 🎯 thông tin vật đang chọn cập nhật theo vật (vật đi đâu số liệu theo đó)
-    if OT.RefreshInfo then pcall(OT.RefreshInfo) end
+    if it.hl == nil then
+        pcall(function()
+            it.hl = New("Highlight", {
+                Name = "BC_OT_HL", Adornee = anchor,
+                FillColor = pal.fill, FillTransparency = 0.7,
+                OutlineColor = pal.out, OutlineTransparency = 0,
+                DepthMode = OT.thru and Enum.HighlightDepthMode.AlwaysOnTop or Enum.HighlightDepthMode.Occluded,
+            }, anchor)
+        end)
+    end
+    if it.hl then
+        pcall(function() it.hl.Adornee = anchor end)
+        it.hl.Enabled = not far
+        it.hl.FillColor = pal.fill
+        it.hl.OutlineColor = pal.out
+        pcall(function()
+            it.hl.DepthMode = OT.thru and Enum.HighlightDepthMode.AlwaysOnTop or Enum.HighlightDepthMode.Occluded
+        end)
+    end
+    if it.bb then
+        if it.bb.Parent ~= part then pcall(function() it.bb.Parent = part end) end
+        it.bb.Adornee = part
+        it.bb.Enabled = (not far) and OT.showLabel
+        it.bb.AlwaysOnTop = OT.thru
+        pcall(function() it.bb.Size = UDim2.new(0, 210, 0, OT.showXYZ and 46 or 30) end)
+    end
+    if it.box then
+        if it.box.Parent ~= part then pcall(function() it.box.Parent = part end) end
+        it.box.Adornee = part
+        pcall(function() it.box.Size = part.Size + Vector3.new(0.4, 0.4, 0.4) end)
+        it.box.Visible = (not far) and OT.showBox
+        it.box.Color3 = pal.fill
+        it.box.AlwaysOnTop = OT.thru
+    end
+    if it.lbl then
+        -- chỉ dựng lại chuỗi khi số liệu ĐỔI (đỡ rác bộ nhớ + đỡ vẽ lại chữ mỗi khung hình)
+        local dm = otRound(d or 0)
+        if it.txtName ~= inst.Name or it.txtDist ~= dm then
+            it.txtName, it.txtDist = inst.Name, dm
+            it.txtXYZ = OT.showXYZ and otXYZ(part) or nil
+        elseif OT.showXYZ then
+            it.txtXYZ = otXYZ(part)
+        end
+        local txt = tostring(inst.Name) .. (d and ("  📏 " .. dm .. "m") or "  📏 --m")
+        if OT.showXYZ and it.txtXYZ ~= nil and it.txtXYZ ~= "" then txt = txt .. "\n🧭 " .. it.txtXYZ end
+        if it.txt ~= txt then it.txt = txt end
+        if it.lbl.Text ~= it.txt then it.lbl.Text = it.txt end
+        it.lbl.TextColor3 = pal.out
+    end
 end
 
--- Quét workspace, giữ lại tối đa maxItems vật GẦN NHẤT
-function OT.Rescan(force)
-    if not OT.on and not (force and #OT.keys > 0) then return 0 end
-    local now = os.clock()
-    if not force and (now - (OT.lastScan or 0)) < OT.rescanEvery then return OT._found or 0 end
-    OT.lastScan = now
-    local t0 = now
-    OT._err = nil
+-- Cập nhật nhãn XOAY VÒNG: mỗi lượt chỉ đụng tối đa labelBudget vật, có trần thời gian.
+-- (Trước đây mỗi 0,2s là cập nhật HẾT mọi vật -> vừa đi vừa khựng.)
+function OT.Tick()
+    local t0 = os.clock()
+    local order = OT._order or {}
+    local n = tonumber(OT._orderN) or 0
+    OT._tickUpdates = 0
+    if n > 0 then
+        local myRoot = S.Move and S.Move.Root and S.Move.Root() or nil
+        local myPos = myRoot and myRoot.Position or nil
+        local pal = OT.Pal()
+        local quota = math.min(tonumber(OT.labelBudget) or 20, n)
+        local guard = 0
+        while quota > 0 and guard < n * 2 do
+            guard = guard + 1
+            OT._tickIdx = (OT._tickIdx % n) + 1
+            local inst = order[OT._tickIdx]
+            if inst == nil then
+                -- khe trống (vật đã bị xoá) — đi tiếp
+            elseif OT.items[inst] == nil then
+                order[OT._tickIdx] = nil
+            else
+                quota = quota - 1
+                OT._tickUpdates = OT._tickUpdates + 1
+                pcall(OT.TickOne, inst, myPos, pal)
+            end
+            if (os.clock() - t0) * 1000 > (OT.tickSliceMs or 1.5) then break end   -- nhả khung hình
+        end
+    end
+    -- vật đang xem bị xoá -> ẩn khung 🎯 NGAY (không chờ hết 0,5s)
+    if OT._sel ~= nil then
+        local okS, aliveS = pcall(function() return OT._sel.Parent ~= nil end)
+        if not okS or not aliveS then
+            OT._sel, OT._selPart = nil, nil
+            OT._infoAt = os.clock()
+            if OT.RefreshInfo then pcall(OT.RefreshInfo) end   -- ẩn khung 🎯 ngay
+        end
+    end
+    -- khung 🎯 thông tin vật đang chọn: làm mới thưa hơn (0,5s) cho khỏi nặng
+    if OT._sel and OT.RefreshInfo and (os.clock() - (OT._infoAt or 0)) >= (OT.infoEvery or 0.5) then
+        OT._infoAt = os.clock()
+        pcall(OT.RefreshInfo)
+    end
+end
+
+-- ============================================================================
+-- QUÉT CHIA NHỎ THEO TỪNG KHUNG HÌNH (không còn GetDescendants() một phát)
+-- Mỗi khung hình chỉ xử lý ~scanBudget vật trong ~scanSliceMs, nên dù map có
+-- hàng chục nghìn vật thì cũng không khựng. Không dùng workspace:GetDescendants()
+-- nữa (nó tạo mảng khổng lồ mỗi lượt -> đúng thủ phạm gây khựng theo chu kỳ).
+-- ============================================================================
+function OT.ScanBegin()
+    OT.RefreshPaths()
+    OT.RefreshChars()
     local root = S.Move and S.Move.Root and S.Move.Root() or nil
-    local myPos = root and root.Position or nil
-    local hits, skipped, scanned = {}, 0, 0
-    local okAll = pcall(function()
-        local desc = workspace:GetDescendants()
-        for i = 1, #desc do
-            local inst = desc[i]
-            if inst ~= nil then
-                local nm = inst.Name
-                scanned = scanned + 1
-                if type(nm) == "string" and OT.Hit(inst) and not OT.Skip(inst) then
-                    local isPart = inst:IsA("BasePart")
-                    local isModel = inst:IsA("Model")
-                    if isPart or isModel or inst:IsA("Folder") then
-                        -- chống trùng: part nằm trong 1 Model cũng khớp tên thì Model đã đại diện rồi
-                        local covered = false
-                        if isPart then
-                            local anc, guard = inst.Parent, 0
-                            while anc and guard < 32 do
-                                guard = guard + 1
-                                if anc == workspace then break end
-                                local okM, isM = pcall(function() return anc:IsA("Model") or anc:IsA("Folder") end)
-                                if okM and isM and OT.Hit(anc) then covered = true break end
-                                anc = anc.Parent
-                            end
-                        end
-                        local part = (not covered) and (isPart and inst or OT.PartOf(inst)) or nil
-                        if covered then skipped = skipped + 1 end
-                        if part and part.Parent then
-                            local d = 0
-                            if myPos then d = (part.Position - myPos).Magnitude end
-                            if OT.maxDist <= 0 or d <= OT.maxDist then
-                                hits[#hits + 1] = { inst = inst, part = part, dist = d }
-                            end
-                        end
-                    end
-                end
+    OT._myPos = root and root.Position or nil
+    OT._queue = { workspace }      -- ngăn xếp: cha LUÔN được xét trước con
+    OT._qN = 1
+    OT._hits = {}
+    OT._scanned, OT._skipped = 0, 0
+    OT._passing = true
+    OT._passT0 = os.clock()
+    OT._err = nil
+end
+
+-- Phân loại 1 vật khớp: BasePart -> chính nó; Model/Folder -> part đại diện.
+-- Part nằm trong Model/Folder cũng khớp tên thì bỏ qua (cấp trên đã đại diện) — chống trùng.
+function OT.ScanHit(inst)
+    local okP, posOrBool = pcall(function() return inst:IsA("BasePart") end)
+    if okP and posOrBool then
+        local anc, guard, covered = inst.Parent, 0, false
+        while anc and guard < 32 do
+            guard = guard + 1
+            if anc == workspace then break end
+            if OT.Candidate(anc) then
+                local okM, isM = pcall(function() return anc:IsA("Model") or anc:IsA("Folder") end)
+                if okM and isM then covered = true break end
+            end
+            anc = anc.Parent
+        end
+        if covered then
+            OT._skipped = OT._skipped + 1
+            return
+        end
+        local okP2, pos = pcall(function() return inst.Position end)
+        local d = 0
+        if okP2 and pos and OT._myPos then d = (pos - OT._myPos).Magnitude end
+        if OT.maxDist <= 0 or d <= OT.maxDist then
+            OT._hits[#OT._hits + 1] = { inst = inst, part = inst, dist = d }
+        end
+        return
+    end
+    local okM, isM = pcall(function() return inst:IsA("Model") end)
+    local okF, isF = false, false
+    if not (okM and isM) then okF, isF = pcall(function() return inst:IsA("Folder") end) end
+    if not ((okM and isM) or (okF and isF)) then return end
+    local part = OT.PartOf(inst)
+    if part == nil or part.Parent == nil then return end
+    local okP3, pos = pcall(function() return part.Position end)
+    local d = 0
+    if okP3 and pos and OT._myPos then d = (pos - OT._myPos).Magnitude end
+    if OT.maxDist <= 0 or d <= OT.maxDist then
+        OT._hits[#OT._hits + 1] = { inst = inst, part = part, dist = d }
+    end
+end
+
+-- Xử lý 1 lát. budget = số vật, msCap = trần thời gian (ms), runToEnd = chạy hết ngay.
+function OT.ScanSlice(budget, msCap, runToEnd)
+    if not OT._passing then return true end
+    budget = tonumber(budget) or tonumber(OT.scanBudget) or 180
+    msCap = tonumber(msCap) or tonumber(OT.scanSliceMs) or 1.2
+    local t0 = os.clock()
+    local done = 0
+    while OT._qN > 0 do
+        local inst = OT._queue[OT._qN]
+        OT._queue[OT._qN] = nil
+        OT._qN = OT._qN - 1
+        local okK, kids = pcall(function() return inst:GetChildren() end)   -- đẩy con vào ngăn xếp
+        if okK and type(kids) == "table" then
+            for i = 1, #kids do
+                OT._qN = OT._qN + 1
+                OT._queue[OT._qN] = kids[i]
             end
         end
-    end)
-    if not okAll then
-        OT._err = "không quét được workspace (thử lại hoặc bật lại)"
-        return 0
+        if inst ~= workspace then
+            OT._scanned = OT._scanned + 1
+            if OT.Candidate(inst) and not OT.Skip(inst) then
+                OT.ScanHit(inst)
+            end
+        end
+        done = done + 1
+        if not runToEnd and (done >= budget or (os.clock() - t0) * 1000 > msCap) then
+            return false   -- hết ngân sách khung hình này, khung sau quét tiếp
+        end
     end
+    OT.ScanFinish()
+    return true
+end
+
+-- Chốt 1 lượt quét: sắp theo khoảng cách, bỏ vật cũ, xếp hàng tạo vật mới (rải ra)
+function OT.ScanFinish()
+    OT._passing = false
+    local hits = OT._hits or {}
     table.sort(hits, function(a, b) return a.dist < b.dist end)
-    local keep = {}
-    local list = {}
     local maxN = math.max(1, tonumber(OT.maxItems) or 60)
+    local keep, list = {}, {}
+    local n = 0
     for i = 1, #hits do
-        if i > maxN then break end
-        keep[hits[i].inst] = hits[i]
-        list[i] = hits[i]
+        local h = hits[i]
+        local okV, alive = pcall(function() return h.inst.Parent ~= nil and h.part.Parent ~= nil end)
+        if okV and alive then
+            n = n + 1
+            if n <= maxN then
+                keep[h.inst] = true
+                list[#list + 1] = h
+            end
+        end
     end
     for inst in pairs(OT.items) do
         if not keep[inst] then OT.Kill(inst) end
     end
+    OT._pending = {}
     for i = 1, #list do
         local h = list[i]
         local it = OT.items[h.inst]
         if it == nil then
-            pcall(OT.Make, h.inst, h.part)
+            OT._pending[#OT._pending + 1] = h
         else
             it.part = h.part
         end
     end
     OT.list = list
     OT._found = #hits
-    OT._scanned = scanned      -- tổng số vật đã quét trong workspace
-    OT._skipped = skipped      -- số part con bị gộp (Model cha đã được định vị)
     OT._capped = (#hits > #list)
-    OT._scanMs = otRound((os.clock() - t0) * 1000)
+    OT._scanMs = otRound((os.clock() - (OT._passT0 or os.clock())) * 1000)
+    OT._lastScan = os.clock()
     if OT.RefreshList then pcall(OT.RefreshList) end
     return #hits
 end
 
+-- Tạo định vị mới rải ra nhiều khung hình (mỗi khung tối đa makeBudget vật)
+function OT.DrainPending(quota)
+    local pend = OT._pending
+    if pend == nil or #pend == 0 then return 0 end
+    quota = tonumber(quota) or tonumber(OT.makeBudget) or 8
+    local made = 0
+    while quota > 0 and #pend > 0 do
+        local h = table.remove(pend, 1)
+        if h ~= nil then
+            local okV, alive = pcall(function() return h.inst.Parent ~= nil and h.part.Parent ~= nil end)
+            if okV and alive and OT.items[h.inst] == nil then
+                pcall(OT.Make, h.inst, h.part)
+                made = made + 1
+            end
+        end
+        quota = quota - 1
+    end
+    return made
+end
+
+-- API cũ: quét & chốt NGAY (nút 🔄, gõ tên, test). Chỉ dùng cho hành động người dùng bấm.
+function OT.Rescan(force)
+    if not OT.on and not (force and (#OT.keys > 0 or #(OT.pathKeys or {}) > 0)) then return 0 end
+    if not force and (os.clock() - (OT._lastScan or 0)) < OT.rescanEvery then return OT._found or 0 end
+    pcall(OT.ScanBegin)
+    if not OT._passing then return OT._found or 0 end
+    OT.ScanSlice(1e9, 1e9, true)    -- chạy hết ngay (runToEnd)
+    if OT._passing then OT.ScanFinish() end
+    OT.DrainPending(1e9)            -- tạo hết ngay cho hành động có chủ đích
+    return OT._found or 0
+end
+
+-- Vòng lặp mỗi khung hình: KHÔNG bao giờ làm việc nặng một phát.
+--  • tạo định vị mới: rải ra makeBudget vật / khung hình
+--  • quét: chia lát scanBudget vật, tối đa scanSliceMs mỗi khung hình
+--  • nhãn: xoay vòng labelBudget vật mỗi labelEvery giây
 function OT.Step(dt)
     local step = tonumber(dt) or 0.016
     OT._acc = (OT._acc or 0) + step
@@ -13208,11 +13422,15 @@ function OT.Step(dt)
         pcall(OT.Tick)
     end
     if OT.on then
-        OT._scanAcc = (OT._scanAcc or 0) + step
-        if OT._scanAcc >= OT.rescanEvery then
-            OT._scanAcc = 0
-            pcall(OT.Rescan)
+        if OT._pending ~= nil and #OT._pending > 0 then pcall(OT.DrainPending) end
+        if not OT._passing then
+            OT._scanAcc = (OT._scanAcc or 0) + step
+            if OT._scanAcc >= (OT.scanIdle or 2.0) then
+                OT._scanAcc = 0
+                pcall(OT.ScanBegin)
+            end
         end
+        if OT._passing then pcall(OT.ScanSlice) end   -- quét tiếp lát nữa
     end
 end
 
@@ -13511,7 +13729,8 @@ do
         local rows = OT.Info(sel, part)
         local out = {}
         for i = 1, #rows do out[i] = rows[i].k .. ": " .. rows[i].v end
-        infoLbl.Text = table.concat(out, "\n")
+        local txt = table.concat(out, "\n")
+        if infoLbl.Text ~= txt then infoLbl.Text = txt end   -- chỉ ghi khi số liệu đổi
         info.Visible = true
     end
     OT.RefreshInfo = refreshInfo
