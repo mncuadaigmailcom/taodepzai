@@ -10,6 +10,14 @@ const source = fs.readFileSync(path.join(root, 'script.js'), 'utf8').replace(/\r
 const fixture = fs.readFileSync(path.join(__dirname, 'fixtures/hub-runtime.luau'), 'utf8');
 const savedCodeSource = fs.readFileSync(path.join(root, 'code-da-luu.lua'), 'utf8');
 assert.doesNotMatch(savedCodeSource, /\]====\]/);
+const scriptHubSource = fs.readFileSync(path.join(root, 'script-hub.lua'), 'utf8');
+assert.doesNotMatch(scriptHubSource, /\]====\]/);
+// Actual module UI + fake game controllers, layered over the real main feature pipeline.
+const scriptHubAdapterFixture = fs.readFileSync(path.join(__dirname, 'fixtures/script-hub-runtime.luau'), 'utf8');
+const scriptHubCatalog = source.slice(source.indexOf('S.ScriptHubList = {'), source.indexOf('\nfunction D.CardBtn('));
+const scriptHubCardHelper = source.slice(source.indexOf('function D.CardBtn('), source.indexOf('\n-- Script Hub GUI moved'));
+const setupScriptHub = `\n${scriptHubAdapterFixture}\n${scriptHubCatalog}\n${scriptHubCardHelper}\n_G.BananaCatHubAPI.ScriptHubBridge = function() return Mock.makeScriptHubBridge() end\n`;
+
 const luau = process.env.LUAU_BIN || 'luau';
 const compiler = process.env.LUAU_COMPILE_BIN || 'luau-compile';
 const available = binary => !spawnSync(binary, ['--help'], { encoding: 'utf8' }).error;
@@ -310,10 +318,10 @@ assert(Store.save())
 S.DoReload()
 Mock.flush()
 assert(#scripts == 2 and scripts[1].name == a.name and scripts[1].code == a.code and scripts[1].expanded)
-assert(scripts[2].code == b.code and #featureTabs == 1 and #Mock.http == 1 and Mock.executed == 1)
+assert(scripts[2].code == b.code and #featureTabs == 2 and #Mock.http == 1 and Mock.executed == 1)
 assert(S.SavedLinks.Activate(scripts[1]))
 Mock.flush()
-assert(#featureTabs == 2 and #Mock.http == 2)
+assert(#featureTabs == 3 and #Mock.http == 2)
 `);
 
 luaTest('reloading while a script is yielded cancels its late work and safely replaces entry identities', String.raw`
@@ -322,7 +330,7 @@ assert(Store.save())
 assert(S.SavedLinks.Activate(entry))
 S.DoReload()
 Mock.flush()
-assert(Mock.executed == 0 and #featureTabs == 1 and S.featureRunOwner == nil)
+assert(Mock.executed == 0 and #featureTabs == 2 and S.featureRunOwner == nil)
 assert(#scripts == 1 and scripts[1] ~= entry and scripts[1].code == entry.code)
 assert(S.activeHook == nil and playerGui.ChildAdded:Count() == 0)
 `);
@@ -656,7 +664,7 @@ assert(S.StartFeatureRun(ft,true)); Mock.flush()
 local manager = assert(_G.TDZSavedCodeStandalone)
 assert(Store.save())
 S.DoReload(); Mock.flush()
-assert(S.savedCodeFeature == ft and #featureTabs == 1 and not manager.dead)
+assert(S.savedCodeFeature == ft and #featureTabs == 2 and not manager.dead)
 assert(#manager.Adapter.list() == 1 and manager.Adapter.list()[1] ~= entry)
 assert(#Mock.http == 1 and ft.btn.LayoutOrder == 1)
 assert(#Store.serialize().features == 0)
@@ -712,4 +720,100 @@ assert(ft.hasRun and #Mock.http == 1 and #featureTabs == 1)
 local count = 0
 for _, gui in ipairs(playerGui:GetChildren()) do if gui.Name == "TDZSavedCode" then count += 1 end end
 assert(count == 1 and _G.TDZSavedCodeStandalone.Root.Parent.Parent == ft.hostFrame)
+`, {withoutManager:true});
+
+luaTest('Script Hub is preinstalled at its original rail position without HTTP or missing original pages', String.raw`
+local saved = S.EnsureSavedCodeFeature()
+local hub = S.EnsureScriptHubFeature()
+assert(saved.btn.LayoutOrder == 1 and codeButton.LayoutOrder == 2 and hub.btn.LayoutOrder == 3)
+assert(hub.builtinId == "script-hub" and hub.transient and #featureTabs == 2)
+assert(S.EnsureScriptHubFeature() == hub and #Mock.http == 0)
+hub.btn.Activated:Fire(); Mock.flush()
+assert(activeTab == hub.frame and #Mock.http == 0 and not hub.hasRun)
+`, {withoutManager:true});
+
+luaTest('the Script Hub URL loads the actual original GUI through the same feature embedding pipeline', `
+${setupScriptHub}
+Mock.sources[S.ScriptHubScriptUrl] = [====[${scriptHubSource}]====]
+local ft = S.EnsureScriptHubFeature()
+Mock.button(ft.frame,"▶ Chạy Script").Activated:Fire()
+Mock.flush()
+local view = assert(_G.TDZScriptHubStandalone)
+assert(ft.hasRun and view.Root.Parent.Parent == ft.hostFrame)
+assert(#Mock.http == 1 and Mock.http[1] == S.ScriptHubScriptUrl)
+assert(Mock.find(view.Root,"HubTune_Panel") and Mock.find(view.Root,"HubSafe_Panel"))
+assert(Mock.find(view.Root,"HubCard_Infinite Yield") and Mock.executed == 0)
+`, {withoutManager:true});
+
+luaTest('Script Hub HTTP failure is retryable and preserves one configured tab', `
+${setupScriptHub}
+local ft = S.EnsureScriptHubFeature()
+assert(S.StartFeatureRun(ft,true)); Mock.flush()
+assert(ft.state == "error" and Mock.find(ft.frame,"ScriptHubFeatureHint").Visible)
+Mock.sources[S.ScriptHubScriptUrl] = [====[${scriptHubSource}]====]
+assert(S.StartFeatureRun(ft,true)); Mock.flush()
+assert(ft.hasRun and #featureTabs == 1 and #Mock.http == 2)
+`, {withoutManager:true});
+
+luaTest('close/reopen of Script Hub returns and reembeds its GUI without refetching or losing controllers', `
+${setupScriptHub}
+Mock.sources[S.ScriptHubScriptUrl] = [====[${scriptHubSource}]====]
+local ft = S.EnsureScriptHubFeature()
+assert(S.StartFeatureRun(ft,true)); Mock.flush()
+local view, move = _G.TDZScriptHubStandalone, S.Move
+Mock.find(ft.frame,"FeatureTabClose").Activated:Fire()
+assert(view.Root.Parent == view.Gui and activeTab == codeTab)
+ft.btn.Activated:Fire(); Mock.flush()
+assert(view.Root.Parent.Parent == ft.hostFrame and S.Move == move and not view.dead)
+assert(#Mock.http == 1 and _G.TDZScriptHubStandalone == view)
+`, {withoutManager:true});
+
+luaTest('a saved-data reload preserves both configured modules and does not serialize them as user features', String.raw`
+local saved = S.EnsureSavedCodeFeature()
+local hub = S.EnsureScriptHubFeature()
+local user = S.CreateFeatureTab("Original feature","⚙️","print('keep')")
+assert(Store.save())
+S.DoReload()
+assert(S.savedCodeFeature == saved and S.scriptHubFeature == hub and #featureTabs == 3)
+local data = Store.serialize()
+assert(#data.features == 1 and data.features[1].name == user.name and #Mock.http == 0)
+assert(saved.btn.LayoutOrder == 1 and hub.btn.LayoutOrder == 3)
+`, {withoutManager:true});
+
+luaTest('removing user tabs keeps both URL modules fixed and unique in the rail', String.raw`
+local saved = S.EnsureSavedCodeFeature()
+local hub = S.EnsureScriptHubFeature()
+local a = S.CreateFeatureTab("A","⚙️","print('a')")
+local b = S.CreateFeatureTab("B","⚙️","print('b')")
+assert(a.btn.LayoutOrder == 8 and b.btn.LayoutOrder == 9)
+S.DestroyFeatureTab(a)
+assert(saved.btn.LayoutOrder == 1 and hub.btn.LayoutOrder == 3 and b.btn.LayoutOrder == 8)
+S.DestroyFeatureTab(hub)
+local nextHub = S.EnsureScriptHubFeature()
+assert(nextHub ~= hub and nextHub.btn.LayoutOrder == 3 and b.btn.LayoutOrder == 8)
+`, {withoutManager:true});
+
+luaTest('Script Hub mount failure reports an error and releases capture so the same URL can retry', `
+${setupScriptHub}
+Mock.sources[S.ScriptHubScriptUrl] = [====[${scriptHubSource}]====]
+D.SetBg = nil
+local ft = S.EnsureScriptHubFeature()
+assert(S.StartFeatureRun(ft,true)); Mock.flush()
+assert(ft.state == "error" and S.featureRunOwner == nil and S.activeHook == nil)
+assert(_G.TDZScriptHubStandalone == nil and D.hubList == nil)
+D.SetBg = function(obj,color) obj.BackgroundColor3=color end
+assert(S.StartFeatureRun(ft,true)); Mock.flush()
+assert(ft.hasRun and _G.TDZScriptHubStandalone.Root.Parent.Parent == ft.hostFrame)
+`, {withoutManager:true});
+
+luaTest('deleting Script Hub during a yielded HTTP request cannot create a late module or overwrite core UI hooks', `
+${setupScriptHub}
+Mock.sources[S.ScriptHubScriptUrl] = [====[${scriptHubSource}]====]
+local actualHttpGet = game.HttpGet
+game.HttpGet = function(self,url) task.wait(2); return actualHttpGet(self,url) end
+local ft = S.EnsureScriptHubFeature()
+assert(S.StartFeatureRun(ft,true) and ft.running)
+S.DestroyFeatureTab(ft); Mock.flush()
+assert(S.scriptHubFeature == nil and _G.TDZScriptHubStandalone == nil and D.hubList == nil)
+assert(S.featureRunOwner == nil and S.activeHook == nil)
 `, {withoutManager:true});

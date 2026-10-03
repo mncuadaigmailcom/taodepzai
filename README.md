@@ -1,87 +1,94 @@
 # Taodepzai
 
-Hub Roblox nằm trong `script.js` (**Luau, không phải JavaScript**). Phần quản lý Code Đã Lưu nằm hoàn toàn trong script riêng `code-da-luu.lua`.
+`script.js` là hub Roblox viết bằng **Luau**, không phải JavaScript. Bản gốc đối chiếu: commit `852724782b7259c81b733261563e1585d0434f4e`.
 
-## Code Đã Lưu là tính năng có sẵn từ link
+## Script Hub được làm giống Code Đã Lưu
 
-**Đã bỏ tab/giao diện Code Đã Lưu được viết trực tiếp trong main.** `script.js` không chứa factory, các textbox, danh sách hoặc bản sao GUI của module nữa.
+Hub có sẵn hai tab từ link, cùng pipeline **Tạo Tính Năng**:
 
-Thay vào đó, hub tự đăng ký một tab tính năng **💾 Code Đã Lưu** từ link:
+| Tab | Script GUI riêng | Thứ tự gốc |
+|---|---|---|
+| 💾 Code Đã Lưu | `code-da-luu.lua` | 1 |
+| 📚 Script Hub | `script-hub.lua` | 3 |
 
-```text
-https://raw.githubusercontent.com/mncuadaigmailcom/taodepzai/arena/01a0fd07-taodepzai/code-da-luu.lua
-```
+Tab Code vẫn ở thứ tự 2; Người Chơi/Hỗ Trợ/Thiết Lập/Tạo Tính Năng giữ vị trí và tính năng. Tab người dùng bắt đầu từ thứ tự 8.
 
 ### Cách dùng
 
 1. Chạy bản `script.js` cập nhật.
-2. Tab **💾 Code Đã Lưu** đã có sẵn ở đầu thanh tab. **Không cần tự tạo tính năng hoặc dán code.**
-3. Bấm **▶ Chạy Script** ở toolbar của tab.
-4. Hub tải script riêng và nhúng GUI vào tab bằng đúng pipeline `CreateFeatureTab` / `RunFeatureScript` của **Tạo Tính Năng**.
+2. Chọn **Code Đã Lưu** hoặc **Script Hub** đã có sẵn.
+3. Bấm **▶ Chạy Script** ở toolbar: hub tải URL module và nhúng GUI vào tab.
 
-- Chỉ mở hub/mở tab chưa tải hoặc chạy module. Không tự chạy code trong danh sách.
-- Module có đủ thêm code/link raw, tìm kiếm, sửa, copy, chạy/dừng, xóa, lưu/nạp và xuất/nhập JSON.
-- Bấm ✕ ở toolbar trả GUI về màn hình và về tab Code. Mở lại tab sẽ nhúng GUI hiện có, không tải/chạy module lần nữa.
-- Bấm **Chạy Script** để chủ động tải/chạy lại. Module dọn cửa sổ cũ, không chồng nhiều cửa sổ.
-- Lỗi HTTP hoặc cú pháp hiện trong toolbar; có thể bấm chạy lại.
-- Tab có sẵn không được lưu thêm vào `features` hay sao chép vào danh sách `scripts`. Nạp dữ liệu không nhân đôi tab.
-- Các tính năng do người dùng tự tạo vẫn chạy/lưu như trước.
+Không cần tự tạo tab hay dán module. Chỉ mở hub/tab chưa tải hoặc chạy script trong catalog. Bấm ✕ ở toolbar trả GUI về màn hình và về tab Code. Mở lại sẽ nhúng GUI hiện có, không tải/chạy lại. Bấm Chạy Script để chủ động tải lại; cửa sổ cũ được dọn.
 
-### Link được gắn ở đâu trong main?
+Các URL gắn trong main:
 
-Tìm **`S.SavedCodeScriptUrl`** để đổi URL module. `S.EnsureSavedCodeFeature()` đăng ký tab từ URL đó, với `builtinId = "saved-code"` và thứ tự đầu thanh tab.
+```text
+https://raw.githubusercontent.com/mncuadaigmailcom/taodepzai/arena/01a0fd07-taodepzai/code-da-luu.lua
+https://raw.githubusercontent.com/mncuadaigmailcom/taodepzai/arena/01a0fd07-taodepzai/script-hub.lua
+```
 
-GUI chỉ nằm trong `code-da-luu.lua`. **Không có bản copy nhúng, không cần công cụ sync factory.** Module có thể được cập nhật riêng; nội dung URL phải là mã Luau từ nguồn đáng tin cậy.
+Tìm `S.SavedCodeScriptUrl` hoặc `S.ScriptHubScriptUrl` để đổi link. Các bản cập nhật thuộc nhánh `arena/01a0fd07-taodepzai`, chưa gộp vào main.
 
-Các link trên thuộc nhánh cập nhật `arena/01a0fd07-taodepzai`, chưa gộp vào `main`.
+## Giữ chức năng Script Hub gốc
 
-## Giữ dữ liệu code cũ
+GUI trong `script-hub.lua` lấy từ các khối Script Hub của bản gốc, không thay bằng một danh sách rút gọn:
 
-Main giữ adapter dữ liệu `BananaCatHubAPI.SavedCodeAdapter`, không phải GUI quản lý. Script riêng dùng adapter để đọc/sửa cùng danh sách code đã lưu.
+- Giữ nguyên catalog: các script ngoài và các tiện ích/server/di chuyển/định vị.
+- Giữ tìm kiếm, danh mục, ghim yêu thích, copy và lưu nguồn.
+- Giữ khung server: JobId, copy, vào server, hop/ít người/siêu vắng.
+- Giữ đủ **9 panel**: Tune, Anti Ban, Fly, Speed, High Jump, Move, Glow, Free Camera và Safe Fly.
+- Các nút gọi chính controller gốc trong main. Script ngoài giữ `noPark` để GUI ở ngoài màn hình.
+- Controller di chuyển, kính, locator, spectator, free camera, glow, server, cùng trang Người Chơi vẫn ở main. Không tải lại controller/hook physics khi mở GUI module.
+- Dữ liệu/yêu thích được giữ. Nút lưu đọc danh sách hiện tại ngay cả sau reload/import, không giữ một array cũ.
 
-- Dữ liệu hub vẫn là `banana_cat_saved.json`, schema version 3.
-- Danh sách code cũ, waypoint, các tab người dùng và settings được giữ nguyên. Việc bỏ GUI trong main không xóa file lưu.
-- Lưu từ tab Code hoặc các nút tạo mẫu vẫn cập nhật danh sách; module riêng đọc được các mục đó.
-- Kích hoạt một code đã lưu mở tab của code đó qua pipeline tính năng. Tab từ mục đã lưu là view tạm, không lưu thành một `features` trùng lặp.
-- Nạp dữ liệu giữ tab module có sẵn, đồng thời dựng lại các tab người dùng.
+`script-hub.lua` cần `BananaCatHubAPI.ScriptHubBridge` của bản main cập nhật; chạy khi chưa có hub sẽ báo lỗi rõ, không tạo GUI dở dang. Nó không phải một bản hub độc lập thứ hai.
 
-Bảng `S.BuiltinSavedScripts` vẫn hỗ trợ khai báo code/link có sẵn cho danh sách, mặc định trống, không thêm script mẫu.
+Bản gốc không chỉnh sửa vẫn có thể xem tại:
 
-## Script riêng chạy độc lập
+```text
+https://raw.githubusercontent.com/mncuadaigmailcom/taodepzai/852724782b7259c81b733261563e1585d0434f4e/script.js
+```
 
-Có thể chạy trực tiếp `code-da-luu.lua`, hoặc dán toàn bộ file vào Tạo Tính Năng nếu muốn tạo thêm một view thủ công.
+Bản cập nhật dựa trên chức năng/GUI gốc, đồng thời giữ các sửa lỗi storage, nhận diện API, hủy job và lifecycle đã được kiểm thử. Không khẳng định là hoàn nguyên mọi sửa lỗi về commit cũ.
 
-Nếu không có adapter của hub:
+## Giữ dữ liệu Code Đã Lưu
 
-- Có cửa sổ quản lý độc lập, lưu trong `taodepzai_saved_code.json`, schema version 1.
-- Nếu chưa có file riêng, chỉ đọc `scripts` từ `banana_cat_saved.json` để chuyển dữ liệu cũ. Không ghi vào file hub.
-- Code được chạy trực tiếp; GUI của code đó nằm ngoài cửa sổ quản lý.
-- Thiếu API lưu thật/ghi lỗi: giữ trong RAM; không bảo đảm còn sau rejoin. Có xuất/nhập JSON để sao lưu.
-- Clipboard giả lập không bị báo thành công; JSON có thể được điền vào ô nguồn để copy thủ công.
+Main chỉ giữ adapter dữ liệu `BananaCatHubAPI.SavedCodeAdapter`; GUI quản lý nằm trong `code-da-luu.lua`.
 
-Nút Dừng/hủy tab chỉ hủy luồng khởi chạy do hub/module quản lý; không bảo đảm hủy các luồng/sự kiện riêng hay side effect mà code bên ngoài đã tạo.
+- Dữ liệu hub vẫn là `banana_cat_saved.json`, schema version 3: scripts, waypoint, feature người dùng, settings/yêu thích.
+- Bỏ GUI trong main không xóa file hay code cũ. Các nút Lưu của Code/Script Hub/tạo mẫu vẫn cập nhật cùng danh sách.
+- Cả hai tab module có sẵn là transient, không được lưu trùng vào `features` hoặc `scripts`.
+- Nạp dữ liệu giữ cả hai tab module, dựng lại các tab do người dùng tạo.
+- `S.BuiltinSavedScripts` mặc định trống, không thêm ví dụ mới.
+
+`code-da-luu.lua` chạy độc lập được: khi thiếu adapter main, dùng `taodepzai_saved_code.json`, schema 1, chỉ đọc `scripts` từ file hub để chuyển dữ liệu cũ. Không ghi đè file waypoint/settings. Thiếu API file thật/ghi lỗi thì giữ RAM và hỗ trợ sao lưu JSON; không đảm bảo còn sau rejoin.
 
 ## Kiểm thử
 
 Cần Node.js và [Luau CLI](https://github.com/luau-lang/luau/releases) (`luau`, `luau-compile`).
 
 ```bash
-node --test tests/hub.test.cjs tests/saved-code.test.cjs
+node --test tests/hub.test.cjs tests/saved-code.test.cjs tests/script-hub.test.cjs
 luau-compile --null script.js
 luau-compile --null code-da-luu.lua
+luau-compile --null script-hub.lua
 
-# Nếu executable chưa có trong PATH:
+# Hoặc chỉ định executable:
 LUAU_BIN=/duong/dan/luau \
 LUAU_COMPILE_BIN=/duong/dan/luau-compile \
-node --test tests/hub.test.cjs tests/saved-code.test.cjs
+node --test tests/hub.test.cjs tests/saved-code.test.cjs tests/script-hub.test.cjs
 ```
 
-**79 test** bao gồm hồi quy hub/script riêng, không còn GUI copy trong main, đăng ký sẵn tab URL khi offline, tải module thật qua HTTP giả lập, bắt/nhúng/trả GUI, retry lỗi mạng/cú pháp, không tạo tab trùng, không lưu/chép module trùng, giữ dữ liệu cũ, nạp lại dữ liệu, thứ tự tab, hủy tải đang yield, CRUD, clipboard, JSON, migration và nhận diện API thật/giả lập.
+**103 bài** gồm các hồi quy trước, kiểm tra không mất hàm/catalog/panel từ bản gốc, GUI Script Hub gốc, dispatch/copy/save/favorites/search/category/server/panel inputs, tải module qua pipeline thật, lỗi HTTP/mount và retry, singleton/dọn UI hooks, close/reopen, hủy tải, giữ cả hai tab module/thứ tự, serialization và storage.
 
-Test hành vi chạy mã thật từ hai script bằng adapters Roblox/executor giả lập trong `tests/fixtures/hub-runtime.luau`. Không truy cập mạng hoặc chạy payload bên thứ ba. JSON I/O, hình học và rendering được giả lập. **Chưa thay thế kiểm tra trên Roblox/executor thật.** Thiếu CLI thì hiện SKIP, không coi là đã đạt.
+Manifest bản gốc trong `tests/fixtures/script-hub-original.json` ghi catalog, tên panel và các hàm có tên để đối chiếu khi chỉnh tiếp.
 
-## Lưu ý
+Hành vi chạy source thật với Roblox/executor/controllers giả lập. Không gọi mạng hoặc thực thi các payload IY/Dex/SimpleSpy. JSON I/O, hình học, physics và rendering được giả lập. **Chưa thay thế kiểm tra trong Roblox/executor thật**, không khẳng định mọi game/executor đều tương thích. Thiếu CLI hiện SKIP, không coi là đã đạt.
 
-Chỉ chạy code/link bạn tin tưởng; `loadstring` không phải môi trường cách ly. URL module cần kết nối mạng và phải trả về mã Luau, không phải HTML. “Anti Ban” không bảo đảm tránh ban.
+## Giới hạn
 
-`index.html`, các tài liệu/key tools cũ và `tests/portal.test.cjs` thuộc portal/key system trước đây. Hub hiện tại không xác minh key của trang. Bộ portal cũ còn lỗi nền, không thay thế test Luau ở trên.
+- Chỉ chạy nguồn đáng tin cậy; URL cần mạng và phải trả mã Luau, không phải HTML. `loadstring` không phải sandbox.
+- Hủy chỉ dừng luồng khởi chạy do hub/module quản lý, không bảo đảm dừng mọi child task/listener/side effect của script ngoài.
+- Các API giả lập không thay thế API native hoàn toàn. “Anti Ban” không bảo đảm tránh ban.
+- Portal/key system cũ (`index.html`, key tools và `tests/portal.test.cjs`) chưa tương thích hub hiện tại, còn lỗi nền; không thay thế các test Luau trên.
