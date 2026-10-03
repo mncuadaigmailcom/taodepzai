@@ -196,6 +196,9 @@ trong ô nhập vẫn tự định vị như cũ.
 
 ## 5f. ⭕ Định vị VÒNG trong tab 🛠 Hỗ Trợ (mọi vật + người chơi/NPC đang di chuyển)
 
+> ⚠️ **Mục này đã được THAY THẾ**: theo yêu cầu mới, khối ⭕ *định vị vòng* đã được **gỡ bỏ** và
+> thay bằng **📍 định vị tâm** (cây cắm + nút ảo tròn ngắm vật) — xem **§5h**. Phần dưới đây giữ lại để đối chiếu lịch sử.
+
 Theo yêu cầu: thêm **⭕ định vị vòng** vào tab **🛠 Hỗ Trợ**, **nằm NGAY TRÊN** phần "🎯 Định vị tốc độ game".
 
 | Thành phần | Công dụng |
@@ -281,6 +284,52 @@ Test: **252 → 276 case** (`pass=276 fail=0`), cổng `npm run check` xanh (**C
 **chạy lại hub 11/11**). Test mới đáng chú ý: **khung dựng đủ 23 phần tử**, **bấm nút ⭕ trong tab → vòng hiện ngay
 trong map**, **đi tới chỗ khác → vòng đi theo**, **dời vòng đi xa → danh sách cũ không sót lại**.
 
+## 5h. 📍 ĐỊNH VỊ TÂM (thay cho ⭕ định vị vòng) — cây cắm + nút ảo tròn ngắm vật
+
+Theo yêu cầu: **"xoá định vị vòng, thay bằng định vị tâm: có một cây cắm ở giữa và có thêm một nút ảo hình tròn,
+tâm vào vật thể nào thì định vị vật thể đó, giống tính năng 📊 phân tích toạ độ, hiển thị thông tin đầy đủ"**
++ **"chạy test để tìm lỗi"**. Đã làm đúng như vậy:
+
+**1) Gỡ ⭕ định vị vòng.** Toàn bộ khối cũ (bán kính, `GetPartBoundsInRadius`, quét bù toàn map theo lát, đĩa Neon +
+vành `CylinderHandleAdornment`, cột mốc, nút 🎯 Đổ vòng / ⏪ / ⏩, danh sách "TRONG VÒNG") **đã bị xoá hẳn**
+(`_G.BananaCatHub_Ring = nil`, không còn `S.Ring`, `BC_Ring*`). Các tính năng KHÁC của hub **không bị đụng tới**
+(cổng "chạy lại hub" 11/11 + 287 test đều xanh).
+
+**2) Thay bằng 📍 ĐỊNH VỊ TÂM — đúng mô tả:**
+
+| Thành phần | Công dụng |
+|---|---|
+| **🧷 Cây cắm (Base · Post · Tip · Beam)** | Cọc mốc dựng **ngay tại tâm** trong map: đế tròn Neon (đánh dấu đúng điểm), cột 16 studs, quả cầu ở đầu, tia cao 46 studs cho dễ thấy từ xa + nhãn **"📍 TÂM · cách bạn Xm"**. Cây cắm **dời theo tâm ngắm** liên tục (0,2 s/lần), hoặc **đứng yên** khi bật 🧷 giữ / sau khi đã định vị |
+| **📍 Nút ảo hình tròn ở GIỮA màn hình** | Nút tròn 56 px mặc định **nằm chính giữa màn hình** (kèm hình tròn nhỏ bên trong + nhãn chữ). **Tâm ngắm chính là tâm nút ảo này** — kéo nút đi đâu thì tâm đi đó (chỉ khi BẬT 🖐 chỉnh nút) |
+| **Bấm nút ảo 📍 (hoặc 🎯 Định vị ngay)** | Bắn tia từ camera xuyên qua tâm nút ảo → **vật/người dưới tâm được định vị ngay**: Highlight xanh nước + nhãn tên (đúng như 📊 phân tích toạ độ) + khung **🎯 THÔNG TIN đầy đủ 9 dòng** (Name/Class/Path/Position/Size/Rotation/Look/Material/Color) + **📍 Cách cây cắm** + **🧍 Cách bạn**, tự cập nhật khi vật di chuyển |
+| **🧹 Xoá · ✕ Bỏ từng mục** | Định vị được *nhiều* vật cùng lúc; danh sách có 📊 Xem / 🚀 Bay / 📋 Tên / ✕ Bỏ, trần số mục `maxItems = 30` (giữ các mục gần tâm nhất) |
+| **📏 Tầm xa + ✅ Đặt / ➖ ➕** | Tầm xa tia ngắm (kẹp **5–5000 m**, mặc định 500, ➖➕ ±50, nhập tay được) |
+| **🧲 Ở chân bạn · 🧷 Giữ cây cắm · 🕶 Xuyên tường · 💬 Nhãn · 🧑 Chỉ người chơi · 🎨 Màu (6 màu, mặc định xanh nước) · 👁 Nút ảo · 🖐 Chỉnh nút + ↩️ Đặt lại** | Tuỳ chọn như bản cũ, giữ nguyên hành vi đã được kiểm |
+
+**3) Vật `CanQuery = false` (📚 sách trang trí, tường mỏng) vẫn định vị được.** Tia của engine **bỏ qua** các part này,
+nên khi tia trượt, tính năng tự chuyển sang **lượt "dò bù theo tia" chia lát** (220 part/lát, trần **1,2 ms**/lát) để
+tìm part gần tia nhất — bắt được vật ẩn mà **không khựng**; chip trạng thái ghi rõ *"🔄 đang dò vật ẩn theo tia…"*.
+
+**4) Không khựng:** mọi việc nặng đều có ngân sách — tia ngắm 0,2 s/lần, cây cắm vẽ lại 0,2 s/lần, nhãn cập nhật
+xoay vòng `labelBudget = 16` với trần 1,5 ms/lượt, khung 🎯 làm mới thưa 0,5 s, dò bù chia lát như trên.
+
+**5) Lỗi tìm ra bằng test trong đợt này** (xem bảng §6, dòng 15–17) và **cổng chạy lại hub** đã được cập nhật:
+nạp hub 2 lần liên tiếp, lần 1 bật 📍 + định vị 1 vật, lần 2 kiểm tra **chỉ còn 1 cửa sổ / 1 bộ nút ảo**, Highlight + cây cắm
+cũ **dọn sạch**, render step `BC_Tam` đã gỡ, nút ảo vẫn giữa màn hình, và tính năng lần 2 vẫn định vị được
+(đã thử **gỡ khối dọn dẹp** → cổng báo đỏ **5 mục**, tức cổng thật sự bắt được lỗi).
+
+**Khung test cũng được nâng cho đúng Roblox thật** (để test được tia ngắm): `workspace:Raycast` nay **cắt tia thật**
+theo hộp AABB của từng part, tôn trọng `CanQuery = false`, `FilterType`/`FilterDescendantsInstances` và tầm xa;
+thêm `RaycastParams.new` + `Camera:ViewportPointToRay`/`:ScreenPointToRay`.
+
+Test: **276 → 287 case** (`pass=287 fail=0`), cổng `npm run check` xanh (**COMPILE OK** 16.322 dòng · **CẤU TRÚC OK 519 function** ·
+**chạy lại hub 11/11**). Nhóm 16 mới kiểm: khung nằm **trên** phần tốc độ game và **đủ 24 phần tử** (bắt đúng lỗi "thiếu 1 nút
+là hàm dựng khung chết giữa chừng"), mọi nút **nằm gọn trong bề ngang tab**, nút ảo 📍 **ở giữa màn hình** + có hình tròn nhỏ bên trong,
+**kéo nút khi TẮT không đổi vị trí / khi BẬT thì đổi và lưu**, cây cắm đủ 4 phần và **đứng đúng tâm**, tia ngắm chạm đúng vật,
+bấm nút ảo là **Highlight + nhãn + khung thông tin** hiện ra, **từng dòng trùng khớp `OT.Info`**, vật di chuyển thì số liệu tự cập nhật,
+nhiều mục + ✕ bỏ từng mục, trần mục, **🧑 chỉ người chơi** (vật vô tri bị từ chối, NPC nhận), **không định vị chính mình**,
+**vật `CanQuery = false` được dò bù**, tầm xa kẹp 5–5000 + ➖➕ + nhập tay, tắt là **dọn sạch** marker + cây cắm + render step.
+
 ## 6. Lỗi tìm thấy qua test & đã sửa
 
 | # | Lỗi | Cách phát hiện | Đã sửa |
@@ -300,6 +349,9 @@ trong map**, **đi tới chỗ khác → vòng đi theo**, **dời vòng đi xa 
 | 12 | **Bật vòng mà KHÔNG THẤY VÒNG** (đúng lỗi người dùng báo): khung ⭕ thiếu nút `🧲` nhưng code vẫn gọi `ui.btnFollow.Activated` → `R.BuildPanel` lỗi giữa chừng, `pcall` nuốt lỗi → **mọi nút sau nó + chip trạng thái im lặng biến mất** | Test báo `attempt to index nil with 'Activated'`; viết probe in `R.ui` rồi **so bộ khoá với danh sách nút được tham chiếu** → thiếu `btnFollow` | Bố cục 4 hàng/430 px có **đủ 23 phần tử**; thêm test 16.9b canh đủ bộ nút để lỗi này không tái diễn |
 | 13 | **Vượt trần `maxItems` khi đang quét bù**: phần "giữ lại vật còn trong bán kính" không đếm trần nên danh sách có thể nhiều hơn `maxItems` | Test cũ phụ thuộc bản đồ nên đỏ; **viết lại test tự tạo 5 vật** cách tâm 2…10 m rồi đòi đúng 3 vật gần nhất | Đếm riêng số đã chọn (`keepN`), chỉ giữ thêm tối đa `maxItems − keepN` vật, **xa nhất bị bỏ** |
 | 14 | **Sót vật NGOÀI vòng** sau khi vòng đi theo bạn/đổi bán kính: dữ liệu của lượt quét bù còn mang vị trí/bán kính cũ | Test mới "dời vòng đi xa → danh sách cũ không sót lại" (đỏ trước khi sửa) | `R.Scan` + `R.SweepSlice` **lọc lại theo bán kính hiện tại** trước khi nhận |
+| 15 | **Cây cắm tạo part nhưng QUÊN đặt tên** (`Base/Post/Tip/Beam` thành "Part" hết) — soi không ra, dễ lẫn với part khác; đồng thời nhãn "📍 TÂM" vẫn hiện nên rất khó thấy | Test kiểm "cây cắm có đủ ĐẾ · CỘT · ĐẦU · TIA" đỏ dù Folder đã có 4 con | Hàm tạo part **luôn đặt `props.Name`** trước khi tạo |
+| 16 | **Tâm ngắm lệch khỏi nút ảo**: lấy `AbsoluteSize` của nút để tính tâm (executor/stub trả cỡ khác) → tâm ngắm ra `672,392` thay vì `640,360` | Test "tâm ngắm = tâm nút ảo 📍" + "tâm ngắm đi theo nút ảo sau khi kéo" đỏ | Dùng đúng cỡ nút mình đặt (`aimSize`) thay vì `AbsoluteSize` |
+| 17 | **Ngắm vào CHÍNH MÌNH** bị định vị (tia chạm part gắn trên nhân vật) | Test đỏ (`-> BC_Shield1`) | Kiểm tra "là mình" ngay trong `R.Locate` (theo `root.Parent`) → từ chối kèm lời nhắc; test gọi thẳng `R.Locate(hrp)` để không phụ thuộc vật nào đứng trước tia |
 
 Lỗi trong **khung test** (không phải lỗi sản phẩm, đã sửa để test chạy đúng) — bổ sung cho lần này:
 giả lập **thiếu toán tử `Vector2`** (`inp.Position - d.startInput` là phép trừ hợp lệ trong Roblox thật,

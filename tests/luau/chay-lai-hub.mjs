@@ -1,7 +1,7 @@
 // ============================================================================
 // Nạp hub HAI LẦN liên tiếp để bắt lỗi "chạy lại script bị chồng chéo":
 // ScreenGui/part/Highlight của lần trước phải được dọn sạch, render step cũ phải
-// được gỡ, và tính năng ⭕ định vị vòng của lần mới phải sống bình thường.
+// được gỡ, và tính năng 📍 định vị tâm của lần mới phải sống bình thường.
 //     cd tests/luau && node chay-lai-hub.mjs
 // ============================================================================
 import { Lua } from '@luau-rs/luau';
@@ -17,17 +17,27 @@ const hub = fs.readFileSync(HUB_PATH, 'utf8').replace(/\r\n/g, '\n');
 const lua = await Lua.create();
 lua.execute(stub);
 lua.execute(hub);      // lần 1
-// bật vòng + quét để chắc chắn lần chạy lại phải dọn cả marker đang hiện
+// bật 📍 + định vị 1 vật để chắc chắn lần chạy lại phải dọn cả marker + cây cắm
 lua.execute(`
-R1 = _G.BananaCatHub_Ring
+R1 = _G.BananaCatHub_Tam
 local ok = pcall(function()
-    R1.SetRadius(200); R1.Place(); R1.Scan(); R1.DrainPending(1e9); R1.RefreshVis()
+    local target = Instance.new("Part", workspace)
+    target.Name = "Vật Chạy Lại"
+    target.Size = Vector3.new(2, 2, 2)
+    target.Anchored = true
+    target.Position = Vector3.new(120, 5, 0)
+    VatChayLai = target
+    workspace.CurrentCamera._aimTarget = target.Position
+    R1.SetRange(500)
+    R1.Set(true)
+    R1.hold = false
+    R1.LocateAim()
 end)
 HL_TRUOC = 0
-for _, d in ipairs(workspace:GetDescendants()) do if d.Name == "BC_OT_RINGHL" then HL_TRUOC = HL_TRUOC + 1 end end
-VIS_TRUOC = 0
-for _, d in ipairs(workspace:GetDescendants()) do if d.Name == "BC_RingVis" then VIS_TRUOC = VIS_TRUOC + 1 end end
-OK1 = ok and HL_TRUOC > 0 and VIS_TRUOC > 0
+for _, d in ipairs(workspace:GetDescendants()) do if d.Name == "BC_TamHL" then HL_TRUOC = HL_TRUOC + 1 end end
+PIN_TRUOC = 0
+for _, d in ipairs(workspace:GetDescendants()) do if d.Name == "BC_TamPin" then PIN_TRUOC = PIN_TRUOC + 1 end end
+OK1 = ok and HL_TRUOC > 0 and PIN_TRUOC > 0
 `);
 lua.execute(hub);      // lần 2 (đúng tình huống bấm chạy lại script)
 
@@ -45,23 +55,39 @@ local function countIn(root, name)
     return n
 end
 
-t("lần 1: vòng đang bật, có marker + vòng nhìn thấy để dọn", OK1 == true, tostring(HL_TRUOC) .. " highlight / " .. tostring(VIS_TRUOC) .. " vòng")
-t("chạy lại hub: chỉ còn ĐÚNG 1 ScreenGui 3 nút ảo", countIn(pg, "BC_RingBtns") == 1, countIn(pg, "BC_RingBtns"))
+t("lần 1: 📍 đang bật, có marker + cây cắm để dọn", OK1 == true,
+    tostring(HL_TRUOC) .. " highlight / " .. tostring(PIN_TRUOC) .. " cây cắm")
+t("chạy lại hub: chỉ còn ĐÚNG 1 ScreenGui nút ảo", countIn(pg, "BC_TamBtns") == 1, countIn(pg, "BC_TamBtns"))
 t("chạy lại hub: chỉ còn ĐÚNG 1 cửa sổ hub (ExMenu)", countIn(pg, "ExMenu") == 1, countIn(pg, "ExMenu"))
-t("chạy lại hub: marker Highlight của vòng lần 1 đã bị dọn hết", countIn(workspace, "BC_OT_RINGHL") == 0, countIn(workspace, "BC_OT_RINGHL"))
-t("chạy lại hub: không còn vòng nhìn thấy cũ trong map", countIn(workspace, "BC_RingVis") == 0, countIn(workspace, "BC_RingVis"))
-t("chạy lại hub: không còn Highlight của vòng cũ", countIn(workspace, "BC_OT_RINGHL") == 0, countIn(workspace, "BC_OT_RINGHL"))
-t("chạy lại hub: không còn nhãn BillboardGui của vòng cũ", countIn(workspace, "BC_OT_RINGBB") == 0, countIn(workspace, "BC_OT_RINGBB"))
-t("chạy lại hub: render step 'BC_Ring' của lần trước đã được gỡ",
-    (_G.__renderSteps == nil) or (_G.__renderSteps["BC_Ring"] == nil))
-t("chạy lại hub: bảng vòng của lần 1 KHÔNG còn là bảng đang dùng", R1 ~= nil and R1 ~= _G.BananaCatHub_Ring)
-local R = _G.BananaCatHub_Ring
-t("chạy lại hub: tính năng ⭕ của lần 2 sống bình thường", type(R) == "table" and R.on == false and R.ui ~= nil and R.ui.panel ~= nil)
-t("chạy lại hub: bấm 🎯 đổ vòng lần 2 vẫn chạy", (function()
-    local ok = R.Place()
-    local alive = ok and R.on == true and R.center ~= nil
+t("chạy lại hub: marker Highlight của lần 1 đã bị dọn hết", countIn(workspace, "BC_TamHL") == 0, countIn(workspace, "BC_TamHL"))
+t("chạy lại hub: không còn cây cắm cũ trong map", countIn(workspace, "BC_TamPin") == 0, countIn(workspace, "BC_TamPin"))
+t("chạy lại hub: không còn nhãn BillboardGui của lần cũ",
+    countIn(workspace, "BC_TamBB") == 0 and countIn(workspace, "BC_TamESP") == 0)
+t("chạy lại hub: render step 'BC_Tam' của lần trước đã được gỡ",
+    (_G.__renderSteps == nil) or (_G.__renderSteps["BC_Tam"] == nil))
+t("chạy lại hub: bảng 📍 của lần 1 KHÔNG còn là bảng đang dùng", R1 ~= nil and R1 ~= _G.BananaCatHub_Tam)
+t("chạy lại hub: nút ảo 📍 vẫn nằm GIỮA màn hình (không lệch sau khi nạp lại)", (function()
+    local gui = pg:FindFirstChild("BC_TamBtns")
+    local btn = gui and gui:FindFirstChild("BC_TamBtn_aim")
+    if btn == nil then return false end
+    local vp = workspace.CurrentCamera.ViewportSize
+    local cx = btn.Position.X.Offset + btn.Size.X.Offset * 0.5
+    local cy = btn.Position.Y.Offset + btn.Size.Y.Offset * 0.5
+    return math.abs(cx - vp.X * 0.5) <= 2 and math.abs(cy - vp.Y * 0.5) <= 2
+end)())
+local R = _G.BananaCatHub_Tam
+t("chạy lại hub: tính năng 📍 của lần 2 sống bình thường",
+    type(R) == "table" and R.on == false and R.ui ~= nil and R.ui.panel ~= nil and R.buildError == nil)
+t("chạy lại hub: bấm 📍 định vị lần 2 vẫn chạy được", (function()
+    local okSet = R.Set(true)
+    local target = workspace:FindFirstChild("Vật Chạy Lại")
+    if target == nil then return false end
+    workspace.CurrentCamera._aimTarget = target.Position
+    R.hold = false
+    local ok = R.LocateAim()
+    local alive = ok and R.items[target] ~= nil
     R.Set(false)
-    return alive
+    return alive == true
 end)())
 print(string.format("TESTS: pass=%d fail=%d", pass, fail))
 for _, m in ipairs(msgs) do print(m) end

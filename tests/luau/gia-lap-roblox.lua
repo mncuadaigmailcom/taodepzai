@@ -510,8 +510,87 @@ defm("GetPartBoundsInRadius", function(self, center, radius, op)
     return list
 end)
 OverlapParams = { new = function() return Instance.new("OverlapParams") end }
+RaycastParams = { new = function() return Instance.new("RaycastParams") end }
+-- Camera: tia từ tâm màn hình. Test chĩa tia bằng cách đặt camera._aimTarget = <Vector3>.
+local function camRay(self)
+    local origin = self.CFrame.Position
+    local target = rawget(self, "_aimTarget")
+    local dir = nil
+    if target ~= nil then
+        local ok, u = pcall(function() return (target - origin).Unit end)
+        dir = ok and u or nil
+    end
+    if dir == nil then dir = self.CFrame.LookVector end
+    return { Origin = origin, Direction = dir }
+end
+defm("ViewportPointToRay", function(self, x, y) return camRay(self) end)
+defm("ScreenPointToRay", function(self, x, y) return camRay(self) end)
 defm("GetPartsInPart", function() return {} end)
-defm("Raycast", function() return { Instance = nil, Position = Vector3.zero, Normal = Vector3.new(0, 1, 0) } end)
+-- Raycast thật (đủ để test tia ngắm): cắt tia với hộp AABB của từng BasePart,
+-- tôn trọng CanQuery = false + FilterType/FilterDescendantsInstances + tầm xa.
+defm("Raycast", function(self, origin, direction, params)
+    local empty = { Instance = nil, Position = Vector3.zero, Normal = Vector3.new(0, 1, 0), Distance = 0 }
+    if type(origin) ~= "table" or type(direction) ~= "table" then return empty end
+    local maxT = math.sqrt(direction.X ^ 2 + direction.Y ^ 2 + direction.Z ^ 2)
+    if maxT <= 0 then return empty end
+    local ux, uy, uz = direction.X / maxT, direction.Y / maxT, direction.Z / maxT
+    local ex, filterType = {}, "Exclude"
+    if params ~= nil then
+        local fl = rawget(params, "FilterDescendantsInstances")
+        if type(fl) == "table" then ex = fl end
+        local ft = rawget(params, "FilterType")
+        if ft ~= nil then filterType = tostring(rawget(ft, "Name") or ft) end
+    end
+    local function matchFilter(inst)
+        local inList = false
+        for i = 1, #ex do
+            local o = ex[i]
+            if o ~= nil then
+                local p = inst
+                while p ~= nil do
+                    if p == o then inList = true break end
+                    p = rawget(p, "Parent")
+                end
+            end
+            if inList then break end
+        end
+        if filterType == "Include" then return inList end
+        return not inList
+    end
+    local best, bestT = nil, math.huge
+    for _, inst in ipairs(workspace:GetDescendants()) do
+        if inst:IsA("BasePart") and rawget(inst, "CanQuery") ~= false and matchFilter(inst) then
+            local size = rawget(inst, "Size") or Vector3.new(1, 1, 1)
+            local pos = inst.Position
+            local o = { origin.X, origin.Y, origin.Z }
+            local d = { ux, uy, uz }
+            local lo = { pos.X - size.X / 2, pos.Y - size.Y / 2, pos.Z - size.Z / 2 }
+            local hi = { pos.X + size.X / 2, pos.Y + size.Y / 2, pos.Z + size.Z / 2 }
+            local tmin, tmax, ok = 0, math.huge, true
+            for i = 1, 3 do
+                if math.abs(d[i]) < 1e-9 then
+                    if o[i] < lo[i] or o[i] > hi[i] then ok = false break end
+                else
+                    local t1, t2 = (lo[i] - o[i]) / d[i], (hi[i] - o[i]) / d[i]
+                    if t1 > t2 then t1, t2 = t2, t1 end
+                    if t1 > tmin then tmin = t1 end
+                    if t2 < tmax then tmax = t2 end
+                    if tmin > tmax then ok = false break end
+                end
+            end
+            if ok and tmin >= 0 and tmin <= maxT and tmin < bestT then
+                best, bestT = inst, tmin
+            end
+        end
+    end
+    if best == nil then return empty end
+    return {
+        Instance = best,
+        Position = Vector3.new(origin.X + ux * bestT, origin.Y + uy * bestT, origin.Z + uz * bestT),
+        Normal = Vector3.new(0, 1, 0),
+        Distance = bestT,
+    }
+end)
 defm("Create", function(self, obj, info, goal) return {
     Play = function() end, Cancel = function() end, Completed = Signal.new(),
 } end)
