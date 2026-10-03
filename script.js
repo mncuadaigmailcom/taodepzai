@@ -1,6 +1,6 @@
 --[[
     taodepzai v5.0 NOIR — FULL CODE  ·  OBSIDIAN NOIR + layout kiểu DELTA
-    v5.0 NOIR: Code Da Luu la tab thuong; Script Hub + Ho Tro duoc tach thanh cac module URL.
+    v5.0 NOIR: chi giu Code Da Luu, Code, Nguoi Choi, Thiet Lap va Tao Tinh Nang.
     v4.66: 🎥 quay camera. v4.65: xuyên tường. v4.64: khán giả thay 👻.
     v4.43: 🔐 Anti Ban. v4.42 rút gọn. v4.41 chip. v4.40 ⚙. v4.39–v4.36 bay/nhảy/tốc độ.
     Giữ: 🚀/🛡 bay · 🧱 noclip · 🦘 nhảy · 💨 sprint · 📍👣 · ✨ · 👥 · ⚙️.
@@ -30,6 +30,10 @@ pcall(function()
     local cleanup = _G.BananaCatHub_FeatureCleanup
     if type(cleanup) == "function" then cleanup() end
     _G.BananaCatHub_FeatureCleanup = nil
+end)
+pcall(function()
+    local old = _G.TDZScriptHubStandalone
+    if type(old) == "table" and type(old.Destroy) == "function" then old.Destroy() end
 end)
 pcall(function()
     local old = _G.TDZSupportStandalone
@@ -260,10 +264,10 @@ local D = {}
 local S
 
 function D.Say(msg, color)
-    if not D.hubStatus then return end
+    if not D.playerStatus then return end
     pcall(function()
-        D.hubStatus.Text = tostring(msg)
-        D.hubStatus.TextColor3 = color or C.RED
+        D.playerStatus.Text = tostring(msg)
+        D.playerStatus.TextColor3 = color or C.RED
     end)
 end
 
@@ -1063,13 +1067,11 @@ end
 local scripts = {}
 local waypoints = {}          -- khai báo sớm để khối lưu trữ bên dưới dùng được
 local featureTabs = {}        -- nt: khai báo sớm để Store.serialize() và nhãn trạng thái dùng được
-local featureTabIndex = 8   -- 1=Code Đã Lưu 2=Code 3=Script Hub 4=Người Chơi 5=Hỗ Trợ 6=Thiết Lập 7=Tạo Tính Năng
+local featureTabIndex = 6   -- 1=Code Đã Lưu 2=Code 3=Người Chơi 4=Thiết Lập 5=Tạo Tính Năng; tab người dùng từ 6
 local totalRuns, cancelled = 0, false
 local curThread, curIndicator = nil, nil
 local runActive = false       -- cờ trạng thái chạy (không dựa vào curThread nữa)
 
-S.SupportScriptUrl = "https://raw.githubusercontent.com/mncuadaigmailcom/taodepzai/arena/01a0fd07-taodepzai/ho-tro.lua"
-S.ScriptHubScriptUrl = "https://raw.githubusercontent.com/mncuadaigmailcom/taodepzai/arena/01a0fd07-taodepzai/script-hub.lua"
 
 -- BEGIN FEATURE_LIFECYCLE
 function S.CleanupFeatureCapture(ft)
@@ -1144,7 +1146,7 @@ Store.loadedScripts  = 0
 Store.loadedWp       = 0
 Store.loadedFeatures = {}     -- dữ liệu thô đọc từ đĩa; TAB5 sẽ dựng thành tab thật
 Store.restoreFeatures = nil   -- TAB5 gán hàm dựng lại tab tính năng vào đây
-Store.restoreWaypoints = nil  -- module Hỗ Trợ dùng getter dữ liệu waypoint sống
+Store.restoreWaypoints = nil  -- dữ liệu waypoint cũ vẫn được giữ trong file/xuất nhập
 Store.statusLbl      = nil      -- nhãn trạng thái của tab Code Đã Lưu thường
 Store.reloadBtn      = nil
 Store._scheduled     = false
@@ -1243,7 +1245,7 @@ function Store.serialize()
     end
     local fOut = {}
     for _, f in ipairs(featureTabs) do
-        -- Chỉ tab Script Hub có sẵn là transient; tab người dùng vẫn được lưu.
+        -- Các tab do người dùng tạo vẫn được lưu.
         if not f.transient then
             table.insert(fOut, {
                 name = tostring(f.name or ""),
@@ -1541,7 +1543,7 @@ function S.RunReportText()
     if r.fail > 0 then t = t .. " · ⚠️ " .. r.fail .. " lần lỗi" end
     if r.guis and r.guis > 0 then
         local nm = (r.names and r.names[1]) and (" '" .. r.names[1] .. "'") or ""
-        t = t .. " · 🧩 " .. r.guis .. " GUI đã vào tab 'GUI Ngoài'" .. nm .. " (bấm ↩ trả ra màn hình)"
+        t = t .. " · 🧩 " .. r.guis .. " GUI đã vào khung GUI trong tab Code" .. nm .. " (bấm ↩ trả ra màn hình)"
     elseif r.parked then
         t = t .. " · " .. r.parked
     end
@@ -2111,7 +2113,6 @@ RebuildScripts()
 
 -- END NATIVE_SAVED_CODE
 
--- Support subsystem is loaded from ho-tro.lua through the built-in feature tab.
 
 local function NormalizeCode(c)
     if type(c) ~= "string" then return "" end
@@ -2488,8 +2489,6 @@ _G.BananaCatHubAPI = {
         return S.EmbedGui(scr, host)
     end,
     MakeTemplate = function(self, nm, icon) return S.FeatureTemplate(nm, icon) end,
-    ScriptHubBridge = function() return S.ScriptHubBridge end,
-    SupportBridge = function() return S.SupportBridge end,
     ReleaseFocus = function(self) pcall(ReleaseHubFocus) end,
     ExternalGui = function(self, props)
         props = props or {}
@@ -3351,8 +3350,12 @@ S.PARK_MAX  = 2      -- mỗi lần chạy chỉ đưa tối đa 2 GUI vào menu
 
 function S.ParkHost(label)
     if not (S.parkList and S.parkList.Parent) then
-        local sf, btn = AddTab("GUI Ngoài", "🧩", 99)
-        S.parkTab, S.parkBtn = sf, btn
+        S.parkTop = codeTab.CanvasSize.Y.Offset + 8
+        S.parkTab = New("ScrollingFrame", {
+            Name="CodeGuiParking", Position=UDim2.new(0,0,0,S.parkTop), Size=UDim2.new(1,0,0,340),
+            BackgroundTransparency=1, CanvasSize=UDim2.new(), ScrollBarThickness=3, ZIndex=5,
+        }, codeTab)
+        codeTab.CanvasSize = UDim2.new(0,0,0,S.parkTop + 348)
         New("TextLabel", {
             Size = UDim2.new(1, -140, 0, 30), Position = UDim2.new(0, 8, 0, 4),
             Text = "🧩 GUI do script chạy ở tab 💻 Code tạo ra — hub đưa vào đây. Bấm ↩ để trả về màn hình game. (Dex/IY/SimpleSpy KHÔNG bao giờ vào đây.)",
@@ -3505,7 +3508,7 @@ function S.EndRunCapture(cap, label)
                         cap.names[#cap.names + 1] = tostring(r.inst.Name)
                         added += 1
                         pcall(function()
-                            print(string.format("[taodepzai v5.0 NOIR] 🧩 đã đưa GUI '%s' vào tab 'GUI Ngoài' (script chạy ở tab Code)",
+                            print(string.format("[taodepzai v5.0 NOIR] 🧩 đã đưa GUI '%s' vào khung GUI trong tab Code (script chạy ở tab Code)",
                                 tostring(r.inst.Name)))
                         end)
                     elseif box then
@@ -3711,9 +3714,7 @@ local function CreateFeatureTab(name, icon, codeContent, options)
     local featureData
 
     local sf  = MakeTabFrame()
-    local order = featureTabIndex
-    for _, feature in ipairs(featureTabs) do if not feature.fixedOrder then order += 1 end end
-    local btn = MakeTabButton(name, icon, options.fixedOrder or order, function()
+    local btn = MakeTabButton(name, icon, featureTabIndex + #featureTabs, function()
         task.defer(function()
             if not featureData or featureData.destroyed or not featureData.frame.Parent then return end
             S.OnFeatureTabOpened(featureData)
@@ -3734,8 +3735,6 @@ local function CreateFeatureTab(name, icon, codeContent, options)
         frame = sf,
         tabIdx = tabIdx,
         transient = options.transient == true,
-        builtinId = options.builtinId,
-        fixedOrder = options.fixedOrder,
         state = "idle", running = false, hasRun = false,
     }
     table.insert(featureTabs, featureData)
@@ -3873,10 +3872,6 @@ local function CreateFeatureTab(name, icon, codeContent, options)
     end)
 
     saveFeatureBtn.Activated:Connect(function()
-        if featureData.builtinId then
-            fStatus.Text = "💾 Tính năng này có sẵn trong script chính; không chép/lưu trùng"
-            return
-        end
         local c = codeContent
         if #c == 0 then
             fStatus.Text = "⚠️ Không có code!"
@@ -3920,9 +3915,6 @@ local function CreateFeatureTab(name, icon, codeContent, options)
     closeFeatureBtn.Activated:Connect(function()
         if featureData.running then S.CancelFeatureRun(featureData) end
         ClearHost()
-        if featureData.builtinId then
-            for i, frame in ipairs(tabContent) do if frame == codeTab then SwitchTab(i); return end end
-        end
         OpenFirstPage()   -- v4.6.2: đóng tab tính năng thì về trang đầu (🔗 Code Đã Lưu)
     end)
 
@@ -3953,12 +3945,8 @@ function S.DestroyFeatureTab(ft)
     end
     pcall(function() ft.btn:Destroy() end)
     pcall(function() ft.frame:Destroy() end)
-    if S.scriptHubFeature == ft then S.scriptHubFeature = nil end
-    if S.supportFeature == ft then S.supportFeature = nil end
-    local order = featureTabIndex
-    for _, feature in ipairs(featureTabs) do
-        feature.btn.LayoutOrder = feature.fixedOrder or order
-        if not feature.fixedOrder then order += 1 end
+    for order, feature in ipairs(featureTabs) do
+        feature.btn.LayoutOrder = featureTabIndex + order - 1
         for i, button in ipairs(tabs) do if button == feature.btn then feature.tabIdx = i; break end end
     end
     tabBar.CanvasSize = UDim2.new(0,0,0,#tabs * 44 + 10)
@@ -3968,47 +3956,6 @@ end
 _G.BananaCatHub_FeatureCleanup = function()
     for i = #featureTabs, 1, -1 do S.DestroyFeatureTab(featureTabs[i]) end
 end
-
-
-
--- BEGIN BUILTIN_SCRIPT_HUB_FEATURE
-function S.EnsureScriptHubFeature()
-    local ft = S.scriptHubFeature
-    if ft and not ft.destroyed and ft.frame and ft.frame.Parent then return ft end
-    if ft then S.DestroyFeatureTab(ft) end
-    ft = S.CreateFeatureTab("Script Hub", "📚", S.ScriptHubScriptUrl,
-        {builtinId = "script-hub", transient = true, fixedOrder = 3})
-    S.scriptHubFeature = ft
-    ft.status.Text = "📚 Có sẵn · bấm ▶ Chạy Script để tải Script Hub gốc"
-    local hint = New("TextLabel", {
-        Name="ScriptHubFeatureHint", Size=UDim2.new(1,-24,1,-24), Position=UDim2.new(0,12,0,12),
-        Text="📚 Script Hub — giao diện gốc trong script riêng\n\nBấm ▶ Chạy Script để tải và nhúng giao diện.\nGiữ nguyên các script, tìm kiếm, danh mục, ghim và bảng điều khiển của bản gốc.",
-        BackgroundTransparency=1, TextColor3=C.MUTED, Font=Enum.Font.GothamMedium,
-        TextSize=12, TextWrapped=true, ZIndex=6,
-    }, ft.hostFrame)
-    local execute = ft.execute
-    ft.execute = function()
-        hint.Visible = false
-        local ok, why, records = execute()
-        if not ok and hint.Parent then hint.Visible = true end
-        return ok, why, records
-    end
-    return ft
-end
--- END BUILTIN_SCRIPT_HUB_FEATURE
-
--- BEGIN BUILTIN_SUPPORT_FEATURE
-function S.EnsureSupportFeature()
-    local ft = S.supportFeature
-    if ft and not ft.destroyed and ft.frame and ft.frame.Parent then return ft end
-    if ft then S.DestroyFeatureTab(ft) end
-    ft = S.CreateFeatureTab("Hỗ Trợ", "🛠", S.SupportScriptUrl,
-        {builtinId = "support", transient = true, fixedOrder = 5})
-    S.supportFeature = ft
-    ft.status.Text = "🛠 Có sẵn · bấm ▶ Chạy Script để tải Hỗ Trợ"
-    return ft
-end
--- END BUILTIN_SUPPORT_FEATURE
 
 
 task.spawn(function()
@@ -4034,7 +3981,7 @@ task.spawn(function()
     end
 end)
 
-local createFeatureTab = AddTab("Tạo Tính Năng", "➕", 7)   -- v4.15: 6 -> 7 (👥 chen vào ô 4)
+local createFeatureTab = AddTab("Tạo Tính Năng", "➕", 5)
 
 local cy = 8
 Label(createFeatureTab, "➕ Tạo Tab Tính Năng Tích Hợp", cy)
@@ -4188,7 +4135,7 @@ S.DoTogglePark = function()
             .. (n > 0 and (" · đã trả " .. n .. " GUI về màn hình") or "")
             .. " · tab tính năng dùng công tắc 🧩 nhúng riêng."
     else
-        createStatus.Text = "🪟 BẬT: GUI của script chạy ở tab 💻 Code sẽ được đưa vào tab '🧩 GUI Ngoài'"
+        createStatus.Text = "🪟 BẬT: GUI của script chạy ở tab 💻 Code sẽ được đưa vào khung 🧩 trong tab Code"
             .. " (mỗi GUI có nút ↩ trả về màn hình). Dex/IY/SimpleSpy vẫn LUÔN ở ngoài màn hình game."
     end
     Store.saveSoon()   -- lưu xuống đĩa: thoát game vào lại vẫn giữ lựa chọn này
@@ -4502,17 +4449,13 @@ pcall(function()
 end)
 
 Store.restoreFeatures = function()
-    for i = #featureTabs, 1, -1 do
-        if not featureTabs[i].builtinId then S.DestroyFeatureTab(featureTabs[i]) end
-    end
-    S.EnsureScriptHubFeature()
-    S.EnsureSupportFeature()
+    for i = #featureTabs, 1, -1 do S.DestroyFeatureTab(featureTabs[i]) end
 
     for _, f in ipairs(Store.loadedFeatures) do
         CreateFeatureTab(f.name, f.icon, f.code)
     end
 
-    -- Giữ tab Code Đã Lưu thường và tab Script Hub từ URL ở thứ tự gốc.
+    -- Chỉ khôi phục các tab do người dùng tạo; giữ nguyên năm tab chính.
     tabBar.CanvasSize = UDim2.new(0, 0, 0, #tabs * 44 + 10)
     RebuildFeatureList()
     if Store.refreshStatus then Store.refreshStatus() end
@@ -4522,7 +4465,6 @@ if #Store.loadedFeatures > 0 then
     Store.restoreFeatures()
     createStatus.Text = string.format("💾 Đã khôi phục %d tab tính năng từ bộ nhớ", #Store.loadedFeatures)
 end
-
 
 
 S.Move = {
@@ -6181,7 +6123,7 @@ function MV.Safe._BuildHud()
     Corner(hideBtn, UDim.new(0, 6))
     hideBtn.Activated:Connect(function()
         MV.Safe.SetShowHud(false)
-        D.Say("📱 đã ẩn nút ảo 🛡 (vào khung 🛡 trong 📚 Script Hub để BẬT lại)", C.MUTED)
+        D.Say("📱 đã ẩn nút ảo 🛡 (mở lại tính năng 🛡 để BẬT)", C.MUTED)
     end)
 
     local closeBtn = New("TextButton", {
@@ -7195,7 +7137,7 @@ function MV._BuildHud()
     return hud
 end
 function MV._HudSay(msg)
-    pcall(function() if D.hubStatus then D.hubStatus.Text = msg end end)
+    pcall(function() if D.playerStatus then D.playerStatus.Text = msg end end)
 end
 function MV.SyncHud()
     pcall(function()
@@ -7648,284 +7590,13 @@ end
 if S.AntiBan.on then pcall(S.AntiBanArm) end
 -- ---------- HẾT 🔐 ANTI BAN ----------
 
--- Catalog/UI are in script-hub.lua; game actions/controllers remain in main.
-
-function S.RunHubAction(id)
-    if id == "crosshair" then
-        local okC = pcall(function() S.ToggleCrosshair() end)
-        if not okC then return "⚠️ chưa bật được niêm tâm" end
-        S.Rebuild()                                        -- cập nhật nhãn nút
-        return "🎯 Niêm tâm: " .. (S.crosshairOn and "BẬT (giữa màn hình game)" or "TẮT")
-    elseif id == "unpark" then
-        local n = 0
-        pcall(function() n = n + (S.RemoveAllParked() or 0) end)
-        for _, ft in ipairs(featureTabs) do
-            local host = ft.frame and ft.frame:FindFirstChild("ScriptHost")
-            if host then pcall(function() n = n + S.ClearEmbedsUnder(host) end) end
-        end
-        pcall(S.PruneEmbeds)
-        pcall(function() if S.SyncEmbedToggles then S.SyncEmbedToggles() end end)
-        return "🧩 đã trả " .. n .. " GUI về màn hình game (GUI gốc giữ nguyên, không Destroy)"
-    elseif id == "fixmouse" then
-        if type(S.DoFixMouse) == "function" then
-            local msg = nil
-            pcall(function() msg = S.DoFixMouse() end)
-            return "🖱 " .. tostring(msg or "đã trả input cho game")
-        end
-        pcall(ReleaseHubFocus)
-        pcall(function() UserInputService.MouseBehavior = Enum.MouseBehavior.Default end)
-        return "🖱 đã nhả focus + đặt lại chuột"
-    elseif id == "reload" then
-        if type(S.DoReload) == "function" then
-            task.spawn(function() pcall(S.DoReload) end)
-            return "🔄 đang nạp lại hub từ đĩa..."
-        end
-        return "⚠️ hub chưa sẵn sàng để nạp lại"
-    elseif id == "prune" then
-        pcall(S.PruneEmbeds)
-        return "🧹 đã dọn các host nhúng rác"
-    elseif id == "resetserver" then
-        local msg = "⚠️ chưa reset được"
-        local okRs = pcall(function() msg = S.ResetServer() end)
-        if not okRs then return "⚠️ Reset server thất bại: " .. tostring(msg) end
-        return tostring(msg)
-    elseif id == "hopserver" then
-        local msg = "⚠️ chưa hop được"
-        local okHp = pcall(function() msg = S.HopServer() end)
-        if not okHp then
-            return "⚠️ Hop server thất bại: " .. tostring(msg)
-                .. " — vẫn dùng được ô 🎟 dán mã server bên dưới để vào thủ công"
-        end
-        return tostring(msg)
-    elseif id == "hoplow" then
-        local msg = "⚠️ chưa hop được"
-        local okHp = pcall(function() msg = S.HopLowServer() end)
-        if not okHp then
-            return "⚠️ Hop ít người thất bại: " .. tostring(msg)
-                .. " — thử lại hoặc dùng ô 🎟 dán mã thủ công"
-        end
-        return tostring(msg)
-    elseif id == "hopempty" then
-        local msg = "⚠️ chưa hop được"
-        local okHp = pcall(function() msg = S.HopEmptyServer() end)
-        if not okHp then
-            return "⚠️ Hop siêu vắng thất bại: " .. tostring(msg)
-                .. " — thử lại hoặc dùng ô 🎟"
-        end
-        return tostring(msg)
-    elseif id == "antiban" then
-        local wanted = not S.AntiBan.on
-        local okAb = pcall(function() S.AntiBanSet(wanted) end)
-        if not okAb then return "⚠️ chưa bật được Anti Ban" end
-        S.Rebuild()
-        return S.AntiBanStatus()
-    elseif id == "getjobid" then
-        local jid = S.GetJobId()
-        if not jid then return "⚠️ Không đọc được mã server (đang ở Studio / server đơn)" end
-        local okCp = S.CopyToClipboard(jid)
-        pcall(function() if D.hubJobIn then D.hubJobIn.Text = jid end end)
-        pcall(function() if S.SyncServerPanel then S.SyncServerPanel() end end)
-        return (okCp and "🌐 Đã copy mã server: " or "🌐 Mã server (executor không cho copy, hãy chép tay): ") .. jid
-
-    -- ---------- v4.12: BỘ DI CHUYỂN ----------
-    elseif id == "fly" then
-        local wanted = not S.Move.fly
-        local okF, on, err = pcall(S.Move.SetFly, wanted)
-        if not okF then return "⚠️ lỗi bay: " .. tostring(on) end
-        if wanted and not on then return "⚠️ " .. tostring(err) end
-        S.Rebuild()
-        return S.Move.fly and ("🚀 Bay theo camera: BẬT — WASD/joystick · thả phím đứng lơ lửng · tốc độ " .. tostring(S.Move.flySpeed))
-                            or "🚀 Bay: TẮT — xuyên tường giữ nguyên theo công tắc 🧱"
-    elseif id == "camspeed" then
-        local wanted = not S.Move.sprint
-        local okS, on, err = pcall(S.Move.SetSprint, wanted)
-        if not okS then return "⚠️ lỗi tốc độ: " .. tostring(on) end
-        if wanted and not on then return "⚠️ " .. tostring(err) end
-        S.Rebuild()
-        return S.Move.sprint and ("💨 Tốc độ theo camera: BẬT — WASD/joystick mặt đất · nhảy bình thường · rơi theo game · tốc độ " .. tostring(S.Move.sprintSpeed))
-                               or "💨 Tốc độ theo camera: TẮT — trọng lực/nhảy trả về game"
-    elseif id == "noclip" then
-        if not S.Move.noclip and not S.Move.Root() then return "⚠️ chưa có nhân vật (đợi vào game xong hãy bấm)" end
-        pcall(function() S.Move.SetNoclip(not S.Move.noclip) end)
-        S.Rebuild()
-        return S.Move.noclip and "🧱 Xuyên tường: BẬT (đi xuyên mọi vật cản)"
-                              or "🧱 Xuyên tường: TẮT (CanCollide đã trả lại giá trị gốc)"
-    elseif id == "infjump" then
-        pcall(function() S.Move.SetInfJump(not S.Move.infJump) end)
-        S.Rebuild()
-        return S.Move.infJump and "🦘 Nhảy vô hạn: BẬT (Space/🐸 A — nhảy được cả game cấm nhảy/không bốc JumpRequest)"
-                               or "🦘 Nhảy vô hạn: TẮT (JumpPower/JumpHeight đã trả lại game)"
-    elseif id == "highjump" then
-        local wanted = not S.Move.highJump
-        local okH, on = pcall(S.Move.SetHighJump, wanted)
-        if not okH then return "⚠️ lỗi nhảy cao: " .. tostring(on) end
-        S.Rebuild()
-        return S.Move.highJump and ("🦘 Nhảy cao: BẬT — tốc độ " .. tostring(S.Move.highJumpSpeed) .. " · Space nhảy cao · rơi theo game")
-                                or "🦘 Nhảy cao: TẮT — JumpPower trả về game"
-    elseif id == "speed" then
-        pcall(function() S.Move.SetSpeed(not S.Move.speed) end)
-        S.Rebuild()
-        return S.Move.speed and ("👟 Chạy độ: BẬT — " .. (S.Move.speedMode == "x"
-                                     and ("theo game ×" .. tostring(S.Move.speedMul)
-                                          .. " = " .. tostring(S.Move.WantSpeed()))
-                                     or  ("cố định " .. tostring(S.Move.walkSpeed)))
-                                 .. " · JumpPower " .. tostring(S.Move.jumpPower))
-                            or ("👟 Chạy độ: TẮT — về tốc độ game (" .. tostring(S.Move._baseWS) .. ")")
-    elseif id == "carpet" then
-        local wanted = not S.Move.carpet
-        local okC, on, errC = pcall(S.Move.SetCarpet, wanted)
-        if not okC then return "⚠️ lỗi thảm kính: " .. tostring(on) end
-        if wanted and not on then return "⚠️ " .. tostring(errC) end
-        S.Rebuild()
-        return S.Move.carpet and "🪩 Thảm kính bám chân: BẬT — thảm di chuyển cùng bạn"
-                              or "🪩 Thảm kính bám chân: TẮT"
-    elseif id == "placeglass" then
-        local okP, part, rec = S.Move.PlaceGlass()
-        if not okP then return "⚠️ " .. tostring(part) end
-        pcall(function() if S.GlassRefreshList then S.GlassRefreshList() end end)
-        S.Rebuild()
-        return "🧱 Đã đặt tấm kính cố định #" .. tostring(rec and rec.id or "?")
-            .. " · tổng " .. tostring(#(S.Move.GetPlacedGlasses() or {})) .. " tấm"
-    elseif id == "clearglass" then
-        local n = S.Move.ClearPlacedGlasses()
-        pcall(function() if S.GlassRefreshList then S.GlassRefreshList() end end)
-        S.Rebuild()
-        return "🧹 Đã xóa toàn bộ " .. tostring(n) .. " tấm kính cố định"
-    elseif id == "autoglass" then
-        local on = S.Move.SetAutoGlass(not S.Move.autoGlass)
-        pcall(function() if S.GlassRefreshList then S.GlassRefreshList() end end)
-        S.Rebuild()
-        return on and "🔄 Tự đặt kính: BẬT — đi tới đâu tự đặt tấm cố định ở đó"
-                   or "🔄 Tự đặt kính: TẮT"
-    elseif id == "openglasspanel" then
-        local okOpen = false
-        pcall(function() okOpen = S.OpenGlassPanel and S.OpenGlassPanel() or S.OpenPlayerTab() end)
-        return okOpen and "📋 Đã mở 👥 Người Chơi → danh sách thảm kính"
-                      or "⚠️ chưa mở được bảng thảm kính"
-    elseif id == "flyglass" then
-        local idx = S.Move.NearestGlassIndex and S.Move.NearestGlassIndex()
-        if not idx then return "⚠️ chưa có tấm kính cố định để bay tới" end
-        local okF, rec = S.Move.FlyToGlass(idx)
-        if not okF then return "⚠️ " .. tostring(rec) end
-        return "🚀 đang bay tới tấm kính #" .. tostring(rec and rec.id or idx)
-            .. " · tốc độ " .. tostring(S.Move.glassFlySpeed) .. " — sẽ dừng khi tới nơi"
-    elseif id == "stopglassfly" then
-        S.Move.StopGlassFly()
-        return "⏹ đã dừng bay tới kính"
-    elseif id == "flyplayer" then
-        if not S.Move.Root() then return "⚠️ chưa có nhân vật để bay (đợi vào game xong hãy bấm)" end
-        local target = nil
-        if S.Loc and S.Loc.Nearest then target = S.Loc.Nearest() end
-        if not target then return "⚠️ không có người chơi nào để bay tới" end
-        local ok, res = S.Move.FlyToPlayer(target)
-        if S.Loc and S.Loc.RefreshList then pcall(S.Loc.RefreshList) end
-        if S.SyncLocPanel then pcall(S.SyncLocPanel) end
-        S.Rebuild()
-        return ok and string.format("🚀 đang bay tới người %s tốc độ %g (0=auto lấy tốc độ game) — bấm ⏹ Dừng bay tới người để dừng, theo dõi mục tiêu di chuyển, dừng khi <2 studs", tostring(target.Name), S.Move.GetPlayerFlySpeed and S.Move.GetPlayerFlySpeed() or S.Move.playerFlySpeed or 0)
-                    or ("⚠️ " .. tostring(res))
-    elseif id == "stopflyplayer" then
-        S.Move.StopPlayerFly()
-        if S.Loc and S.Loc.RefreshList then pcall(S.Loc.RefreshList) end
-        if S.SyncLocPanel then pcall(S.SyncLocPanel) end
-        S.Rebuild()
-        return "⏹ đã dừng bay tới người chơi"
-    elseif id == "runmode" then
-        return "⚠️ Tính năng chạy trên thảm đã bị xóa"
-    elseif id == "loc_all" then
-        pcall(function() S.Loc.Set(not S.Loc.on) end)
-        S.Rebuild()
-        return (S.Loc.on and "📍 ĐỊNH VỊ: BẬT — " or "📍 ĐỊNH VỊ: TẮT — ") .. S.Loc.Status()
-    elseif id == "loc_solo" then
-        if S.Loc.solo then
-            pcall(function() S.Loc.SetSolo(false) end)
-        else
-            pcall(function() S.Loc.SetTarget(S.Loc.target or S.Loc.Nearest()) end)
-        end
-        S.Rebuild()
-        return (S.Loc.solo and "🎯 ĐỊNH VỊ LẺ: " .. tostring(S.Loc.target and S.Loc.target.Name or "?")
-                .. " — chỉ hiện người này (bấm tên khác trong khung 📍 để đổi)")
-               or "🎯 ĐỊNH VỊ LẺ: TẮT (trở lại bình thường)"
-    -- ---------- v4.17: 🛡 BAY AN TOÀN ----------
-    elseif id == "safefly" then
-        if not S.Move.Root() then return "⚠️ chưa có nhân vật để bay (đợi vào game xong hãy bấm)" end
-        if not S.Move.Safe.on then
-            local okf = S.Move.SetFly(true)
-            if okf == false then return "⚠️ không bật được bay" end
-        end
-        pcall(function() S.Move.Safe.Set(not S.Move.Safe.on) end)
-        pcall(function() if S.SyncSafePanel then S.SyncSafePanel() end end)
-        S.Rebuild()
-        return S.Move.Safe.Status()
-    elseif id == "safefly_off" then
-        pcall(function() S.Move.Safe.Stop() end)
-        pcall(function() if S.SyncSafePanel then S.SyncSafePanel() end end)
-        S.Rebuild()
-        return "🚫 " .. S.Move.Safe.Status()
-
-    -- ---------- v4.16: ✨ PHÁT SÁNG ----------
-    elseif id == "glow" then
-        pcall(function() S.Glow.Set(not S.Glow.on) end)
-        pcall(function() if S.SyncGlowPanel then S.SyncGlowPanel() end end)
-        S.Rebuild()
-        return S.Glow.Status()
-    elseif id == "glow_off" then
-        pcall(function() S.Glow.Stop() end)
-        pcall(function() if S.SyncGlowPanel then S.SyncGlowPanel() end end)
-        S.Rebuild()
-        return "🚫 " .. S.Glow.Status()
-
-    -- ---------- v4.64: 🎥 KHÁN GIẢ ----------
-    elseif id == "freecam" then
-        pcall(function() S.Free.Set(not S.Free.on) end)
-        pcall(function() if S.SyncFreePanel then S.SyncFreePanel() end end)
-        S.Rebuild()
-        return S.Free.Status()
-    elseif id == "freecam_off" then
-        pcall(function() S.Free.Stop() end)
-        pcall(function() if S.SyncFreePanel then S.SyncFreePanel() end end)
-        S.Rebuild()
-        return "🚫 " .. S.Free.Status()
-
-    -- ---------- v4.14: 👣 XEM NGƯỜI CHƠI ----------
-    elseif id == "spec_on" then
-        if S.Spec and S.Spec.on then
-            pcall(function() S.Spec.Stop() end)
-            pcall(function() if S.Spec.RefreshList then S.Spec.RefreshList() end end)
-            S.Rebuild()
-            return "🚫 " .. (S.Spec.Status and S.Spec.Status() or "đã dừng xem")
-        end
-        local p = S.Spec.target or S.Loc.target or S.Loc.Nearest()
-        if not p then return "⚠️ chưa có ai để xem (server chỉ có mình bạn)" end
-        pcall(function() S.Loc.SetTarget(p) end)
-        pcall(function() S.Spec.Set(p) end)
-        pcall(function() if S.Spec.RefreshList then S.Spec.RefreshList() end end)
-        S.Rebuild()
-        return "👣 " .. S.Spec.Status() .. " (bấm lại thẻ để dừng · chọn người ở tab 👥)"
-    elseif id == "spec_off" then
-        pcall(function() S.Spec.Stop() end)
-        pcall(function() if S.Spec.RefreshList then S.Spec.RefreshList() end end)
-        S.Rebuild()
-        return "🚫 " .. S.Spec.Status()
-    elseif id == "loc_stop" then
-        pcall(function() S.Loc.StopAll() end)
-        S.Rebuild()
-        return "🚫 đã tắt hết định vị: " .. S.Loc.Status()
-    elseif id == "movestop" then
-        pcall(function() S.Move.StopAll() end)
-        S.Rebuild()
-        return "🛑 đã tắt hết: " .. S.Move.Status()
-    end
-    return "⚠️ không rõ thao tác: " .. tostring(id)
-end
-
-
--- Script Hub GUI moved to script-hub.lua (original block 1).
 
 function S.Rebuild()
-    pcall(function() if S.RebuildHubList then S.RebuildHubList() end end)
+    pcall(function() if S.SyncLocPanel then S.SyncLocPanel() end end)
+    pcall(function() if S.Spec and S.Spec.RefreshList then S.Spec.RefreshList() end end)
+    pcall(function() if S.GlassRefreshList then S.GlassRefreshList() end end)
 end
 
--- Script Hub GUI moved to script-hub.lua (original block 2).
 
 S.Loc = {
 
@@ -8188,7 +7859,7 @@ do
 end
 
 do
-    local tab = AddTab("Người Chơi", "👥", 4)      -- 4 = ngay sau 📚 Script Hub (3), trước ➕ (7)
+    local tab = AddTab("Người Chơi", "👥", 3)
     D.playerTab = tab
     function S.OpenPlayerTab()
         for i, tc in ipairs(tabContent) do
@@ -8211,11 +7882,16 @@ do
         Name = "PlayerNote",
         Size = UDim2.new(1, -16, 0, 14), Position = UDim2.new(0, 8, 0, 26),
         Text = "📍 = thấy người khác xuyên tường · 👣 = bám camera theo 1 người để xem họ đang làm gì."
-             .. "  (Các nút tắt/mở nhanh vẫn có thẻ trong 📚 Script Hub.)",
+             .. "  (Các nút điều khiển nằm ngay trong tab Người Chơi.)",
         BackgroundTransparency = 1, TextColor3 = C.MUTED, Font = Enum.Font.GothamMedium, TextSize = 8,
         TextXAlignment = Enum.TextXAlignment.Left, ZIndex = 7,
     }, tab)
-    D.playerY = 46
+    D.playerStatus = New("TextLabel", {
+        Name="PlayerStatus", Size=UDim2.new(1,-16,0,14), Position=UDim2.new(0,8,0,44),
+        Text="", BackgroundTransparency=1, TextColor3=C.MUTED,
+        Font=Enum.Font.GothamMedium, TextSize=9, TextWrapped=true, ZIndex=7,
+    }, tab)
+    D.playerY = 64
 end
 
 -- ---------- KHUNG 📍 ĐỊNH VỊ (nằm trong trang 👥 NGƯỜI CHƠI) ----------
@@ -8438,11 +8114,11 @@ do
                             pcall(function() mv2.FlyToPlayer(p) end)
                         end
                         if S.SyncMovePanel then pcall(S.SyncMovePanel) end
-                        if D.hubStatus then
+                        if D.playerStatus then
                             if mv2._playerFlyActive then
-                                flash(D.hubStatus, "🚀 Bay tới " .. tostring(p.Name) .. " " .. tostring(mv2.GetPlayerFlySpeed and mv2.GetPlayerFlySpeed() or mv2.playerFlySpeed or 0), 1.8, C.ACCENT)
+                                flash(D.playerStatus, "🚀 Bay tới " .. tostring(p.Name) .. " " .. tostring(mv2.GetPlayerFlySpeed and mv2.GetPlayerFlySpeed() or mv2.playerFlySpeed or 0), 1.8, C.ACCENT)
                             else
-                                flash(D.hubStatus, "⏹️ Đã dừng bay tới " .. tostring(p.Name), 1.2, C.GRAY)
+                                flash(D.playerStatus, "⏹️ Đã dừng bay tới " .. tostring(p.Name), 1.2, C.GRAY)
                             end
                         end
                         if LOC.RefreshList then pcall(LOC.RefreshList) end
@@ -8474,7 +8150,7 @@ do
         paint()
         if LOC.RefreshList then LOC.RefreshList() end
         S.Rebuild()
-        if D.hubStatus then flash(D.hubStatus, "📍 " .. LOC.Status(), 1.8, C.ACCENT) end
+        if D.playerStatus then flash(D.playerStatus, "📍 " .. LOC.Status(), 1.8, C.ACCENT) end
     end)
     soloBtn.Activated:Connect(function()
         ReleaseHubFocus()
@@ -8486,7 +8162,7 @@ do
         paint()
         if LOC.RefreshList then LOC.RefreshList() end
         S.Rebuild()
-        if D.hubStatus then flash(D.hubStatus, "🎯 " .. LOC.Status(), 1.8, C.ACCENT) end
+        if D.playerStatus then flash(D.playerStatus, "🎯 " .. LOC.Status(), 1.8, C.ACCENT) end
     end)
     stopBtn.Activated:Connect(function()
         ReleaseHubFocus()
@@ -8494,15 +8170,15 @@ do
         paint()
         if LOC.RefreshList then LOC.RefreshList() end
         S.Rebuild()
-        if D.hubStatus then flash(D.hubStatus, "🚫 " .. LOC.Status(), 1.8, C.ACCENT) end
+        if D.playerStatus then flash(D.playerStatus, "🚫 " .. LOC.Status(), 1.8, C.ACCENT) end
     end)
     distIn.FocusLost:Connect(function()
         ReleaseHubFocus()
         local n = tonumber(tostring(distIn.Text or ""):match("%-?%d+%.?%d*")) or 0
         LOC.SetMaxDist(n)
         distIn.Text = tostring(LOC.maxDist)
-        if D.hubStatus then
-            flash(D.hubStatus, (LOC.maxDist > 0 and string.format("📏 chỉ hiện người trong %dm", locRound(LOC.maxDist))
+        if D.playerStatus then
+            flash(D.playerStatus, (LOC.maxDist > 0 and string.format("📏 chỉ hiện người trong %dm", locRound(LOC.maxDist))
                  or "📏 không giới hạn khoảng cách"), 1.8, C.ACCENT)
         end
     end)
@@ -8512,20 +8188,20 @@ do
         if not mv then return end
         local n = tonumber(tostring(flySpeedIn.Text or ""):match("%-?%d+%.?%d*"))
         if n == nil then
-            if D.hubStatus then flash(D.hubStatus, "⚠️ Nhập số 0-500 (0=auto)", 1.5, C.RED) end
+            if D.playerStatus then flash(D.playerStatus, "⚠️ Nhập số 0-500 (0=auto)", 1.5, C.RED) end
             return
         end
         local ok, msg = mv.SetPlayerFlySpeed(n)
-        if not ok and D.hubStatus then
-            flash(D.hubStatus, "⚠️ " .. tostring(msg), 1.5, C.RED)
+        if not ok and D.playerStatus then
+            flash(D.playerStatus, "⚠️ " .. tostring(msg), 1.5, C.RED)
         else
             paint()
-            if D.hubStatus then
+            if D.playerStatus then
                 local sp = mv.GetPlayerFlySpeed and mv.GetPlayerFlySpeed() or mv.playerFlySpeed or 0
                 if (tonumber(mv.playerFlySpeed) or 0) == 0 then
-                    flash(D.hubStatus, string.format("🚀 Tốc độ bay tới người: auto (%g = tốc độ game)", sp), 1.8, C.ACCENT)
+                    flash(D.playerStatus, string.format("🚀 Tốc độ bay tới người: auto (%g = tốc độ game)", sp), 1.8, C.ACCENT)
                 else
-                    flash(D.hubStatus, string.format("🚀 Tốc độ bay tới người: %g", sp), 1.5, C.GREEN)
+                    flash(D.playerStatus, string.format("🚀 Tốc độ bay tới người: %g", sp), 1.5, C.GREEN)
                 end
             end
             if S.SyncMovePanel then pcall(S.SyncMovePanel) end
@@ -8551,7 +8227,7 @@ do
         if not mv then return end
         local target = LOC.Nearest()
         if not target then
-            if D.hubStatus then flash(D.hubStatus, "⚠️ Không có người chơi nào để bay tới", 1.5, C.RED) end
+            if D.playerStatus then flash(D.playerStatus, "⚠️ Không có người chơi nào để bay tới", 1.5, C.RED) end
             return
         end
         pcall(function() mv.FlyToPlayer(target) end)
@@ -8559,7 +8235,7 @@ do
         if LOC.RefreshList then pcall(LOC.RefreshList) end
         if S.SyncMovePanel then pcall(S.SyncMovePanel) end
         S.Rebuild()
-        if D.hubStatus then flash(D.hubStatus, "🚀 Bay tới gần nhất: " .. tostring(target.Name), 1.8, C.ACCENT) end
+        if D.playerStatus then flash(D.playerStatus, "🚀 Bay tới gần nhất: " .. tostring(target.Name), 1.8, C.ACCENT) end
     end)
     flyStopBtn.Activated:Connect(function()
         ReleaseHubFocus()
@@ -8569,7 +8245,7 @@ do
         if LOC.RefreshList then pcall(LOC.RefreshList) end
         if S.SyncMovePanel then pcall(S.SyncMovePanel) end
         S.Rebuild()
-        if D.hubStatus then flash(D.hubStatus, "⏹️ Đã dừng bay tới người", 1.2, C.GRAY) end
+        if D.playerStatus then flash(D.playerStatus, "⏹️ Đã dừng bay tới người", 1.2, C.GRAY) end
     end)
 
     if LOC.RefreshList then pcall(LOC.RefreshList) end
@@ -9256,7 +8932,6 @@ do
     end))
 end
 
--- Script Hub GUI moved to script-hub.lua (original block 3).
 
 -- ---------- TỰ LÀM MỚI 2 DANH SÁCH TRONG MENU (📍 + 👣) ----------
 do
@@ -9268,7 +8943,7 @@ do
         pcall(function()
             local visible = false
             local function open(t) if t and t.Visible == true then return true end return false end
-            if open(D.playerTab) or open(D.hubTab) then visible = true end
+            if open(D.playerTab) then visible = true end
             if not visible then return end
             if S.Loc.RefreshList then S.Loc.RefreshList() end
             if S.Spec.RefreshList then S.Spec.RefreshList() end
@@ -9454,7 +9129,7 @@ do
         else
             local p = SP.target or S.Loc.target or S.Loc.Nearest()
             if not p then
-                if D.hubStatus then flash(D.hubStatus, "⚠️ chưa có ai để xem (server chỉ có mình bạn)", 2, C.RED) end
+                if D.playerStatus then flash(D.playerStatus, "⚠️ chưa có ai để xem (server chỉ có mình bạn)", 2, C.RED) end
             else
                 S.Loc.SetTarget(p)
                 S.Spec.Set(p)
@@ -9464,19 +9139,19 @@ do
         if S.Spec.RefreshList then S.Spec.RefreshList() end
         pcall(function() S.Loc.RefreshList() end)
         pcall(S.Rebuild)
-        if D.hubStatus then flash(D.hubStatus, S.Spec.Status(), 2, C.ACCENT) end
+        if D.playerStatus then flash(D.playerStatus, S.Spec.Status(), 2, C.ACCENT) end
     end)
     followBtn.Activated:Connect(function()
         ReleaseHubFocus()
         S.Spec.SetFollow(not SP.follow)
         paint()
-        if D.hubStatus then flash(D.hubStatus, SP.follow and "🎥 camera bám theo người đang xem" or "🎥 đã trả camera về cho bạn (vẫn xem được bảng 👣)", 2, C.ACCENT) end
+        if D.playerStatus then flash(D.playerStatus, SP.follow and "🎥 camera bám theo người đang xem" or "🎥 đã trả camera về cho bạn (vẫn xem được bảng 👣)", 2, C.ACCENT) end
     end)
     autoBtn.Activated:Connect(function()
         ReleaseHubFocus()
         S.Spec.SetAuto(not SP.auto)
         paint()
-        if D.hubStatus then flash(D.hubStatus, SP.auto and "🔄 người đang xem thoát -> tự chuyển người gần nhất" or "🔄 đã tắt tự chuyển", 2, C.ACCENT) end
+        if D.playerStatus then flash(D.playerStatus, SP.auto and "🔄 người đang xem thoát -> tự chuyển người gần nhất" or "🔄 đã tắt tự chuyển", 2, C.ACCENT) end
     end)
     applyBtn.Activated:Connect(function()
         ReleaseHubFocus()
@@ -9484,7 +9159,7 @@ do
         local hh = tonumber(tostring(hiIn.Text or ""):match("%-?%d+%.?%d*")) or SP.height
         S.Spec.SetDist(d); S.Spec.SetHeight(hh)
         paint()
-        if D.hubStatus then flash(D.hubStatus, string.format("📏 camera: lùi %gm · cao %gm", SP.dist, SP.height), 1.8, C.ACCENT) end
+        if D.playerStatus then flash(D.playerStatus, string.format("📏 camera: lùi %gm · cao %gm", SP.dist, SP.height), 1.8, C.ACCENT) end
     end)
     local stopBtn2 = New("TextButton", {
         Size = UDim2.new(0, 108, 0, 20), Position = UDim2.new(1, -116, 0, 48),
@@ -9499,7 +9174,7 @@ do
         paint()
         if S.Spec.RefreshList then S.Spec.RefreshList() end
         pcall(S.Rebuild)
-        if D.hubStatus then flash(D.hubStatus, "🚫 " .. S.Spec.Status(), 2, C.ACCENT) end
+        if D.playerStatus then flash(D.playerStatus, "🚫 " .. S.Spec.Status(), 2, C.ACCENT) end
     end)
     pcall(function() end)
     paint()
@@ -9593,7 +9268,7 @@ do
     local flySpeedApply = glassAct("✅ Đặt", 150, 96, 52, C.GREEN)
     local speedNote = New("TextLabel", {
         Size = UDim2.new(1, -210, 0, 20), Position = UDim2.new(0, 208, 0, 96),
-        Text = "tấm gần nhất từ 📚 Script Hub · 1–2000",
+        Text = "kính gần nhất trong tab Người Chơi · 1–2000",
         BackgroundTransparency = 1, TextColor3 = C.MUTED, Font = Enum.Font.GothamMedium, TextSize = 8,
         TextXAlignment = Enum.TextXAlignment.Left, ZIndex = 7,
     }, P)
@@ -9634,7 +9309,7 @@ do
         autoBtn.BackgroundColor3 = auto and C.GREEN or C.SURFACE3
         autoBtn.TextColor3 = D.BestText(autoBtn.BackgroundColor3)
         countLbl.Text = "🧱 Đã đặt: " .. tostring(#items) .. " tấm · cố định"
-        speedNote.Text = "tấm gần nhất từ 📚 Script Hub · " .. tostring(MV.glassFlySpeed or 60) .. ""
+        speedNote.Text = "kính gần nhất trong tab Người Chơi · " .. tostring(MV.glassFlySpeed or 60) .. ""
     end
 
     S.GlassRefreshList = function()
@@ -9744,7 +9419,7 @@ do
         local ok, value = MV.SetGlassFlySpeed(numberFrom(flySpeedIn, MV.glassFlySpeed or 60))
         if ok then
             flySpeedIn.Text = tostring(value)
-            speedNote.Text = "tấm gần nhất từ 📚 Script Hub · " .. tostring(value)
+            speedNote.Text = "kính gần nhất trong tab Người Chơi · " .. tostring(value)
             D.Say("🚀 tốc độ bay tới kính: " .. tostring(value), C.GREEN)
         else
             D.Say("⚠️ " .. tostring(value), C.RED)
@@ -9756,47 +9431,9 @@ do
     end)
 end
 
--- Script Hub GUI moved to script-hub.lua (original block 4).
-
-
--- BEGIN SCRIPT_HUB_BRIDGE
--- Original controllers/catalog stay in main; the external GUI reads them through this session-scoped bridge.
-S.ScriptHubBridge = {
-    protocol = 1,
-    alive = function() return gui and gui.Parent ~= nil end,
-    S = S, D = D, C = C, Move = S.Move, Glow = S.Glow, Free = S.Free,
-    New = New, Corner = Corner, Stroke = Stroke, flash = flash,
-    RunCode = RunCode, ReleaseHubFocus = ReleaseHubFocus,
-    mvClamp = mvClamp, Players = Players, player = player,
-    getScripts = function() return scripts end,
-    Store = Store, RebuildScripts = function() if RebuildScripts then RebuildScripts() end end,
-}
-S.EnsureScriptHubFeature() -- URL tab only: no fetch/GUI construction during startup
-RebuildFeatureList()
--- END SCRIPT_HUB_BRIDGE
-
-
--- BEGIN SUPPORT_BRIDGE
-S.SupportBridge = {
-    protocol = 1, alive = function() return gui and gui.Parent ~= nil end,
-    S = S, D = D, C = C, HubGui = gui, Main = main, ToggleButton = togBtn,
-    New = New, Label = Label, Button = Button, Corner = Corner, Stroke = Stroke, flash = flash,
-    RunCode = RunCode, player = player, Players = Players, RunService = RunService,
-    UserInputService = UserInputService, Hit = Hit,
-    getWaypoints = function() return waypoints end,
-    saveSoon = function() Store.saveSoon() end,
-}
-Store.restoreWaypoints = function()
-    local view = _G.TDZSupportStandalone
-    if type(view) == "table" and view.Bridge == S.SupportBridge and not view.dead
-        and type(view.RefreshWaypoints) == "function" then view.RefreshWaypoints() end
-end
-S.EnsureSupportFeature() -- tab URL only; does not download or start Support during main startup
-RebuildFeatureList()
--- END SUPPORT_BRIDGE
 
 do
-    local setTab = AddTab("Thiết Lập", "⚙️", 6)   -- v4.15: 5 -> 6 (👥 chen vào ô 4)
+    local setTab = AddTab("Thiết Lập", "⚙️", 4)   -- v4.15: 5 -> 6 (👥 chen vào ô 4)
 
     local sy = 8
     local function rule(y)
@@ -10190,5 +9827,5 @@ print(string.format(
     Store.lastError and (" | ⚠️ " .. Store.lastError) or ""
 ))
 print("   💾 File lưu: " .. Store.SAVE_FILE .. (Store.canWrite() and " (executor có API lưu thật; kiểm tra trạng thái/lỗi ghi trong menu)" or " (hiện chỉ giữ trong RAM; hãy xuất dữ liệu để sao lưu)"))
-print("   Tính năng: Code + Code Đã Lưu + Script Hub + Hỗ Trợ (POS+SIZE+ROT+LOOK+VẬT THỂ+HIGHLIGHT TÍM) + Thiết Lập + Tạo Tính Năng")
+print("   Tab chính: Code Đã Lưu + Code + Người Chơi + Thiết Lập + Tạo Tính Năng")
 print("   🆕 v5.0: Di chuyển — 🚀/🛡 bay · 🧱 noclip · 🦘 nhảy · 💨 sprint · 👥 định vị/spectator · ✨ glow · 💾 lưu script/waypoint/tab")

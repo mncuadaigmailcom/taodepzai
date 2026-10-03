@@ -137,9 +137,16 @@ local codeTab = New("ScrollingFrame", {}, contentArea)
 local savedCodeTab = New("ScrollingFrame", {}, contentArea)
 local codeButton = New("TextButton", {LayoutOrder = 2}, tabBar)
 local savedButton = New("TextButton", {LayoutOrder = 1}, tabBar)
-local tabs, tabContent = {codeButton,savedButton}, {codeTab,savedCodeTab}
+local playerTab = New("ScrollingFrame",{},contentArea)
+local settingsTab = New("ScrollingFrame",{},contentArea)
+local featureCreatorTab = New("ScrollingFrame",{},contentArea)
+local playerButton = New("TextButton",{LayoutOrder=3},tabBar)
+local settingsButton = New("TextButton",{LayoutOrder=4},tabBar)
+local creatorButton = New("TextButton",{LayoutOrder=5},tabBar)
+local tabs, tabContent = {codeButton,savedButton,playerButton,settingsButton,creatorButton},
+    {codeTab,savedCodeTab,playerTab,settingsTab,featureCreatorTab}
 local activeTab = savedCodeTab
-local featureTabIndex = 8
+local featureTabIndex = 6
 local runActive = false
 local totalRuns, cancelled, curThread, curIndicator = 0, false, nil, nil
 local scripts, waypoints, featureTabs = {}, {}, {}
@@ -255,7 +262,7 @@ end
 function S.ClearEmbedsUnder(host)
     for i = #S.embeds, 1, -1 do
         local entry = S.embeds[i]
-        if entry.host.Parent == host then
+        if entry.host.Parent == host or entry.host:IsDescendantOf(host) then
             for _, rec in ipairs(entry.recs) do rec.obj.Parent = rec.origParent end
             entry.host:Destroy()
             table.remove(S.embeds, i)
