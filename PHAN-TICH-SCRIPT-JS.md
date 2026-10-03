@@ -3,6 +3,11 @@
 *Phân tích tĩnh + kiểm chứng bằng trình biên dịch **Luau thật** trên commit `8527247` (nhánh
 `arena/01a10157-taodepzai`), ngày 2026-10-03. Mọi số dòng trỏ tới đúng commit này.*
 
+> **Cập nhật sau phân tích:** `script.js` đã được thêm tính năng **🌳 định vị vạn vật theo tên**
+> (tab 👥 Người Chơi) — tệp nay **13.859 dòng** (+1.005, không xoá dòng nào). Các số liệu trong
+> tài liệu này vẫn đúng cho trạng thái trước khi thêm. Xem `BAO-CAO-DINH-VI-VAT.md` để biết chi
+> tiết tính năng, bộ test 93 case và các lỗi đã tìm/sửa.
+
 > **Điểm quan trọng nhất:** `script.js` hiện tại **không phải** key system `Free_v5_` mà `README.md`,
 > `LUA_HOP_DONG.md` và `PHAN-TICH.md` mô tả. Đây là **script hub** cho executor Roblox. Ba tài liệu kia đang
 > tả một tệp khác (bản key system ~1.131 dòng của nhánh trước) — xem §9.
