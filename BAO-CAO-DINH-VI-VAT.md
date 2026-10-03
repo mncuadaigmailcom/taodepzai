@@ -286,6 +286,8 @@ trong map**, **đi tới chỗ khác → vòng đi theo**, **dời vòng đi xa 
 
 ## 5h. 📍 ĐỊNH VỊ TÂM (thay cho ⭕ định vị vòng) — cây cắm + nút ảo tròn ngắm vật
 
+> ⚠️ **Tính năng này sau đó cũng đã được GỠ theo yêu cầu** — xem **§5i**. Phần dưới giữ lại để đối chiếu lịch sử.
+
 Theo yêu cầu: **"xoá định vị vòng, thay bằng định vị tâm: có một cây cắm ở giữa và có thêm một nút ảo hình tròn,
 tâm vào vật thể nào thì định vị vật thể đó, giống tính năng 📊 phân tích toạ độ, hiển thị thông tin đầy đủ"**
 + **"chạy test để tìm lỗi"**. Đã làm đúng như vậy:
@@ -329,6 +331,31 @@ là hàm dựng khung chết giữa chừng"), mọi nút **nằm gọn trong b�
 bấm nút ảo là **Highlight + nhãn + khung thông tin** hiện ra, **từng dòng trùng khớp `OT.Info`**, vật di chuyển thì số liệu tự cập nhật,
 nhiều mục + ✕ bỏ từng mục, trần mục, **🧑 chỉ người chơi** (vật vô tri bị từ chối, NPC nhận), **không định vị chính mình**,
 **vật `CanQuery = false` được dò bù**, tầm xa kẹp 5–5000 + ➖➕ + nhập tay, tắt là **dọn sạch** marker + cây cắm + render step.
+
+## 5i. GỠ 📍 định vị tâm theo yêu cầu (tính năng ⭕ cũng đã gỡ trước đó)
+
+Yêu cầu mới: **"xoá cho mình tính năng định vị tâm đi"**. Đã gỡ sạch:
+
+- **Xoá toàn bộ khối 📍** khỏi `script.js` (nút ảo tròn + cây cắm + tia ngắm + dò bù + khung 430 px trong tab 🛠 Hỗ Trợ):
+  không còn `S.Tam`, `_G.BananaCatHub_Tam`, `BC_TamPanel/BC_TamPin/BC_TamBtns/BC_TamESP`, render step `BC_Tam`.
+- **Xoá luôn khối dọn tàn dư** ở đầu script (không còn gì để dọn) → file gọn lại **14.639 dòng / 651.665 byte**.
+- **Không đụng tới bất kỳ tính năng nào khác** của hub: tab 🛠 Hỗ Trợ trở lại đúng như trước, phần
+  **"🎯 Định vị tốc độ game"** (nhãn mặc định/hiện tại/thật/cao nhất + thanh so sánh + HUD nổi) **vẫn nguyên và vẫn chạy**.
+- **Bộ test cập nhật theo**: nhóm 16 giờ canh *việc đã gỡ* — không còn khung/cây cắm/nút ảo/render step của ⭕ và 📍,
+  không có khối lạ chen ngay trên phần đo tốc độ, widget đo tốc độ vẫn đủ nhãn + HUD + bấm bật/tắt không lỗi, vẫn đủ 7 tab.
+- **Cổng "chạy lại hub"** đổi thành cổng tổng quát (không gắn với tính năng đã gỡ): nạp hub 2 lần liên tiếp → chỉ còn **1 cửa sổ hub**,
+  **GUI không nhân đôi**, **vẫn đủ 7 tab**, **số render step không tăng**, bảng `MV` của lần 1 không còn được dùng,
+  hub lần 2 sống bình thường và **không còn dấu vết ⭕/📍**.
+
+Kết quả kiểm tra sau khi gỡ:
+```
+npm run check        → ✅ COMPILE OK (script.js 14.639 dòng, 651.665 byte)
+                     → ✅ CẤU TRÚC OK — 452 khai báo function
+                     → ✅ chạy lại hub 10/10
+node chay-test.mjs   → TESTS: pass=203 fail=0
+```
+(Lần chạy đầu có **1 test đỏ do kỳ vọng SAI của chính bộ test** — tôi giả định phần đo tốc độ nằm ở đầu tab, thực tế nó nằm
+cuối tab từ bản gốc; đã sửa test thành "không có khối lạ chen ngay trên phần đo tốc độ". **Không phát hiện lỗi sản phẩm nào.**)
 
 ## 6. Lỗi tìm thấy qua test & đã sửa
 

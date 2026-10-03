@@ -18,495 +18,82 @@ local function near(a, b, eps) return math.abs((tonumber(a) or -1e9) - (tonumber
 -- Để trong hàm riêng cho khỏi vượt trần 200 local của Luau (hàm này vẫn thấy
 -- hub locals qua upvalue: S, D, C, camera, workspace…).
 -- ══════════════════════════════════════════════════════════════════════════
-local function __RUN_TAM_TESTS()
-    local R = _G.BananaCatHub_Tam
-    t("📍 có _G.BananaCatHub_Tam (định vị tâm)", type(R) == "table")
-    if type(R) ~= "table" then return end
-    t("📍 S.Tam == _G.BananaCatHub_Tam (cùng 1 bảng)", S.Tam == R)
-    t("⭕ tính năng định vị VÒNG đã được GỠ HẲN", _G.BananaCatHub_Ring == nil and S.Ring == nil)
-    t("🧷 mặc định hiện cây cắm trong map", R.showPin == true)
-    t("💬 mặc định hiện nhãn tên", R.showLabel == true)
-    t("📏 tầm xa mặc định 500m", R.range == 500)
-    t("🗑 KHÔNG còn giao diện vòng cũ trong hub (BC_RingBtns / BC_RingPanel)",
-        game:GetService("Players").LocalPlayer.PlayerGui:FindFirstChild("BC_RingBtns") == nil)
+-- ══════════════════════════════════════════════════════════════════════════
+-- NHÓM 16: ĐÃ GỠ ⭕ định vị vòng VÀ 📍 định vị tâm theo yêu cầu.
+-- Nhóm này canh: hai tính năng đó KHÔNG còn dấu vết nào, và tab 🛠 Hỗ Trợ
+-- vẫn nguyên vẹn (phần "🎯 Định vị tốc độ game" vẫn ở đầu tab, vẫn chạy được).
+-- ══════════════════════════════════════════════════════════════════════════
+local function __RUN_GO_TINH_NANG_TESTS()
+    t("📍 tính năng định vị tâm đã được GỠ HẲN", S.Tam == nil and _G.BananaCatHub_Tam == nil)
+    t("⭕ tính năng định vị vòng cũng KHÔNG còn (đã gỡ trước đó)", S.Ring == nil and _G.BananaCatHub_Ring == nil)
 
-    -- ---- 16.1 khung nằm trong tab 🛠 Hỗ Trợ, NGAY TRÊN "🎯 Định vị tốc độ game"
-    local panel = R.ui and R.ui.panel
-    local tab = panel and panel.Parent
-    t("khung 📍 nằm trong tab 🛠 Hỗ Trợ", panel ~= nil and tab ~= nil)
+    local tab = supportTab
+    t("tab 🛠 Hỗ Trợ vẫn tồn tại", tab ~= nil and tab.Parent ~= nil)
+    local conLai = {}
+    for _, nm in ipairs({ "BC_TamPanel", "BC_RingPanel", "BC_TamPin", "BC_TamBtns", "BC_TamESP",
+                          "BC_RingVis", "BC_RingBtns", "BC_RingESP" }) do
+        if tab:FindFirstChild(nm) ~= nil then conLai[#conLai + 1] = "tab:" .. nm end
+        if workspace:FindFirstChild(nm) ~= nil then conLai[#conLai + 1] = "workspace:" .. nm end
+        if playerGui:FindFirstChild(nm) ~= nil then conLai[#conLai + 1] = "gui:" .. nm end
+    end
+    t("không còn khung/cây cắm/nút ảo nào của 2 tính năng đã gỡ", #conLai == 0, table.concat(conLai, ","))
+    t("không còn render step BC_Tam / BC_Ring",
+        (_G.__renderSteps == nil) or (_G.__renderSteps["BC_Tam"] == nil and _G.__renderSteps["BC_Ring"] == nil))
+
+    -- ---- phần ĐO TỐC ĐỘ GAME phải trở lại đứng ĐẦU tab (không bị khung nào chen lên)
     local speedLbl = nil
-    if tab ~= nil then
+    for _, ch in ipairs(tab:GetChildren()) do
+        if ch:IsA("TextLabel") and tostring(ch.Text):find("Định vị tốc độ game", 1, true) ~= nil then
+            speedLbl = ch
+            break
+        end
+    end
+    t("phần \"🎯 Định vị tốc độ game\" vẫn còn trong tab 🛠 Hỗ Trợ", speedLbl ~= nil)
+    -- khung nằm NGAY TRÊN phần đo tốc độ phải là nội dung gốc của hub (không có khối lạ
+    -- cao hàng trăm px chen vào chỗ khung ⭕/📍 cũ)
+    local prevBottom, aboveName = 0, "?"
+    if speedLbl ~= nil then
         for _, ch in ipairs(tab:GetChildren()) do
-            if ch:IsA("TextLabel") and tostring(ch.Text):find("Định vị tốc độ game", 1, true) ~= nil then
-                speedLbl = ch
-                break
-            end
-        end
-    end
-    t("khung 📍 nằm NGAY TRÊN phần \"🎯 Định vị tốc độ game\"",
-        panel ~= nil and speedLbl ~= nil and panel.Position.Y.Offset < speedLbl.Position.Y.Offset,
-        panel and (panel.Position.Y.Offset .. " < " .. tostring(speedLbl and speedLbl.Position.Y.Offset)))
-    t("tab 🛠 Hỗ Trợ phải cuộn đủ chỗ cho khung mới",
-        panel ~= nil and tab.CanvasSize.Y.Offset >= (panel.Position.Y.Offset + panel.Size.Y.Offset),
-        tab and (tab.CanvasSize.Y.Offset .. " vs " .. tostring(panel and (panel.Position.Y.Offset + panel.Size.Y.Offset))))
-
-    -- ---- 16.2 khung phải dựng ĐỦ mọi nút (bug cũ: thiếu 1 nút -> hàm dựng khung
-    --        lỗi giữa chừng -> mọi nút phía sau không bao giờ được tạo)
-    local need = { "btnOn", "btnDrop", "btnBack", "btnFwd", "btnFollow", "btnShown",
-                   "btnRadiusSet", "btnMinus", "btnPlus", "btnVis", "btnResetBtn",
-                   "btnThru", "btnLabel", "btnOnly", "btnEdit", "btnColor", "btnHold",
-                   "rangeIn", "statusLbl", "list", "info", "infoLbl", "copyPos", "copyPath" }
-    local thieu = {}
-    for _, k in ipairs(need) do
-        if R.ui[k] == nil then thieu[#thieu + 1] = k end
-    end
-    if R.buildError ~= nil then thieu[#thieu + 1] = "buildError=" .. tostring(R.buildError) end
-    t("khung 📍 dựng đủ MỌI nút/ô (không dựng nửa vời)", #thieu == 0, table.concat(thieu, ","))
-
-    -- ---- 16.3 BỐ CỤC: mọi nút phải nằm trong bề ngang THẬT của tab
-    do
-        local avail = 540 - 56          -- Main 540 trừ rail icon 56 (contentArea)
-        local panelW = panel and panel.Size.X.Offset or 0
-        local roomy = {}
-        for _, ch in ipairs(panel:GetChildren()) do
-            if ch:IsA("TextButton") or ch:IsA("TextBox") then
-                local right = ch.Position.X.Offset + ch.Size.X.Offset
-                if right > avail then roomy[#roomy + 1] = tostring(ch.Text) .. "@" .. right end
-            end
-        end
-        t("mọi nút trong khung nằm gọn trong bề ngang tab (không bị cắt)", #roomy == 0, table.concat(roomy, " | "))
-        t("khung 📍 rộng đúng bằng panel của tab (1, -16)",
-            panel.Size.X.Scale == 1 and panel.Size.X.Offset == -16, panelW)
-        t("khung 📍 đủ cao cho danh sách + khung thông tin",
-            panel.Size.Y.Offset >= (R.ui.info.Position.Y.Offset + R.ui.info.Size.Y.Offset),
-            panel.Size.Y.Offset .. " vs " .. tostring(R.ui.info.Position.Y.Offset + R.ui.info.Size.Y.Offset))
-        t("khung thông tin nằm dưới danh sách, không chồng",
-            R.ui.info.Position.Y.Offset >= (R.ui.list.Position.Y.Offset + R.ui.list.Size.Y.Offset))
-    end
-
-    -- ---- 16.4 NÚT ẢO HÌNH TRÒN: mặc định nằm GIỮA màn hình ("cây cắm ở giữa")
-    local vp = R.Viewport()
-    local pg = game:GetService("Players").LocalPlayer.PlayerGui
-    local bgui = pg:FindFirstChild("BC_TamBtns")
-    t("có ScreenGui BC_TamBtns chứa nút ảo", bgui ~= nil)
-    local aimBtn = bgui and bgui:FindFirstChild("BC_TamBtn_aim")
-    t("có nút ảo chính BC_TamBtn_aim (nút tròn 📍)", aimBtn ~= nil)
-    if aimBtn then
-        local cx = aimBtn.Position.X.Offset + aimBtn.Size.X.Offset * 0.5
-        local cy = aimBtn.Position.Y.Offset + aimBtn.Size.Y.Offset * 0.5
-        t("nút ảo 📍 mặc định nằm GIỮA màn hình",
-            math.abs(cx - vp.X * 0.5) <= 2 and math.abs(cy - vp.Y * 0.5) <= 2,
-            string.format("%.0f,%.0f vs %.0f,%.0f", cx, cy, vp.X * 0.5, vp.Y * 0.5))
-        t("nút ảo 📍 là nút TRÒN (UICorner 0.5)",
-            (function() local c = aimBtn:FindFirstChildOfClass("UICorner")
-                return c ~= nil and c.CornerRadius.Scale == 0.5 end)())
-        local inner = aimBtn:FindFirstChild("Inner")
-        t("mỗi nút ảo có HÌNH TRÒN NHỎ bên trong (Inner + UICorner)",
-            inner ~= nil and inner:FindFirstChildOfClass("UICorner") ~= nil)
-        t("🗣 nút ảo có nhãn chữ (Cap) để biết nút làm gì", aimBtn:FindFirstChild("Cap") ~= nil)
-    end
-    local otherBtns = { "hold", "clear", "lock" }
-    local missingBtn = {}
-    for _, k in ipairs(otherBtns) do
-        if bgui and bgui:FindFirstChild("BC_TamBtn_" .. k) == nil then missingBtn[#missingBtn + 1] = k end
-    end
-    t("đủ 4 nút ảo: 📍 định vị · 🧷 giữ · 🧹 xoá · 🔒 chỉnh", #missingBtn == 0, table.concat(missingBtn, ","))
-    t("tâm ngắm = tâm nút ảo 📍 (mặc định giữa màn hình)",
-        math.abs(R.AimPoint().X - vp.X * 0.5) <= 2 and math.abs(R.AimPoint().Y - vp.Y * 0.5) <= 2,
-        tostring(R.AimPoint().X) .. "," .. tostring(R.AimPoint().Y))
-
-    -- ---- 16.5 KÉO NÚT: bật mới kéo được, tắt thì khoá cứng
-    do
-        local function fakeInput(x, y, kind)
-            return { UserInputType = kind or Enum.UserInputType.MouseMovement, Position = Vector2.new(x, y) }
-        end
-        local function drag(dx, dy)
-            local p0 = aimBtn.Position
-            aimBtn.InputBegan:Fire({ UserInputType = Enum.UserInputType.MouseButton1, Position = Vector2.new(0, 0) })
-            UserInputService.InputChanged:Fire(fakeInput(dx, dy))
-            UserInputService.InputEnded:Fire({ UserInputType = Enum.UserInputType.MouseButton1, Position = Vector2.new(dx, dy) })
-            return p0.X.Offset ~= aimBtn.Position.X.Offset or p0.Y.Offset ~= aimBtn.Position.Y.Offset
-        end
-        R.SetEdit(false)
-        local moved = drag(60, 40)
-        t("khi TẮT chỉnh nút: kéo KHÔNG đổi vị trí (khoá cứng)", moved == false)
-        R.SetEdit(true)
-        local before = { x = aimBtn.Position.X.Offset, y = aimBtn.Position.Y.Offset }
-        moved = drag(60, 40)
-        local saved = R.btns and R.btns.aim or {}
-        t("khi BẬT chỉnh nút: kéo được và LƯU vị trí mới",
-            moved and saved.x == aimBtn.Position.X.Offset and saved.y == aimBtn.Position.Y.Offset,
-            string.format("%s,%s", tostring(saved.x), tostring(saved.y)))
-        t("tâm ngắm đi theo nút ảo sau khi kéo",
-            math.abs((R.AimPoint().X) - (aimBtn.Position.X.Offset + aimBtn.Size.X.Offset * 0.5)) < 0.6)
-        R.SetEdit(false)
-        R.ui.btnResetBtn.Activated:Fire()
-        local cx = aimBtn.Position.X.Offset + aimBtn.Size.X.Offset * 0.5
-        t("↩️ Đặt lại đưa nút ảo 📍 về GIỮA màn hình", math.abs(cx - vp.X * 0.5) <= 2, cx)
-        t("nút kéo xong KHÔNG kích hoạt nhầm (không định vị khi đang kéo)", #R.list == 0 or R.on == false or true)
-        aimBtn.InputEnded:Fire({ UserInputType = Enum.UserInputType.MouseButton1, Position = Vector2.new(0, 0) })
-    end
-
-    -- ---- 16.6 CÂY CẮM: bật là có cọc mốc trong map
-    R.Set(false)
-    R.SetRange(500)
-    camera._aimTarget = nil
-    R.Set(true)
-    local pin = workspace:FindFirstChild("BC_TamPin")
-    t("bật 📍 là có Folder BC_TamPin (cây cắm) trong map", pin ~= nil)
-    local pBase = pin and pin:FindFirstChild("Base")
-    local pPost = pin and pin:FindFirstChild("Post")
-    local pTip  = pin and pin:FindFirstChild("Tip")
-    local pBeam = pin and pin:FindFirstChild("Beam")
-    t("cây cắm có đủ ĐẾ · CỘT · ĐẦU · TIA (Base/Post/Tip/Beam)",
-        pBase ~= nil and pPost ~= nil and pTip ~= nil and pBeam ~= nil)
-    t("cột cắm đứng thẳng đúng chỗ tâm (Post ở tâm + 8 stud)",
-        pPost ~= nil and R.pinPos ~= nil and math.abs(pPost.Position.Y - (R.pinPos.Y + 8)) < 0.05,
-        pPost and tostring(pPost.Position.Y))
-    t("cây cắm KHÔNG cản đường đi (CanCollide = false, CanQuery = false)",
-        pPost ~= nil and pPost.CanCollide == false and pPost.CanQuery == false)
-    t("cây cắm có nhãn \"📍 TÂM\"", pin ~= nil and (function()
-        for _, d in ipairs(pin:GetDescendants()) do
-            if d:IsA("BillboardGui") then return true end
-        end
-        return false
-    end)())
-
-    -- ---- 16.7 NGẮM + ĐỊNH VỊ: vẽ Highlight + nhãn GIỐNG 📊 phân tích toạ độ
-    local target = Instance.new("Part", workspace)
-    target.Name = "Cột Đèn Test"
-    target.Size = Vector3.new(2, 2, 2)
-    target.Anchored = true
-    target.Position = Vector3.new(120, 5, 0)
-    camera._aimTarget = target.Position            -- chĩa tia đúng vào vật này
-    local hitInst, hitPos = R.Aim()
-    t("tia ngắm chạm đúng vật đang chĩa vào", hitInst == target, tostring(hitInst and hitInst.Name))
-    t("điểm chạm của tia nằm trên mặt vật (không phải tâm)", hitPos ~= nil and (hitPos - target.Position).Magnitude <= 3)
-    R.hold = false
-    R.Step(0.3)                                    -- cây cắm dời theo tâm ngắm
-    t("cây cắm dời theo tâm ngắm khi chưa 🧷 giữ", R.pinPos ~= nil and (R.pinPos - hitPos).Magnitude < 0.01,
-        R.pinPos and tostring(R.pinPos.X))
-
-    R.ui.btnDrop.Activated:Fire()                   -- 🎯 Định vị ngay (đúng như bấm nút ảo 📍)
-    t("bấm 🎯 định vị: vật dưới tâm được đưa vào danh sách", R.items[target] ~= nil)
-    local it = R.items[target]
-    t("vật được định vị có Highlight (BC_TamHL)", it ~= nil and it.hl ~= nil and it.hl.Name == "BC_TamHL")
-    t("Highlight gắn vào vật trong Workspace (mới render được)",
-        it ~= nil and it.hl ~= nil and it.hl.Parent == target)
-    t("vật được định vị có NHÃN tên (BillboardGui)", it ~= nil and it.bb ~= nil and it.bb:FindFirstChildOfClass("TextLabel") ~= nil)
-    t("bấm định vị thì cây cắm GIỮ tại chỗ vật (không dời nữa)", R.hold == true and R.pinPos ~= nil)
-    local seenPin = false
-    for _, d in ipairs(workspace:GetDescendants()) do if d.Name == "BC_TamPin" then seenPin = true end end
-    t("cây cắm nằm trong Workspace (nhìn thấy được trong map)", seenPin)
-
-    -- ---- 16.8 THÔNG TIN ĐẦY ĐỦ giống hệt "📊 phân tích toạ độ"
-    t("khung 🎯 THÔNG TIN hiện ra sau khi định vị", R.ui.info.Visible == true)
-    t("khung thông tin có chọn đúng vật vừa định vị", R._sel == target)
-    local rows = R.Info(target)
-    local keys, vals = {}, {}
-    for _, r in ipairs(rows) do keys[r.k] = true; vals[r.k] = r.v end
-    local need9 = { "Name", "Class", "Path", "Position", "Size", "Rotation", "Look", "Material", "Color" }
-    local miss9 = {}
-    for _, k in ipairs(need9) do if not keys[k] then miss9[#miss9 + 1] = k end end
-    t("đủ 9 dòng như 📊 phân tích toạ độ", #miss9 == 0, table.concat(miss9, ","))
-    local OTm = S.ObjTrack
-    if OTm and OTm.Info then
-        local otRows = OTm.Info(target, target)
-        local lech = {}
-        for _, r in ipairs(otRows) do
-            if vals[r.k] ~= r.v then lech[#lech + 1] = r.k .. " (" .. tostring(vals[r.k]) .. " ≠ " .. tostring(r.v) .. ")" end
-        end
-        t("từng dòng trùng khớp với OT.Info (📊 phân tích toạ độ)", #lech == 0, table.concat(lech, " | "))
-    else
-        t("từng dòng trùng khớp với OT.Info (📊 phân tích toạ độ)", false, "không thấy S.ObjTrack")
-    end
-    t("có dòng 📍 Cách cây cắm + 🧍 Cách bạn", keys["📍 Cách cây cắm"] == true and keys["🧍 Cách bạn"] == true)
-    t("khung thông tin hiện ĐÚNG chữ của 9 dòng",
-        tostring(R.ui.infoLbl.Text):find("Position:", 1, true) ~= nil
-        and tostring(R.ui.infoLbl.Text):find("Material:", 1, true) ~= nil)
-    t("định vị xong thì nút ảo vẫn còn (không bị xoá theo)", pg:FindFirstChild("BC_TamBtns") ~= nil)
-
-    -- ---- 16.9 VẬT DI CHUYỂN: thông tin + nhãn tự cập nhật theo (tâm bám theo vật)
-    local posCu = vals["Position"]
-    target.Position = Vector3.new(140, 5, 0)
-    R.Tick()
-    R.RefreshInfo()
-    local rows2 = R.Info(target)
-    local posMoi = nil
-    for _, r in ipairs(rows2) do if r.k == "Position" then posMoi = r.v end end
-    t("vật di chuyển thì dòng Position tự cập nhật", posMoi ~= nil and posMoi ~= posCu, tostring(posMoi))
-    t("nhãn trên vật đổi theo khoảng cách mới (📍 cách cây cắm)",
-        it ~= nil and it.lbl ~= nil and tostring(it.lbl.Text):find("📍", 1, true) ~= nil)
-
-    -- ---- 16.10 NHIỀU MỤC + xoá từng mục
-    local t2 = Instance.new("Part", workspace)
-    t2.Name = "Thùng Rác Test"
-    t2.Size = Vector3.new(2, 2, 2)
-    t2.Anchored = true
-    t2.Position = Vector3.new(160, 5, 0)
-    camera._aimTarget = t2.Position
-    R.hold = false
-    R.ui.btnDrop.Activated:Fire()
-    t("định vị được NHIỀU mục cùng lúc", R.items[t2] ~= nil and R.items[target] ~= nil)
-    R.RefreshList()
-    local row1 = R.ui.list:FindFirstChild("TRow_1")
-    t("dòng danh sách có đủ nút 📊 Xem · 🚀 Bay · 📋 Tên · ✕ Bỏ",
-        row1 ~= nil and row1:FindFirstChild("TSee") ~= nil and row1:FindFirstChild("TFly") ~= nil
-        and row1:FindFirstChild("TCopy") ~= nil and row1:FindFirstChild("TDel") ~= nil)
-    local n0 = 0
-    for _ in pairs(R.items) do n0 = n0 + 1 end
-    if row1 then row1:FindFirstChild("TDel").Activated:Fire() end
-    local n1 = 0
-    for _ in pairs(R.items) do n1 = n1 + 1 end
-    t("nút ✕ Bỏ xoá đúng 1 mục khỏi danh sách", n1 == n0 - 1, n0 .. " -> " .. n1)
-
-    -- ---- 16.11 TRẦN SỐ MỤC (maxItems): chỉ giữ các mục gần tâm nhất
-    do
-        local made = {}
-        for i = 1, 4 do
-            local p = Instance.new("Part", workspace)
-            p.Name = "Vật Trần " .. i
-            p.Size = Vector3.new(1, 1, 1)
-            p.Anchored = true
-            p.Position = Vector3.new(200 + i * 4, 5, 0)
-            made[i] = p
-            R.Make(p, p, "part")
-            R.items[p].dist = i * 3
-        end
-        local oldMax = R.maxItems
-        R.maxItems = 3
-        R.RebuildList()
-        local n = 0
-        for _ in pairs(R.items) do n = n + 1 end
-        t("trần maxItems: không giữ quá số mục cho phép", n <= 3, n)
-        R.maxItems = oldMax
-        for i = 1, 4 do pcall(function() made[i]:Destroy() end) end
-        R.RebuildList()
-    end
-
-    -- ---- 16.12 CHỐNG KHỰNG: Tick chỉ cập nhật labelBudget mục mỗi lượt
-    do
-        local oldB = R.labelBudget
-        R.labelBudget = 2
-        R.Tick()
-        t("Tick chỉ cập nhật ≤ labelBudget mục (không khựng)", (R._tickUpdates or 0) <= 2, R._tickUpdates)
-        R.labelBudget = oldB
-    end
-
-    -- ---- 16.13 🧑 CHỈ NGƯỜI CHƠI (bỏ vật vô tri)
-    do
-        camera._aimTarget = t2.Position
-        R.Aim()
-        R.SetOnlyPlayers(true)
-        R.hold = false
-        local ok, why = R.LocateAim()
-        t("🧑 chỉ người chơi: vật vô tri KHÔNG được định vị", ok == false and tostring(why):find("người chơi") ~= nil,
-            tostring(why))
-        -- NPC (Model có Humanoid) thì được
-        local npc = Instance.new("Model", workspace)
-        npc.Name = "NPC Test"
-        local body = Instance.new("Part", npc)
-        body.Name = "HumanoidRootPart"
-        body.Size = Vector3.new(2, 2, 1)
-        body.Anchored = true
-        body.Position = Vector3.new(170, 5, 0)
-        Instance.new("Humanoid", npc)
-        camera._aimTarget = body.Position
-        R.hold = false
-        local ok2 = R.LocateAim()
-        t("🧑 chỉ người chơi: NPC vẫn được định vị (1 người = 1 mục)", ok2 == true and R.items[npc] ~= nil)
-        t("NPC được gắn nhãn 🤖 NPC",
-            R.items[npc] ~= nil and R.items[npc].kind == "npc",
-            R.items[npc] and tostring(R.items[npc].kind))
-        pcall(function() npc:Destroy() end)
-        R.SetOnlyPlayers(false)
-    end
-
-    -- ---- 16.14 KHÔNG định vị chính mình
-    do
-        local hrp = R.Root()
-        if hrp ~= nil then
-            local ok, why = R.Locate(hrp)
-            t("ngắm vào CHÍNH MÌNH thì không tự định vị (báo rõ)",
-                ok == false and tostring(why):find("chính bạn") ~= nil, tostring(why))
-            t("chính mình KHÔNG bị thêm vào danh sách", R.items[hrp.Parent] == nil)
-        else
-            t("ngắm vào CHÍNH MÌNH thì không tự định vị (báo rõ)", true)
-            t("chính mình KHÔNG bị thêm vào danh sách", true)
-        end
-    end
-
-    -- ---- 16.15 VẬT CanQuery = false (📚 sách / tường mỏng): tia engine KHÔNG thấy,
-    --        phải có lượt DÒ BÙ THEO TIA chia lát để vẫn định vị được
-    do
-        local book = Instance.new("Part", workspace)
-        book.Name = "Sách Test"
-        book.Size = Vector3.new(3, 3, 3)
-        book.Anchored = true
-        book.CanQuery = false                     -- đúng kiểu sách trang trí / tường mỏng
-        book.Position = Vector3.new(300, 5, 0)
-        camera._aimTarget = book.Position
-        R.SetRange(500)
-        local hit = R.Aim()
-        t("tia engine BỎ QUA vật CanQuery = false (đúng như Roblox thật)", hit == nil)
-        t("cấu hình dò bù có ngân sách chống khựng (chia lát)",
-            (R.probeBudget or 0) > 0 and (R.probeBudget or 0) <= 400 and (R.probeMs or 0) <= 2)
-        R.hold = false
-        R.LocateAim()
-        t("chưa trúng thì bật chế độ DÒ BÙ (không chết lặng)",
-            R._probing == true or (R._probe ~= nil and R._probe.best ~= nil))
-        local ok = R.ProbeAll()
-        t("dò bù theo tia tìm ra và định vị được vật ẩn", ok == true and R.items[book] ~= nil)
-        t("dò bù xong thì tắt cờ đang dò (không chạy mãi)", R._probing == false)
-        t("vật CanQuery = false vẫn được gắn Highlight", R.items[book] ~= nil and R.items[book].hl ~= nil)
-        R.ui.btnDrop.Activated:Fire()
-        t("bấm định vị lại khi tia đã trúng vật khác thì không lỗi", type(R.Status()) == "string")
-        pcall(function() book:Destroy() end)
-    end
-
-    -- ---- 16.16 📏 TẦM XA: kẹp 5..5000, nút ➖ ➕ ±50, nhập tay
-    do
-        R.SetRange(500)
-        R.ui.btnMinus.Activated:Fire()
-        t("➖ giảm tầm xa 50m", R.range == 450, R.range)
-        R.ui.btnPlus.Activated:Fire()
-        t("➕ tăng tầm xa 50m", R.range == 500, R.range)
-        t("kẹp dưới: nhập 1 -> 5", R.SetRange(1) == 5)
-        t("kẹp trên: nhập 99999 -> 5000", R.SetRange(99999) == 5000)
-        R.ui.rangeIn.Text = "640"
-        R.ui.btnRadiusSet.Activated:Fire()
-        t("ô nhập tay nhận giá trị mới", R.range == 640, R.range)
-        R.ui.rangeIn.Text = "50"
-        R.ui.rangeIn.FocusLost:Fire()
-        t("nhập 50 -> 50m", R.range == 50, R.range)
-        R.SetRange(500)
-        t("khung 📍 hiện đúng số tầm xa sau khi Paint", (function()
-            R.Paint()
-            return tostring(R.ui.rangeIn.Text):find("500", 1, true) ~= nil
-        end)())
-    end
-
-    -- ---- 16.17 Vật NGOÀI tầm xa thì không trúng (tầm xa có tác dụng thật)
-    do
-        camera._aimTarget = Vector3.new(2000, 5, 0)
-        R.SetRange(100)
-        local hit = R.Aim()
-        t("vật ngoài tầm xa thì tia không trúng", hit == nil)
-        R.SetRange(500)
-    end
-
-    -- ---- 16.18 CÁC NÚT CÒN LẠI trong khung: bấm không lỗi, trạng thái đổi đúng
-    do
-        local before = { pin = R.showPin, thru = R.thru, lbl = R.showLabel, btn = R.showButtons, hold = R.hold }
-        R.ui.btnVis.Activated:Fire()
-        t("🧷 Cây cắm: tắt được cây cắm trong map",
-            R.showPin == false and workspace:FindFirstChild("BC_TamPin") == nil)
-        R.ui.btnVis.Activated:Fire()
-        t("🧷 Cây cắm: bật lại là có cây cắm", R.showPin == true and workspace:FindFirstChild("BC_TamPin") ~= nil)
-        R.ui.btnThru.Activated:Fire()
-        t("🕶 Xuyên tường: đổi được và Highlight đổi DepthMode",
-            R.thru == false and (function()
-                for _, i2 in pairs(R.items) do
-                    if i2.hl then return tostring(i2.hl.DepthMode):find("Occluded") ~= nil end
+            if ch ~= speedLbl and (ch:IsA("Frame") or ch:IsA("TextLabel") or ch:IsA("TextButton")) then
+                local bottom = ch.Position.Y.Offset + ch.Size.Y.Offset
+                if bottom <= speedLbl.Position.Y.Offset and bottom > prevBottom then
+                    prevBottom, aboveName = bottom, tostring(ch.Name)
                 end
-                return true
-            end)())
-        R.ui.btnThru.Activated:Fire()
-        R.ui.btnLabel.Activated:Fire()
-        t("💬 Nhãn: tắt là nhãn ẩn", R.showLabel == false and (function()
-            for _, i2 in pairs(R.items) do
-                if i2.bb then return i2.bb.Enabled == false end
             end
-            return true
-        end)())
-        R.ui.btnLabel.Activated:Fire()
-        R.ui.btnShown.Activated:Fire()
-        t("👁 Nút ảo: tắt là ẩn cả cụm nút",
-            R.showButtons == false and pg:FindFirstChild("BC_TamBtns").Enabled == false)
-        R.ui.btnShown.Activated:Fire()
-        R.hold = false
-        R.ui.btnHold.Activated:Fire()
-        t("🧷 Giữ cây cắm: bật là giữ", R.hold == true, tostring(R.hold))
-        R.ui.btnHold.Activated:Fire()
-        t("🧷 Giữ cây cắm: tắt là thôi giữ", R.hold == false, tostring(R.hold))
-        local name0 = R.Pal().name
-        R.ui.btnColor.Activated:Fire()
-        t("🎨 Màu: đổi được màu định vị", R.Pal().name ~= name0, R.Pal().name)
-        R.ui.btnColor.Activated:Fire()
-        R.ui.copyPos.Activated:Fire()
-        R.ui.copyPath.Activated:Fire()
-        t("📋 Copy toạ độ / Copy path bấm không lỗi (có báo rõ nếu executor thiếu)",
-            type(R.ui.statusLbl.Text) == "string")
-        R.ui.btnBack.Activated:Fire()
-        t("⏪ Lùi: dịch cây cắm", R.pinPos ~= nil)
-        R.ui.btnFwd.Activated:Fire()
-        t("⏩ Tới: dịch cây cắm", R.pinPos ~= nil)
-        t("nút 🎨 hiện chữ màu ở khung trạng thái", tostring(R.ui.statusLbl.Text):find("🎨", 1, true) ~= nil)
-        R.showPin, R.thru, R.showLabel, R.showButtons, R.hold =
-            before.pin, before.thru, before.lbl, before.btn, before.hold
-        R.ApplyStyle(); R.Paint()
-    end
-
-    -- ---- 16.19 🧲 Ở CHÂN BẠN + 🎯 Cắm tại chân (Place)
-    do
-        local hrp = R.Root()
-        R.ui.btnFollow.Activated:Fire()
-        local oki = (R.follow == true)
-        if hrp then
-            t("🧲 Ở chân bạn: cây cắm đứng ngay chân bạn",
-                (R.pinPos - hrp.Position).Magnitude < 1.5, R.pinPos and tostring(R.pinPos.Y))
-        else
-            t("🧲 Ở chân bạn: bật được", oki)
         end
-        R.ui.btnFollow.Activated:Fire()
-        t("🧲 tắt ở chân bạn là thôi", R.follow == false)
-        local okP, spot = R.Place()
-        t("🎯 Cắm cây cắm tại chân bạn (Place) chạy được",
-            okP == true and R.on == true and R.pinPos ~= nil and hrp ~= nil
-            and (R.pinPos - hrp.Position).Magnitude < 1.5)
     end
+    t("không còn khối lạ nào chen ngay trên phần đo tốc độ",
+        speedLbl ~= nil and (speedLbl.Position.Y.Offset - prevBottom) <= 24,
+        tostring(speedLbl and speedLbl.Position.Y.Offset) .. " - " .. tostring(prevBottom) .. " (" .. aboveName .. ")")
+    t("tab 🛠 Hỗ Trợ vẫn cuộn đủ chỗ", tab.CanvasSize.Y.Offset > 0, tab.CanvasSize.Y.Offset)
 
-    -- ---- 16.20 TẮT là dọn sạch (marker + cây cắm + vòng render), bật lại vẫn chạy
-    do
-        R.Set(false)
-        local n = 0
-        for _ in pairs(R.items) do n = n + 1 end
-        t("tắt 📍 là xoá hết mục đã định vị", n == 0)
-        t("tắt 📍 là dỡ cây cắm trong map", workspace:FindFirstChild("BC_TamPin") == nil)
-        t("tắt 📍 là gỡ render step BC_Tam", (_G.__renderSteps == nil) or (_G.__renderSteps["BC_Tam"] == nil))
-        t("tắt 📍 thì khung thông tin ẩn đi", R.ui.info.Visible == false)
-        R.Set(true)
-        t("bật lại 📍 vẫn chạy bình thường", R.on == true and workspace:FindFirstChild("BC_TamPin") ~= nil)
-        R.Set(false)
+    -- ---- widget đo tốc độ vẫn nguyên + vẫn bấm chạy được
+    local found = { btn = nil, hud = false }
+    local needTxt = { "🎯 Mặc định game", "🚶 WalkSpeed hiện tại", "⚡ Tốc độ thật", "🏁 Cao nhất" }
+    local thay = {}
+    for _, ch in ipairs(tab:GetChildren()) do
+        if ch:IsA("TextButton") and tostring(ch.Text):find("Định vị tốc độ", 1, true) ~= nil then found.btn = ch end
+        if ch:IsA("TextLabel") then
+            for i, tx in ipairs(needTxt) do
+                if tostring(ch.Text):find(tx, 1, true) ~= nil then needTxt[i] = "" end
+            end
+        end
     end
-
-    -- ---- 16.21 dòng trạng thái nói rõ đang ngắm gì / tâm ở đâu
-    do
-        camera._aimTarget = t2.Position
-        R.Set(true)
-        R.SetRange(500)
-        R.hold = false
-        R.Aim()
-        R.LocateAim()
-        local st = R.Status()
-        t("dòng trạng thái ghi rõ vật đang ngắm", tostring(st):find("🎯", 1, true) ~= nil, st)
-        t("dòng trạng thái ghi toạ độ tâm (cây cắm)", tostring(st):find("tâm", 1, true) ~= nil, st)
-        R.Set(false)
+    for _, tx in ipairs(needTxt) do if tx ~= "" then thay[#thay + 1] = tx end end
+    for _, d in ipairs(playerGui:GetDescendants()) do
+        if d.Name == "BC_SpeedHud" then found.hud = true end
     end
+    t("widget đo tốc độ vẫn đủ nhãn (mặc định · hiện tại · thật · cao nhất)", #thay == 0, table.concat(thay, ","))
+    t("widget đo tốc độ vẫn có HUD nổi + nút bật/tắt", found.hud == true and found.btn ~= nil)
+    local okBtn = pcall(function() if found.btn then found.btn.Activated:Fire() end end)
+    t("nút 🎯 Định vị tốc độ vẫn bấm được (không lỗi)", okBtn == true)
+    local okBtn2 = pcall(function() if found.btn then found.btn.Activated:Fire() end end)
+    t("bấm lần 2 tắt lại cũng không lỗi", okBtn2 == true)
+    __pump(2)
+    t("sau khi bấm, hub vẫn chạy bình thường (không lỗi runtime)", true)
 
-    -- ---- dọn dẹp để không ảnh hưởng về sau
-    camera._aimTarget = nil
-    R.Set(false)
-    R.SetFollow(false)
-    R.SetOnlyPlayers(false)
-    R.SetEdit(false)
-    R.SetShowPin(true)
-    R.SetShowButtons(true)
-    R.SetRange(500)
-    R.showLabel, R.thru = true, true
-    R.Paint()
-    pcall(function() target:Destroy() end)
-    pcall(function() t2:Destroy() end)
+    -- ---- hub vẫn nguyên các phần khác
+    t("vẫn đủ 7 tab của hub", #tabContent == 7, #tabContent)
 end
 
 local function __RUN_TESTS()
@@ -1273,8 +860,8 @@ for _, nm in ipairs(needPanels) do
 end
 t("4 khung không chồng nhau (Y tăng dần)", ys[1] < ys[2] and ys[2] < ys[3] and ys[3] < ys[4], table.concat(ys, "<"))
 
--- ---------- 16. 📍 ĐỊNH VỊ TÂM (tab 🛠 Hỗ Trợ) ----------
-__RUN_TAM_TESTS()
+-- ---------- 16. ĐÃ GỠ ⭕ định vị vòng + 📍 định vị tâm (tab 🛠 Hỗ Trợ) ----------
+__RUN_GO_TINH_NANG_TESTS()
 
 -- ---------- tổng kết ----------
 print(string.format("TESTS: pass=%d fail=%d", PASS, FAIL))
