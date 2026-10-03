@@ -44,7 +44,7 @@ test('the extracted original Script Hub module compiles', {skip:!hasCompiler && 
 });
 
 test('all original named controllers and all catalog items survive the extraction',()=>{
-    const all = main + '\n' + moduleSource;
+    const all = main + '\n' + moduleSource + '\n' + fs.readFileSync(path.join(root,'ho-tro.lua'),'utf8');
     for(const name of manifest.functions) assert(all.includes(name), `Lost original function: ${name}`);
     const catalog = moduleSource.slice(moduleSource.indexOf('S.ScriptHubList = {'),
         moduleSource.indexOf('\n-- END SCRIPT_HUB_CATALOG'));
@@ -54,7 +54,7 @@ test('all original named controllers and all catalog items survive the extractio
     for(const panel of manifest.panelNames) assert(moduleSource.includes(`Name = "${panel}"`), `Lost panel ${panel}`);
     assert.equal(manifest.panelNames.length,9);
     assert.match(main,/AddTab\("Người Chơi", "👥", 4\)/);
-    assert.match(main,/AddTab\("Hỗ Trợ", "🛠", 5\)/);
+    assert.match(main,/S\.CreateFeatureTab\("Hỗ Trợ", "🛠", S\.SupportScriptUrl/);
     assert.match(main,/AddTab\("Thiết Lập", "⚙️", 6\)/);
     assert.match(main,/AddTab\("Tạo Tính Năng", "➕", 7\)/);
 });

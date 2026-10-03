@@ -9,6 +9,10 @@ const source = fs.readFileSync(path.join(root,'script.js'),'utf8').replace(/\r\n
 const moduleSource = fs.readFileSync(path.join(root,'script-hub.lua'),'utf8');
 const fixture = fs.readFileSync(path.join(__dirname,'fixtures/hub-runtime.luau'),'utf8');
 const controllerFixture = fs.readFileSync(path.join(__dirname,'fixtures/script-hub-runtime.luau'),'utf8');
+const supportSource = fs.readFileSync(path.join(root,'ho-tro.lua'),'utf8');
+const supportFixture = fs.readFileSync(path.join(__dirname,'fixtures/support-runtime.luau'),'utf8');
+assert.doesNotMatch(supportSource,/\]====\]/);
+const setupSupport = `${supportFixture}\n_G.BananaCatHubAPI={SupportBridge=function() return Mock.supportBridge() end}\n`;
 assert.doesNotMatch(moduleSource,/\]====\]/);
 function between(start,end) {
     const a=source.indexOf(start),b=source.indexOf(end,a+start.length);
@@ -31,7 +35,7 @@ const production = [
     between('function S.BeginRunCapture()', '\nlocal function RunFeatureScript('),
     between('local function RunFeatureScript(','\ntask.spawn(function()\n    task.wait(1)'),
     between('Store.restoreFeatures = function()','\nS.Move = {'),
-].join('\n')+`\nS.PARK_MAX=2\nS.ScriptHubScriptUrl = "https://raw.githubusercontent.com/mncuadaigmailcom/taodepzai/arena/01a0fd07-taodepzai/script-hub.lua"\n`;
+].join('\n')+`\nS.PARK_MAX=2\nS.SupportScriptUrl="https://raw.githubusercontent.com/mncuadaigmailcom/taodepzai/arena/01a0fd07-taodepzai/ho-tro.lua"\nS.ScriptHubScriptUrl = "https://raw.githubusercontent.com/mncuadaigmailcom/taodepzai/arena/01a0fd07-taodepzai/script-hub.lua"\n`;
 const setupModule = `${controllerFixture}\n${between('function S.RunHubAction(','\n-- Script Hub GUI moved')}\n_G.BananaCatHubAPI={ScriptHubBridge=function() return Mock.makeScriptHubBridge() end}\n`;
 const luau=process.env.LUAU_BIN||'luau', compiler=process.env.LUAU_COMPILE_BIN||'luau-compile';
 const available=bin=>!spawnSync(bin,['--help'],{encoding:'utf8'}).error;
@@ -252,7 +256,7 @@ local ft=S.EnsureScriptHubFeature()
 Mock.add("Saved","print('saved')")
 S.CreateFeatureTab("User","⚙️","print('user')");assert(Store.save())
 S.DoReload();Mock.flush()
-assert(S.scriptHubFeature==ft and #featureTabs==2 and #scripts==1 and Mock.row("Saved"))
+assert(S.scriptHubFeature==ft and #featureTabs==3 and #scripts==1 and Mock.row("Saved"))
 assert(#Mock.http==0 and Mock.executed==0 and savedButton.LayoutOrder==1)
 `);
 luaTest('dynamic feature deletion preserves native rails and the fixed Script Hub rail',String.raw`
@@ -325,4 +329,59 @@ S.embedEnabled=false
 local ft=S.CreateFeatureTab("Outside","⚙️",Mock.guiCode)
 assert(S.StartFeatureRun(ft,true));Mock.flush()
 assert(ft.hasRun and Mock.executed==1 and Mock.embedded==0 and #S.embeds==0)
+`);
+
+luaTest('Hỗ Trợ URL tab is preinstalled at original order 5 without moving the native saved-code tab',String.raw`
+local hub=S.EnsureScriptHubFeature();local support=S.EnsureSupportFeature()
+assert(hub.btn.LayoutOrder==3 and support.btn.LayoutOrder==5 and support.builtinId=="support")
+assert(support.transient and savedButton.LayoutOrder==1 and codeButton.LayoutOrder==2)
+assert(S.EnsureSupportFeature()==support and #featureTabs==2 and #Mock.http==0)
+assert(_G.TDZSupportStandalone==nil and Mock.find(savedCodeTab,"SavedCodeList"))
+`);
+luaTest('Hỗ Trợ downloads the full source and embeds the module through the same feature pipeline as Script Hub',`
+${setupSupport}
+Mock.sources[S.SupportScriptUrl]=[====[${supportSource}]====]
+local ft=S.EnsureSupportFeature();Mock.button(ft.frame,"▶ Chạy Script").Activated:Fire();Mock.flush()
+local view=assert(_G.TDZSupportStandalone)
+assert(ft.hasRun and view.Root.Parent.Parent==ft.hostFrame)
+assert(#Mock.http==1 and Mock.http[1]==S.SupportScriptUrl)
+assert(Mock.find(view.Root,"SupportAnalyze") and Mock.find(view.Root,"SupportTeleport"))
+assert(Mock.find(view.Root,"SupportWaypoints") and savedButton.LayoutOrder==1)
+`);
+luaTest('Hỗ Trợ HTTP failure is retryable without duplicate tabs/input/render connections',`
+${setupSupport}
+local ft=S.EnsureSupportFeature();assert(S.StartFeatureRun(ft,true));Mock.flush()
+assert(ft.state=="error" and _G.TDZSupportStandalone==nil and Mock.UIS.InputBegan:Count()==0)
+Mock.sources[S.SupportScriptUrl]=[====[${supportSource}]====]
+assert(S.StartFeatureRun(ft,true));Mock.flush()
+assert(ft.hasRun and #featureTabs==1 and #Mock.http==2)
+assert(Mock.UIS.InputBegan:Count()==1 and Mock.RS.RenderStepped:Count()==1)
+`);
+luaTest('Hỗ Trợ close/reopen preserves its GUI and controls without reloading the source',`
+${setupSupport}
+Mock.sources[S.SupportScriptUrl]=[====[${supportSource}]====]
+local ft=S.EnsureSupportFeature();assert(S.StartFeatureRun(ft,true));Mock.flush()
+local view=_G.TDZSupportStandalone
+Mock.find(ft.frame,"FeatureTabClose").Activated:Fire();assert(view.Root.Parent==view.Gui and activeTab==codeTab)
+ft.btn.Activated:Fire();Mock.flush()
+assert(view.Root.Parent.Parent==ft.hostFrame and #Mock.http==1 and not view.dead)
+assert(Mock.UIS.InputBegan:Count()==1)
+`);
+luaTest('save/reload retains both configured URL tabs while only storing native scripts and user features',String.raw`
+local h=S.EnsureScriptHubFeature();local s=S.EnsureSupportFeature()
+Mock.add("Normal saved code","print('keep')")
+S.CreateFeatureTab("User feature","⚙️","print('user')")
+assert(Store.save());S.DoReload();Mock.flush()
+assert(S.scriptHubFeature==h and S.supportFeature==s and #featureTabs==3)
+assert(#Store.serialize().features==1 and #scripts==1 and Mock.row("Normal saved code"))
+assert(h.btn.LayoutOrder==3 and s.btn.LayoutOrder==5 and #Mock.http==0)
+`);
+luaTest('delete Support while HTTP yields prevents a late GUI/input hook and releases the feature owner',`
+${setupSupport}
+Mock.sources[S.SupportScriptUrl]=[====[${supportSource}]====]
+local actual=game.HttpGet;game.HttpGet=function(self,url) task.wait(2);return actual(self,url) end
+local ft=S.EnsureSupportFeature();assert(S.StartFeatureRun(ft,true) and ft.running)
+S.DestroyFeatureTab(ft);Mock.flush()
+assert(S.supportFeature==nil and _G.TDZSupportStandalone==nil and S.featureRunOwner==nil)
+assert(Mock.UIS.InputBegan:Count()==0 and Mock.RS.RenderStepped:Count()==0)
 `);
