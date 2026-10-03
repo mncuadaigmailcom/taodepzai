@@ -122,6 +122,11 @@ CFrame.__mul = function(a, b)
     return a
 end
 CFrame.identity = CFrame.new(0, 0, 0)
+-- Roblox thật có CFrame.Angles; thiếu nó thì mọi phép "CFrame.new(pos) * CFrame.Angles(...)" bị lỗi
+function CFrame.Angles(x, y, z) return CFrame.new(0, 0, 0) end
+function CFrame.fromEulerAnglesXYZ(x, y, z) return CFrame.new(0, 0, 0) end
+function CFrame.fromOrientation(x, y, z) return CFrame.new(0, 0, 0) end
+function CFrame.lookAt(a, b) return CFrame.new(a) end
 
 UDim = {}
 function UDim.new(s, o) return setmetatable({ Scale = s or 0, Offset = o or 0, _rbx = "UDim" }, UDim) end
@@ -278,6 +283,21 @@ local function newInstance(cls, parent)
         __index = function(t, k)
             local v = rawget(t, k)
             if v ~= nil then return v end
+            -- BASE PART: Position/CFrame là một (đọc từ _cf)
+            if k == "Position" or k == "CFrame" then
+                local isa = rawget(t, "_isa")
+                if isa then
+                    for i = 1, #isa do
+                        if isa[i] == "BasePart" then
+                            local c = rawget(t, "_cf")
+                            if k == "Position" then
+                                return c and c.Position or Vector3.zero
+                            end
+                            return c or CFrame.new(0, 0, 0)
+                        end
+                    end
+                end
+            end
             local m = METHODS[k]
             if m then return m end
             local d = rawget(t, "_defaults")
@@ -304,6 +324,26 @@ local function newInstance(cls, parent)
                 rawset(t, "Parent", v)
                 if v and v._kids then v._kids[#v._kids + 1] = t end
                 return
+            end
+            -- BASE PART: Position và CFrame là MỘT (Roblox thật cũng vậy). Phải lưu vào _cf
+            -- chứ không lưu thẳng 2 khoá: Lua chỉ gọi __newindex khi khoá CHƯA tồn tại, nên
+            -- nếu ghi thẳng khoá "Position" thì lần ghi Position sau đó sẽ không qua đây nữa
+            -- và Position/CFrame lệch nhau.
+            local isa = rawget(t, "_isa")
+            if isa then
+                for i = 1, #isa do
+                    if isa[i] == "BasePart" then
+                        if k == "Position" then
+                            rawset(t, "_cf", CFrame.new(v))
+                            return
+                        end
+                        if k == "CFrame" then
+                            rawset(t, "_cf", v)
+                            return
+                        end
+                        break
+                    end
+                end
             end
             rawset(t, k, v)
         end,

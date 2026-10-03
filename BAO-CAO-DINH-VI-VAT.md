@@ -230,7 +230,56 @@ thao tác bấm chạy lại script — với vòng đang bật ở lần 1, r�
 năng ⭕ của lần 2 vẫn chạy (đã thử **gỡ phần dọn dẹp ra** → cổng báo đỏ `chỉ còn ĐÚNG 1 ScreenGui 3 nút ảo -> 2`,
 tức cổng thật sự bắt được lỗi).
 
-Test: **189 → 252 case** (`pass=252 fail=0`), nhóm 16 có **63 case** kiểm tra: khung nằm **trên** phần tốc độ game, chỉnh bán kính (kẹp 5–2000, nút ➖ ➕, ô nhập tay), đổ vòng đúng chân, quét được vật trong bán kính & **không** quét vật ngoài, **bỏ qua chính mình**, gộp 1 marker/người, **NPC/vật đi vào vòng thì hiện – đi ra thì mất**, Folder gộp nhóm, MeshPart, **9 dòng thông tin trùng khớp từng chữ với `OT.Info`** (📊 phân tích toạ độ) và cập nhật khi vật di chuyển, 3 nút ảo + hình tròn nhỏ bên trong, **kéo nút khi TẮT không đổi vị trí / khi BẬT thì đổi và lưu lại**, nút 🔒 bật–tắt, ⏪⏩ dịch đúng hướng nhìn, 🧲 bám theo khi bạn di chuyển, 🖼 bật/tắt vòng nhìn thấy, ngân sách Tick ≤ `labelBudget`, và dọn sạch khi tắt.
+Test: **189 → 252 case** (`pass=252 fail=0`) — riêng đợt §5g nâng tiếp lên **276 case**, nhóm 16 có **63 case** kiểm tra: khung nằm **trên** phần tốc độ game, chỉnh bán kính (kẹp 5–2000, nút ➖ ➕, ô nhập tay), đổ vòng đúng chân, quét được vật trong bán kính & **không** quét vật ngoài, **bỏ qua chính mình**, gộp 1 marker/người, **NPC/vật đi vào vòng thì hiện – đi ra thì mất**, Folder gộp nhóm, MeshPart, **9 dòng thông tin trùng khớp từng chữ với `OT.Info`** (📊 phân tích toạ độ) và cập nhật khi vật di chuyển, 3 nút ảo + hình tròn nhỏ bên trong, **kéo nút khi TẮT không đổi vị trí / khi BẬT thì đổi và lưu lại**, nút 🔒 bật–tắt, ⏪⏩ dịch đúng hướng nhìn, 🧲 bám theo khi bạn di chuyển, 🖼 bật/tắt vòng nhìn thấy, ngân sách Tick ≤ `labelBudget`, và dọn sạch khi tắt.
+
+## 5g. ⭕ "BẬT VÒNG MÀ KHÔNG THẤY VÒNG" — tìm ra nguyên nhân gốc bằng test
+
+Người dùng báo: bật vòng mà **không thấy vòng**, sách/tường trong vòng **không được định vị**,
+muốn **chỉnh định vị người chơi** và yêu cầu **"chạy test để tìm lỗi"**. Kết quả:
+
+**1) Nguyên nhân gốc của "bật vòng mà không thấy vòng" (lỗi nặng nhất).** Khi dựng lại bố cục nút,
+khung ⭕ **thiếu mất nút `🧲 Theo bạn`** trong khi code phía dưới vẫn gọi `ui.btnFollow.Activated`
+→ hàm dựng khung `R.BuildPanel` **lỗi ngay giữa chừng**. Khung được gọi trong `pcall` nên lỗi bị
+**nuốt im lặng**: mọi nút phía sau nó (🕶 Xuyên tường · 💬 Nhãn · 🧑 Chỉ người chơi · 🎨 Màu · 🖐 Chỉnh nút,
+cả chip trạng thái) **không bao giờ được tạo** → bấm ⭕ không có gì xảy ra.
+*Cách tìm:* test báo `attempt to index nil with 'Activated'` mà **không kèm số dòng** → viết probe in ra
+`R.ui.btnFollow` và so **bộ khoá của `R.ui`** với danh sách nút được tham chiếu ở phần code phía dưới,
+thấy thiếu đúng `btnFollow`; test mới **16.9b** canh vĩnh viễn việc này (đòi **đủ 23 phần tử** của khung).
+
+**2) Bố cục mới 4 hàng trong panel 430 px** — mọi hàng **≤ 464 px** (bề ngang thật của tab = 540 − 56 rail),
+trước đây nút đặt tới 566 px nên bị `ClipsDescendants` cắt mất:
+
+| Hàng | Nút |
+|---|---|
+| 1 | ⭕ Vòng: BẬT/TẮT · 🎯 Đổ vị trí · ⏪ Lùi · ⏩ Tới · 👁 Nút ảo |
+| 2 | ⭕ Bán kính (ô nhập tay) + ✅ Đặt / ➖ ➕ · 🖼 Vòng · ↩️ Đặt lại |
+| 3 | 🧲 Theo bạn · 🕶 Xuyên tường · 💬 Nhãn · 🧑 Chỉ người chơi/Mọi vật · 🎨 Màu |
+| 4 | 🖐 Chỉnh nút: BẬT/TẮT |
+
+**3) Thấy vòng ngay khi bật.** Mặc định **🖼 Vòng = BẬT** và **🧲 Theo bạn = BẬT** (trước đây cả hai TẮT nên
+bấm ⭕ xong chẳng thấy gì); đĩa neon **dày 0,35 studs · trong suốt 0,6** (bản cũ 0,05 studs — gần như vô hình)
++ **vành `CylinderHandleAdornment` luôn nổi trên mọi vật** + **cột mốc 30 studs ở tâm**; nếu 🖼 đang tắt thì chip
+trạng thái ghi rõ **"🖼 vòng đang ẨN trong map (bấm 🖼 Vòng để hiện)"**.
+
+**4) Định vị được cả vật `CanQuery = false`** (📚 sách trang trí, tường mỏng): `GetPartBoundsInRadius` của engine
+**bỏ qua** part có `CanQuery = false`, nên thêm **lượt quét bù toàn map chia lát**
+(`R.SweepBegin/SweepSlice`: 3 giây/lần · 220 part mỗi lát · trần **1,2 ms**/lát) — bắt được vật mà **không khựng**.
+
+**5) Đúng khi vòng đi theo bạn / đổi bán kính.** Danh sách được **lọc lại theo bán kính** (không còn sót vật
+ngoài vòng do dữ liệu của lượt quét trước) và **trần `maxItems` vẫn đúng khi đang quét bù** (chỉ giữ thêm tối đa
+`maxItems − số đã chọn` vật, **xa nhất bị bỏ**); `maxItems` nâng **40 → 60**.
+
+**6) "Chỉnh định vị người chơi thôi".** Nút **🧑 Chỉ người chơi / Mọi vật** lọc chỉ người chơi + NPC
+(mỗi người **1 marker**), chip trạng thái ghi **🧑 chỉ người chơi**.
+
+**7) Lỗi trong khung test** (không phải lỗi sản phẩm): giả lập thiếu **`CFrame.Angles`** và coi `Position` /
+`CFrame` là **hai khoá riêng** — Roblox thật coi chúng là **một**. Lua chỉ gọi `__newindex` khi khoá **chưa**
+tồn tại, nên cách mô phỏng cũ khiến `Position` và `CFrame` **lệch nhau** → test "vòng đi theo" báo sai oan.
+Đã sửa giả lập: BasePart dùng chung một nguồn `_cf` cho cả `Position` lẫn `CFrame`.
+
+Test: **252 → 276 case** (`pass=276 fail=0`), cổng `npm run check` xanh (**COMPILE OK** · **CẤU TRÚC OK 512 function** ·
+**chạy lại hub 11/11**). Test mới đáng chú ý: **khung dựng đủ 23 phần tử**, **bấm nút ⭕ trong tab → vòng hiện ngay
+trong map**, **đi tới chỗ khác → vòng đi theo**, **dời vòng đi xa → danh sách cũ không sót lại**.
 
 ## 6. Lỗi tìm thấy qua test & đã sửa
 
@@ -248,6 +297,9 @@ Test: **189 → 252 case** (`pass=252 fail=0`), nhóm 16 có **63 case** kiểm 
 | 9 | **Vòng định vị chết nếu executor/game chặn `OverlapParams`**: `OverlapParams.new()` gọi ngoài `pcall` → lỗi là mất luôn cả lượt quét | Soi lại code khi ráp khối ⭕ + đối chiếu cách khối 🌳 xử lý (`pcall` rồi mới dùng) | Bọc `pcall` và có **nhánh dự phòng `Instance.new("OverlapParams")`**; thiếu cả hai thì `R.Scan` trả lỗi rõ ràng chứ không hỏng |
 | 10 | **Highlight gắn `Adornee` = Folder thì KHÔNG hiện** (Folder không phải `BasePart`/`Model`): vật nằm trong Folder vẫn được định vị nhưng vô hình | Kiểm lại kiến thức từ lần sửa §5c (Highlight chỉ render trong Workspace và phải trỏ vào part/model) | `R.Make` chọn `Adornee` = chính vật nếu là `BasePart`/`Model`, **ngược lại dùng part đại diện** (`R.PartOf`) |
 | 11 | **Trạng thái kéo nút lưu vào Instance** (`btn._dragState = …`): Roblox **không cho gán thuộc tính lạ** lên Instance → lỗi ngay khi bắt đầu kéo | Rà code trước khi ráp; thay bằng bảng trạng thái `R._drag[key]` / `R._btnRefs[key]` | Toàn bộ tham chiếu + trạng thái kéo nằm trong **bảng của module**, không gán gì lên Instance |
+| 12 | **Bật vòng mà KHÔNG THẤY VÒNG** (đúng lỗi người dùng báo): khung ⭕ thiếu nút `🧲` nhưng code vẫn gọi `ui.btnFollow.Activated` → `R.BuildPanel` lỗi giữa chừng, `pcall` nuốt lỗi → **mọi nút sau nó + chip trạng thái im lặng biến mất** | Test báo `attempt to index nil with 'Activated'`; viết probe in `R.ui` rồi **so bộ khoá với danh sách nút được tham chiếu** → thiếu `btnFollow` | Bố cục 4 hàng/430 px có **đủ 23 phần tử**; thêm test 16.9b canh đủ bộ nút để lỗi này không tái diễn |
+| 13 | **Vượt trần `maxItems` khi đang quét bù**: phần "giữ lại vật còn trong bán kính" không đếm trần nên danh sách có thể nhiều hơn `maxItems` | Test cũ phụ thuộc bản đồ nên đỏ; **viết lại test tự tạo 5 vật** cách tâm 2…10 m rồi đòi đúng 3 vật gần nhất | Đếm riêng số đã chọn (`keepN`), chỉ giữ thêm tối đa `maxItems − keepN` vật, **xa nhất bị bỏ** |
+| 14 | **Sót vật NGOÀI vòng** sau khi vòng đi theo bạn/đổi bán kính: dữ liệu của lượt quét bù còn mang vị trí/bán kính cũ | Test mới "dời vòng đi xa → danh sách cũ không sót lại" (đỏ trước khi sửa) | `R.Scan` + `R.SweepSlice` **lọc lại theo bán kính hiện tại** trước khi nhận |
 
 Lỗi trong **khung test** (không phải lỗi sản phẩm, đã sửa để test chạy đúng) — bổ sung cho lần này:
 giả lập **thiếu toán tử `Vector2`** (`inp.Position - d.startInput` là phép trừ hợp lệ trong Roblox thật,
