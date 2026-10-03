@@ -12696,6 +12696,7 @@ S.ObjTrack = {
     infoEvery = 0.5,      -- giây: làm mới khung 🎯 (trước là mỗi 0,2s)
     labelEvery = 0.25,    -- giây: cập nhật khoảng cách + nhãn
     pathKeys = {},        -- từ khoá dạng PATH dán vào (VD: workspace.rung cay.thancay)
+    entries = {},         -- nhiều mục ghim cùng lúc: { {raw="cây",kind="name"}, {raw="Workspace.Rừng Cây",kind="path"} }
     -- trạng thái nội bộ cho quét chia lát + vòng xoay
     _order = {}, _tickIdx = 0, _pending = {}, _queue = {}, _qN = 0,
     _pathSet = {}, _pathN = 0, _chars = {},
@@ -12935,6 +12936,100 @@ function OT.Candidate(inst)
     return OT.MatchesNorm(OT.NormCached(inst))
 end
 OT.Hit = OT.Candidate   -- tương thích tên hàm cũ
+
+-- ============================================================================
+-- NHIỀU MỤC CHẠY CÙNG LÚC (v5.1.3): ghim từng tên/path thành "mục", mỗi mục có nút ✕
+-- để xoá riêng. Tất cả mục + ô nhập đang gõ đều được gộp vào keys/pathKeys mỗi lượt quét.
+-- ============================================================================
+function OT.IsPathLike(raw)
+    local t = tostring(raw or "")
+    return t:find(".", 1, true) ~= nil or t:find("/", 1, true) ~= nil or t:find("\\", 1, true) ~= nil
+end
+
+-- Chuẩn hoá 1 mục để so trùng (bỏ dấu, gộp / \ thành ., bỏ tiền tố game.)
+function OT.EntryKey(raw)
+    local t = tostring(raw or ""):gsub("^%s+", ""):gsub("%s+$", "")
+    t = OT.Norm(t)
+    if OT.IsPathLike(t) then
+        t = t:gsub("[/\\]", ".")
+        if t:sub(1, 5) == "game." then t = t:sub(6) end
+    end
+    return t
+end
+
+-- Gộp MỌI mục đã ghim + ô nhập đang gõ thành keys (tên) và pathKeys (path)
+function OT.RebuildKeys()
+    local keys, paths = {}, {}
+    local function push(raw)
+        raw = tostring(raw or "")
+        if raw:gsub("%s", "") == "" then return end
+        if OT.IsPathLike(raw) then
+            local key = OT.EntryKey(raw)
+            local ok, inst = pcall(OT.ResolvePath, key)
+            if ok and inst ~= nil then          -- path còn trong game -> theo path
+                paths[#paths + 1] = key
+                return
+            end
+            -- path không resolve được: vẫn thử như TÊN (VD tên vật có dấu chấm) để không mất tính năng
+        end
+        local k = OT.Norm(raw):gsub("^%s+", ""):gsub("%s+$", "")
+        if #k > 0 then keys[#keys + 1] = k end
+    end
+    for i = 1, #OT.entries do push(OT.entries[i].raw) end
+    for part in tostring(OT.query or ""):gmatch("[^,;]+") do push(part) end   -- gõ là thấy ngay (như cũ)
+    OT.keys, OT.pathKeys = keys, paths
+    return #keys, #paths
+end
+
+-- Ghim 1 mục mới. Trả về (ok, kind|why)
+function OT.AddEntry(raw)
+    raw = tostring(raw or ""):gsub("^%s+", ""):gsub("%s+$", "")
+    if raw == "" then return false, "chưa nhập gì" end
+    local key = OT.EntryKey(raw)
+    for i = 1, #OT.entries do
+        if OT.EntryKey(OT.entries[i].raw) == key then
+            return false, "mục này đã có trong danh sách rồi"
+        end
+    end
+    local kind = OT.IsPathLike(raw) and "path" or "name"
+    if kind == "path" then
+        local ok, inst = pcall(OT.ResolvePath, key)
+        if not ok or inst == nil then kind = "name" end   -- chưa resolve được -> vẫn nhận, xét như tên
+    end
+    OT.entries[#OT.entries + 1] = { raw = raw, kind = kind }
+    OT._tagSig = nil
+    OT.RebuildKeys()
+    OT.on = true
+    OT.Bind()
+    pcall(OT.Rescan, true)          -- quét ngay: vừa ghim mục là thấy vật luôn (khỏi chờ 2s)
+    if OT.RefreshTags then pcall(OT.RefreshTags) end
+    return true, kind
+end
+
+-- Xoá 1 mục; hết mục thì tự tắt định vị
+function OT.RemoveEntry(i)
+    i = tonumber(i) or 0
+    if i < 1 or i > #OT.entries then return false, "mục không tồn tại" end
+    local raw = OT.entries[i].raw
+    table.remove(OT.entries, i)
+    OT._tagSig = nil
+    OT.RebuildKeys()
+    if #OT.keys == 0 and #(OT.pathKeys or {}) == 0 then
+        OT.Set(false)
+    elseif OT.on then
+        pcall(OT.Rescan, true)
+    end
+    if OT.RefreshTags then pcall(OT.RefreshTags) end
+    return true, raw
+end
+
+function OT.ClearEntries()
+    OT.entries = {}
+    OT.query = ""
+    OT._tagSig = nil
+    OT.RebuildKeys()
+    if OT.RefreshTags then pcall(OT.RefreshTags) end
+end
 
 function OT.Matches(name)
     local n = OT.Norm(name)
@@ -13477,7 +13572,7 @@ function OT.Toggle() return OT.Set(not OT.on) end
 -- Gõ tên là tự bật định vị (chờ 0,35s sau phím cuối cho khỏi quét liên tục)
 function OT.SetQuery(q)
     OT.query = tostring(q or "")
-    OT.keys = OT.Split(OT.query)
+    OT.RebuildKeys()   -- gộp ô nhập đang gõ + các mục đã ghim
     S.Debounce("objtrack", 0.35, function()
         if #OT.keys == 0 and #(OT.pathKeys or {}) == 0 then
             if OT.on then OT.Set(false) end
@@ -13560,6 +13655,7 @@ function OT.Status()
             .. " vật) — thử tên ngắn hơn (VD: cây) hoặc dán đúng path"
     end
     local t = "🌳 " .. table.concat(OT.keys, " + ")
+    if #OT.entries > 0 then t = t .. " （" .. #OT.entries .. " mục đã ghim）" end
     t = t .. " · theo " .. n .. "/" .. (OT._found or 0) .. " vật"
     if (OT._skipped or 0) > 0 then t = t .. " (gộp " .. OT._skipped .. " part con)" end
     if OT._capped then t = t .. " (gần nhất " .. tostring(OT.maxItems) .. ")" end
@@ -13584,12 +13680,12 @@ do
     local function otAlive(inst) return inst ~= nil and inst.Parent ~= nil end
     local P = New("Frame", {
         Name = "HubObjTrack_Panel",
-        Size = UDim2.new(1, -16, 0, 418),
+        Size = UDim2.new(1, -16, 0, 452),
         Position = UDim2.new(0, 8, 0, D.playerY or 46),
         LayoutOrder = 4,
         BackgroundColor3 = C.SURFACE, BackgroundTransparency = 0.12, BorderSizePixel = 0, ZIndex = 6,
     }, D.playerTab)
-    D.playerY = (D.playerY or 46) + 418 + 8
+    D.playerY = (D.playerY or 46) + 452 + 8
     Corner(P, UDim.new(0, 10))
     Stroke(P, C.HAIRLINE, 1)
     D.Shade(P, Color3.fromRGB(255, 255, 255), Color3.fromRGB(188, 192, 205), 90)
@@ -13603,7 +13699,8 @@ do
     New("TextLabel", {
         Size = UDim2.new(1, -16, 0, 22), Position = UDim2.new(0, 8, 0, 20),
         Text = "Gõ tên vật vào ô 🔎 (VD: cây, đá, rương). Nhiều tên thì cách nhau dấu phẩy. Giống tên không cần dấu: gõ "
-            .. "\"cay\" vẫn khớp \"Cây\". Hub tự quét lại mỗi 1,5 giây nên vật mới xuất hiện hay bị xoá đều tự cập nhật.",
+            .. "\"cay\" vẫn khớp \"Cây\". Bấm Enter (hoặc ➕ Thêm mục) để GHIM lại thành 1 mục — ghim được "
+            .. "NHIỀU mục cùng lúc, mỗi mục có nút ✕ để xoá riêng. Vật mới xuất hiện hay bị xoá đều tự cập nhật.",
         TextWrapped = true, BackgroundTransparency = 1, TextColor3 = C.MUTED,
         Font = Enum.Font.GothamMedium, TextSize = 8, TextXAlignment = Enum.TextXAlignment.Left,
         TextYAlignment = Enum.TextYAlignment.Top, ZIndex = 7,
@@ -13669,8 +13766,101 @@ do
     }, P)
     local xyzBtn = otAct("🧭 Nhãn toạ độ: BẬT", 8, 146, 168, C.GREEN)
     local skipBtn = otAct("🚫 Bỏ qua người chơi: BẬT", 180, 146, 190, C.GREEN)
+    -- ➕ Hàng "MỤC ĐANG CHẠY": ghim nhiều tên/path, mỗi mục bấm ✕ để xoá riêng
+    S.ObjTrack.BuildTagsUI = function()
+        local tagsY = 172
+        local addBtn = otAct("➕ Thêm mục", 8, tagsY, 118, C.ACCENT)
+        addBtn.Name = "OTAdd"
+        local tags = New("ScrollingFrame", {
+            Name = "OTTags",
+            Size = UDim2.new(1, -142, 0, 28), Position = UDim2.new(0, 130, 0, tagsY),
+            BackgroundColor3 = C.SURFACE2, BackgroundTransparency = 0.25, BorderSizePixel = 0,
+            ScrollBarThickness = 3, CanvasSize = UDim2.new(0, 0, 0, 0), ZIndex = 7,
+            ScrollingDirection = Enum.ScrollingDirection.X,
+        }, P)
+        Corner(tags, UDim.new(0, 6))
+        New("UIListLayout", {
+            Padding = UDim.new(0, 4), FillDirection = Enum.FillDirection.Horizontal,
+            SortOrder = Enum.SortOrder.LayoutOrder, VerticalAlignment = Enum.VerticalAlignment.Center,
+        }, tags)
+        New("UIPadding", { PaddingLeft = UDim.new(0, 6), PaddingRight = UDim.new(0, 6), PaddingTop = UDim.new(0, 5) }, tags)
+
+        local function refreshTags()
+            if not (tags and tags.Parent) then return end
+            local entries = S.ObjTrack.entries or {}
+            local sig = {}
+            for i = 1, #entries do sig[i] = tostring(entries[i].kind) .. ":" .. tostring(entries[i].raw) end
+            sig = table.concat(sig, "|")
+            if sig == S.ObjTrack._tagSig then return end     -- không đổi thì khỏi dựng lại
+            S.ObjTrack._tagSig = sig
+            for _, ch in ipairs(tags:GetChildren()) do
+                if not ch:IsA("UIListLayout") and not ch:IsA("UIPadding") then
+                    pcall(function() ch:Destroy() end)
+                end
+            end
+            if #entries == 0 then
+                New("TextLabel", {
+                    Name = "OTTagHint", Size = UDim2.new(1, -8, 0, 16),
+                    Text = "chưa ghim mục nào — gõ tên/path rồi Enter (hoặc bấm ➕ Thêm mục) để chạy NHIỀU mục cùng lúc",
+                    BackgroundTransparency = 1, TextColor3 = C.MUTED, Font = Enum.Font.GothamMedium,
+                    TextSize = 8, TextXAlignment = Enum.TextXAlignment.Left, ZIndex = 8,
+                }, tags)
+                pcall(function() tags.CanvasSize = UDim2.new(0, 0, 0, 0) end)
+                return
+            end
+            local w = 0
+            for i = 1, #entries do
+                local e = entries[i]
+                local txt = tostring(e.raw)
+                local short = (#txt > 30) and (txt:sub(1, 27) .. "...") or txt
+                local label = ((e.kind == "path") and "📁 " or "🏷 ") .. short
+                local width = math.max(60, math.min(240, 30 + #label * 5))
+                local bg = (e.kind == "path") and C.BLUE or C.SURFACE3
+                local tag = New("TextButton", {
+                    Name = "OTTag_" .. tostring(i),
+                    Size = UDim2.new(0, width, 0, 18), LayoutOrder = i,
+                    Text = "✕ " .. label, BackgroundColor3 = bg, TextColor3 = D.BestText(bg),
+                    Font = Enum.Font.GothamBold, TextSize = 8, BorderSizePixel = 0, ZIndex = 8,
+                    TextTruncate = Enum.TextTruncate.AtEnd,
+                }, tags)
+                Corner(tag, UDim.new(0, 5)); D.Tactile(tag, 0.08)
+                tag.Activated:Connect(function()
+                    ReleaseHubFocus()
+                    local okR, raw = S.ObjTrack.RemoveEntry(i)
+                    if okR then
+                        D.Say("🗑 đã xoá mục '" .. tostring(raw) .. "' — các mục còn lại vẫn chạy", C.YELLOW)
+                    else
+                        D.Say("⚠️ " .. tostring(raw), C.RED)
+                    end
+                    pcall(S.ObjTrack.RefreshTags)
+                    pcall(S.ObjTrack.RefreshList)
+                end)
+                w = w + width + 4
+            end
+            pcall(function() tags.CanvasSize = UDim2.new(0, w + 20, 0, 0) end)
+        end
+        S.ObjTrack.RefreshTags = refreshTags
+
+        addBtn.Activated:Connect(function()
+            ReleaseHubFocus()
+            local raw = tostring(queryIn.Text or "")
+            local okA, kindOrWhy = S.ObjTrack.AddEntry(raw)
+            if okA then
+                queryIn.Text = ""
+                S.ObjTrack.SetQuery("")
+                D.Say("➕ đã thêm mục '" .. raw .. "' — đang chạy cùng " ..
+                      tostring(#S.ObjTrack.entries) .. " mục", C.GREEN)
+            else
+                D.Say("⚠️ " .. tostring(kindOrWhy), C.RED)
+            end
+            pcall(S.ObjTrack.RefreshTags)
+            pcall(S.ObjTrack.RefreshList)
+        end)
+    end
+    S.ObjTrack.BuildTagsUI()
+
     local list = New("ScrollingFrame", {
-        Name = "ObjTrackList", Size = UDim2.new(1, -16, 0, 84), Position = UDim2.new(0, 8, 0, 172),
+        Name = "ObjTrackList", Size = UDim2.new(1, -16, 0, 84), Position = UDim2.new(0, 8, 0, 206),
         BackgroundTransparency = 1, BorderSizePixel = 0, ScrollBarThickness = 4,
         CanvasSize = UDim2.new(0, 0, 0, 0), ZIndex = 7,
     }, P)
@@ -13680,10 +13870,11 @@ do
     -- "Phân Tích Vật Thể": Name/Class/Position/Size/Rotation/Look/Material/Color/Path,
     -- cập nhật theo vật đang chuyển động + 2 nút Copy Tọa Độ / Copy Path.
     -- (gói trong 1 hàm riêng: mỗi hàm chỉ được 200 local — xem chú thích ở tests/luau/README.md)
-    local function otBuildInfo()
+    -- Gán vào field của bảng thay vì "local function ...": KHÔNG chiếm slot local của khối này.
+    S.ObjTrack.BuildInfoUI = function()
     local info = New("Frame", {
         Name = "OTInfo",
-        Size = UDim2.new(1, -16, 0, 148), Position = UDim2.new(0, 8, 0, 262),
+        Size = UDim2.new(1, -16, 0, 148), Position = UDim2.new(0, 8, 0, 296),
         BackgroundColor3 = Color3.fromRGB(20, 25, 35), BackgroundTransparency = 0,
         BorderSizePixel = 0, ZIndex = 7, Visible = false,
     }, P)
@@ -13749,7 +13940,7 @@ do
               did and C.GREEN or C.RED)
     end)
     end
-    otBuildInfo()
+    S.ObjTrack.BuildInfoUI()
 
     -- đặt tên control để dễ soi lỗi / kiểm thử tự động
     queryIn.Name, toggleBtn.Name, rescanBtn.Name = "OTQuery", "OTToggle", "OTRescan"
@@ -13882,6 +14073,7 @@ do
 
     S.OpenObjectPanel = function()
         local ok = S.OpenPlayerTab and S.OpenPlayerTab() or false
+        if S.ObjTrack.RefreshTags then pcall(S.ObjTrack.RefreshTags) end
         pcall(S.ObjTrack.RefreshList)
         return ok
     end
@@ -13893,8 +14085,24 @@ do
     queryIn:GetPropertyChangedSignal("Text"):Connect(function()
         S.ObjTrack.SetQuery(queryIn.Text)
     end)
-    queryIn.FocusLost:Connect(function()
+    queryIn.FocusLost:Connect(function(enterPressed)
         ReleaseHubFocus()
+        if enterPressed then
+            -- Enter = GHIM mục này lại (chạy chung với các mục khác), không thay thế mục cũ
+            local raw = tostring(queryIn.Text or "")
+            local okA, kindOrWhy = S.ObjTrack.AddEntry(raw)
+            if okA then
+                queryIn.Text = ""
+                S.ObjTrack.SetQuery("")
+                D.Say("➕ đã ghim mục '" .. raw .. "' (Enter) — đang chạy cùng " ..
+                      tostring(#S.ObjTrack.entries) .. " mục", C.GREEN)
+            else
+                D.Say("⚠️ " .. tostring(kindOrWhy), C.RED)
+            end
+            pcall(S.ObjTrack.RefreshTags)
+            pcall(S.ObjTrack.RefreshList)
+            return
+        end
         S.ObjTrack.SetQuery(queryIn.Text)
         pcall(S.ObjTrack.RefreshList)
     end)
@@ -13949,8 +14157,10 @@ do
         ReleaseHubFocus()
         local n = 0
         for _ in pairs(S.ObjTrack.items) do n = n + 1 end
+        local nE = #(S.ObjTrack.entries or {})
+        S.ObjTrack.ClearEntries()
         S.ObjTrack.Set(false)
-        D.Say("🧹 đã xoá " .. tostring(n) .. " định vị vật", C.GREEN)
+        D.Say("🧹 đã xoá " .. tostring(n) .. " định vị vật + " .. tostring(nE) .. " mục đã ghim", C.GREEN)
         pcall(S.ObjTrack.RefreshList)
     end)
     distApply.Activated:Connect(function()

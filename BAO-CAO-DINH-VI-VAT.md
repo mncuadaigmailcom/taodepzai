@@ -165,6 +165,35 @@ mới xong, kết quả **bằng đúng** quét thẳng; lượt quét thứ hai
 `workspace:GetDescendants()` **không còn được gọi** trong lúc quét nền; tạo marker ≤`makeBudget`
 mỗi khung hình; mỗi lượt Tick đụng ≤`labelBudget` vật.
 
+## 5e. Nhiều mục chạy cùng lúc + xoá từng mục
+
+Theo yêu cầu: **ghim được nhiều path/tên chạy cùng lúc** và **xoá bớt từng cái**.
+
+| Thành phần | Công dụng |
+|---|---|
+| Ô **🔎 Tên vật** | Gõ tên/path → vẫn tự định vị ngay như cũ (không mất tính năng cũ) |
+| **➕ Thêm mục** (hoặc nhấn **Enter** trong ô nhập) | **Ghim** nội dung đang gõ thành 1 mục; ghim được **nhiều mục** — tất cả chạy đồng thời |
+| Hàng **mục đang chạy** (`OTTags`) | Mỗi mục là 1 thẻ: **📁 path** (xanh dương) hoặc **🏷 tên** (xám); bấm **✕** trên thẻ để **xoá riêng mục đó**, các mục khác vẫn chạy |
+| **🧹 Xoá hết** | Xoá toàn bộ định vị **và** mọi mục đã ghim |
+
+Cách hoạt động: `OT.RebuildKeys()` gộp **mọi mục đã ghim + ô nhập đang gõ** thành `keys` (khớp tên) và
+`pathKeys` (theo path) mỗi lượt quét → nhiều path/tên chạy chung một lượt quét, không tốn thêm gì.
+
+Chi tiết đáng chú ý:
+- Ghim **trùng** (kể cả khác hoa/dấu: `ĐÁ` ≈ `đá`) bị từ chối kèm lý do.
+- Path **chưa resolve được** vẫn được nhận và xét như *tên* (để không mất khả năng nhập tên có dấu chấm).
+- **Xoá mục cuối cùng** → tự tắt định vị và dọn sạch marker.
+- **Ghim xong là quét ngay** (không phải chờ nhịp quét 2 giây).
+- Hàng thẻ tự dựng lại theo **chữ ký** nên không vẽ lại liên tục (không thêm gánh nặng cho khung hình).
+
+Khung 🌳 cao thêm 34 px (418 → **452**) cho hàng thẻ; danh sách vật (y=206) và khung 🎯 (y=296) dịch
+xuống tương ứng, vẫn có test kiểm tra không chồng nhau.
+
+Bộ test: **161 → 189 case** (`pass=189 fail=0`) — nhóm 13f kiểm tra: ghim 2 mục khác loại chạy cùng
+lúc, từ chối ghim trùng/rỗng, xoá riêng 1 mục (mục kia vẫn chạy), xoá mục cuối tự tắt, bấm nút
+➕/✕ thật trên khung, nhấn Enter trong ô nhập, xoá object khỏi game khi mục path còn đó, và gõ tên
+trong ô nhập vẫn tự định vị như cũ.
+
 ## 6. Lỗi tìm thấy qua test & đã sửa
 
 | # | Lỗi | Cách phát hiện | Đã sửa |

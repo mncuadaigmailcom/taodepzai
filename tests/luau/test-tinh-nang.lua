@@ -616,6 +616,124 @@ OT.on = false
 OT.Clear()
 OT.Rescan(true)
 
+-- ---------- 13f. NHIỀU MỤC CHẠY CÙNG LÚC + XOÁ TỪNG MỤC ----------
+OT.on = false
+OT.Clear()
+OT.ClearEntries()
+OT.SetQuery("")
+__pump(3)
+
+-- ghim 2 mục khác loại: 1 TÊN ("đá") và 1 PATH ("Workspace.Rừng Cây")
+local okAdd1, kind1 = OT.AddEntry("đá")
+t("ghim mục tên 'đá'", okAdd1 == true and kind1 == "name", tostring(kind1))
+local okAdd2, kind2 = OT.AddEntry("Workspace.Rừng Cây")
+t("ghim mục path 'Workspace.Rừng Cây'", okAdd2 == true and kind2 == "path", tostring(kind2))
+t("ghim mục là quét & tạo định vị NGAY (khỏi chờ nhịp quét)",
+    OT.items[__TEST_TREE_MODEL] ~= nil or next(OT.items) ~= nil,
+    tostring(OT.items[__TEST_TREE_MODEL] ~= nil))
+t("có 2 mục trong danh sách", #OT.entries == 2, #OT.entries)
+t("keys + pathKeys được gộp từ 2 mục", #OT.keys == 1 and #OT.pathKeys == 1,
+    tostring(#OT.keys) .. " keys / " .. tostring(#OT.pathKeys) .. " path")
+OT.Rescan(true)
+local daItem, modelItem = OT.items[workspace:FindFirstChild("Hòn Đá")], OT.items[__TEST_TREE_MODEL]
+t("2 MỤC CHẠY CÙNG LÚC: vừa có 'Hòn Đá' (theo tên) vừa có 'Rừng Cây' (theo path)",
+    daItem ~= nil and modelItem ~= nil, tostring(daItem ~= nil) .. "/" .. tostring(modelItem ~= nil))
+
+-- ghim trùng -> từ chối, không nhân đôi
+local okDup, whyDup = OT.AddEntry("Workspace.Rừng Cây")
+t("ghim trùng bị từ chối", okDup == false and #OT.entries == 2, tostring(whyDup))
+local okDup2 = OT.AddEntry("ĐÁ")     -- khác chữ hoa/dấu nhưng cùng mục
+t("ghim trùng (khác hoa/dấu) cũng bị từ chối", okDup2 == false and #OT.entries == 2)
+local okEmpty, whyEmpty = OT.AddEntry("   ")
+t("ghim chuỗi rỗng bị từ chối", okEmpty == false, tostring(whyEmpty))
+
+-- xoá RIÊNG mục path -> chỉ mục đó ngừng, mục tên vẫn chạy
+local okRm, rawRm = OT.RemoveEntry(2)
+OT.Rescan(true)
+t("xoá riêng mục path (✕)", okRm == true and rawRm == "Workspace.Rừng Cây", tostring(rawRm))
+t("xoá path -> 'Rừng Cây' hết định vị", OT.items[__TEST_TREE_MODEL] == nil)
+t("xoá path -> mục 'đá' VẪN chạy", OT.items[workspace:FindFirstChild("Hòn Đá")] ~= nil and #OT.entries == 1)
+t("xoá path -> pathKeys rỗng, keys còn 1", #OT.pathKeys == 0 and #OT.keys == 1,
+    tostring(#OT.pathKeys) .. "/" .. tostring(#OT.keys))
+
+-- xoá mục cuối -> tự tắt định vị, sạch sẽ
+local okRm2 = OT.RemoveEntry(1)
+OT.Tick()
+t("xoá mục cuối -> hết mục, tự tắt định vị",
+    okRm2 == true and #OT.entries == 0 and OT.on == false, tostring(#OT.entries) .. " on=" .. tostring(OT.on))
+t("xoá mục cuối -> không còn vật nào được định vị", next(OT.items) == nil)
+t("xoá mục không tồn tại -> báo lỗi, không crash", (select(1, OT.RemoveEntry(9))) == false)
+
+-- UI THẬT: ô nhập + Enter, nút ➕, nút ✕ trên tag
+local panelOT2 = D.playerTab:FindFirstChild("HubObjTrack_Panel")
+local qin2 = panelOT2:FindFirstChild("OTQuery")
+local addBtn = panelOT2:FindFirstChild("OTAdd")
+local tagsFrame = panelOT2:FindFirstChild("OTTags")
+t("khung có hàng mục 🏷 (OTTags) + nút ➕ Thêm mục", tagsFrame ~= nil and addBtn ~= nil)
+qin2.Text = "cây"
+addBtn.Activated:Fire()
+t("bấm ➕ Thêm mục -> ghim 'cây' và xoá ô nhập",
+    #OT.entries == 1 and tostring(OT.entries[1].raw) == "cây" and tostring(qin2.Text) == "",
+    tostring(#OT.entries) .. " | ô nhập = " .. tostring(qin2.Text))
+qin2.Text = "Workspace.Khu Cây"
+addBtn.Activated:Fire()
+t("ghim mục thứ 2 qua nút ➕", #OT.entries == 2, tostring(#OT.entries))
+
+-- Enter trong ô nhập cũng ghim
+qin2.Text = "rương"
+qin2:GetPropertyChangedSignal("Text"):Fire()
+qin2.FocusLost:Fire(true)          -- true = nhấn Enter
+t("nhấn Enter trong ô nhập = ghim thêm mục", #OT.entries == 3, tostring(#OT.entries))
+t("sau khi ghim, ô nhập được xoá trống", tostring(qin2.Text) == "", tostring(qin2.Text))
+
+-- hàng mục vẽ đúng số tag + bấm ✕ xoá đúng mục
+OT.RefreshTags()
+local tagCount = 0
+for _, ch in ipairs(tagsFrame:GetChildren()) do if ch.Name:sub(1, 6) == "OTTag_" then tagCount = tagCount + 1 end end
+t("hàng mục vẽ đủ 3 tag", tagCount == 3, tagCount)
+local tag2 = tagsFrame:FindFirstChild("OTTag_2")
+t("tag có tiền tố 📁 cho path", tostring(tag2.Text):find("📁", 1, true) ~= nil, tag2.Text)
+local rawBefore = OT.entries[2].raw
+tag2.Activated:Fire()
+t("bấm ✕ trên tag -> xoá đúng mục đó",
+    #OT.entries == 2 and OT.entries[2].raw ~= rawBefore
+    and tostring(OT.entries[1].raw) == tostring(OT.entries[1].raw),
+    tostring(#OT.entries) .. " mục")
+t("xoá 1 tag không ảnh hưởng các tag khác", tostring(OT.entries[1].raw) == "cây",
+    tostring(OT.entries[1].raw))
+
+-- vật bị xoá khỏi game thì mục path không làm lỗi (tự bỏ qua)
+OT.Rescan(true)
+local before = #OT.list
+__TEST_TREE_MODEL:Destroy()
+OT.Rescan(true)
+t("mục path trỏ vật đã bị xoá -> không lỗi, chỉ mất vật đó",
+    OT._found ~= nil and #OT.list <= before, tostring(#OT.list) .. " <= " .. tostring(before))
+
+-- 🧹 Xoá hết: xoá cả mục đã ghim
+local clearBtn2 = panelOT2:FindFirstChild("OTClear")
+clearBtn2.Activated:Fire()
+t("nút 🧹 Xoá hết xoá sạch mục đã ghim", #OT.entries == 0 and OT.on == false, tostring(#OT.entries))
+OT.RefreshTags()
+
+-- gõ tên trong ô nhập vẫn tự định vị như CŨ (không bị tính năng mới làm mất)
+qin2.Text = "đá"
+qin2:GetPropertyChangedSignal("Text"):Fire()
+local okLive = (function()
+    local t0 = os.clock()
+    while os.clock() - t0 < 1.5 do
+        __pump(1)
+        if OT.on and next(OT.items) ~= nil then return true end
+    end
+    return false
+end)()
+t("gõ tên trong ô nhập vẫn tự định vị ngay (giữ hành vi cũ)", okLive)
+OT.SetQuery("")
+__pump(3)
+OT.on = false
+OT.Clear()
+OT.ClearEntries()
+
 -- ---------- 14. KHÔNG MẤT TÍNH NĂNG: mọi thẻ 📚 Script Hub vẫn chạy ----------
 local errs = {}
 for _, e in ipairs(S.ScriptHubList) do
