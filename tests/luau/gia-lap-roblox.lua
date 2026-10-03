@@ -105,6 +105,8 @@ CFrame.__index = function(t, k)
     if k == "Y" then return t.Position.Y end
     if k == "Z" then return t.Position.Z end
     if k == "Inverse" then return t end
+    if k == "ToOrientation" then return function(self) return 0, 0, 0 end end
+    if k == "ToEulerAnglesXYZ" then return function(self) return 0, 0, 0 end end
     if k == "ToWorldSpace" or k == "ToObjectSpace" or k == "Lerp" then return function(self) return self end end
     if k == "PointToWorldSpace" or k == "PointToObjectSpace" then return function(self, v) return v end end
     return rawget(t, k)
@@ -204,8 +206,10 @@ local DEFAULTS = {
     Highlight = { Enabled = true, FillTransparency = 0.5, OutlineTransparency = 0, Priority = 0 },
     BoxHandleAdornment = { Visible = true, Transparency = 0.5, ZIndex = 1, AlwaysOnTop = false },
     SelectionBox = { Visible = true, SurfaceTransparency = 0, Transparency = 0, LineThickness = 0.15 },
-    BasePart = { Anchored = false, CanCollide = true, Massless = false, Transparency = 0, AssemblyLinearVelocity = Vector3.zero, Velocity = Vector3.zero, Rotation = Vector3.zero, Orientation = Vector3.zero, LocalTransparencyModifier = 0, CanTouch = true, CanQuery = true },
-    Part = { Anchored = false, CanCollide = true, Size = Vector3.new(1, 1, 1), AssemblyLinearVelocity = Vector3.zero, Velocity = Vector3.zero, Position = Vector3.zero, Rotation = Vector3.zero, Orientation = Vector3.zero, LocalTransparencyModifier = 0 },
+    BasePart = { Anchored = false, CanCollide = true, Massless = false, Transparency = 0, AssemblyLinearVelocity = Vector3.zero, Velocity = Vector3.zero, Rotation = Vector3.zero, Orientation = Vector3.zero, LocalTransparencyModifier = 0, CanTouch = true, CanQuery = true,
+        Material = Enum.Material.Plastic, Color = Color3.fromRGB(163, 162, 165), CFrame = CFrame.new(0, 0, 0) },
+    Part = { Anchored = false, CanCollide = true, Size = Vector3.new(1, 1, 1), AssemblyLinearVelocity = Vector3.zero, Velocity = Vector3.zero, Position = Vector3.zero, Rotation = Vector3.zero, Orientation = Vector3.zero, LocalTransparencyModifier = 0,
+        Material = Enum.Material.Plastic, Color = Color3.fromRGB(163, 162, 165), CFrame = CFrame.new(0, 0, 0) },
     Humanoid = { Health = 100, MaxHealth = 100, WalkSpeed = 16, JumpPower = 50, UseJumpPower = true, PlatformStand = false, AutoRotate = true, HipHeight = 2, MoveDirection = Vector3.zero },
     Camera = { FieldOfView = 70, CameraType = Enum.CameraType.Custom, CFrame = CFrame.new(0, 10, 20), ViewportSize = Vector2.new(1280, 720) },
     Player = { UserId = 1, DisplayName = "Test", AccountAge = 1 },
@@ -531,6 +535,8 @@ me.PlayerGui = pg
 pg.Parent = me
 Players.LocalPlayer = me
 _G.__TEST_PLAYERS = { me }
+_G.__clipboard = nil
+function setclipboard(txt) _G.__clipboard = tostring(txt) end
 
 -- người chơi khác + nhân vật khác
 local other = newInstance("Player", Players)

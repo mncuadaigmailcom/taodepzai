@@ -33,7 +33,7 @@ script in ra dòng lỗi và vị trí (trong `script.js` hay trong file test).
 | File | Vai trò |
 |---|---|
 | `gia-lap-roblox.lua` | Giả lập API Roblox đủ để load + chạy hub: Instance, Signal, GUI, `task.*`, `RunService`, `Players`, `workspace`, `TweenService`… |
-| `test-tinh-nang.lua` | 93 test: API sống sót, tính năng cũ còn nguyên, 🌳 định vị vật theo tên, 🚀 bay tới vật, luồng UI thật trong tab 👥, và mọi thẻ 📚 Script Hub vẫn chạy không lỗi |
+| `test-tinh-nang.lua` | 118 test: API sống sót, tính năng cũ còn nguyên, 🌳 định vị vật theo tên, màu xanh nước + khung 🎯 thông tin/toạ độ giống "phân tích toạ độ", 🚀 bay tới vật, luồng UI thật trong tab 👥, bố cục khung, và mọi thẻ 📚 Script Hub vẫn chạy không lỗi |
 | `chay-test.mjs` | Nạp giả lập + hub + test trong cùng một chunk Luau rồi in kết quả |
 | `kiem-tra-cu-phap.mjs` | Compile `script.js` bằng Luau thật (cổng chặn cú pháp) |
 
@@ -46,4 +46,10 @@ script in ra dòng lỗi và vị trí (trong `script.js` hay trong file test).
 - `@luau-rs/luau` là bản Luau 0.739 build WASM: có `utf8.codes`, **không** có `utf8.graphemes`,
   không có `load()`, `os.clock` là thời gian CPU. Giả lập chạy `task.delay`/render step bằng
   `__pump()` trong `gia-lap-roblox.lua`.
+- **Mỗi hàm Luau chỉ được 200 local.** Hub chỉ compile được vì các khối lớn đều bọc trong
+  `do…end` / hàm riêng — thêm control mới cho một khung là rất dễ vượt trần. Khi thấy lỗi
+  `Out of local registers`, hãy gom nhóm control vào một hàm `local function …(...) … end` rồi
+  gọi ngay, thay vì khai báo thêm `local` ở cấp khối.
+- Test bám theo **giá trị thật** của vật (toạ độ/kích thước/màu) nên khi sửa hub phải cập nhật
+  kỳ vọng cho khớp, đừng nới lỏng test.
 - Test không cần mạng và không chạm vào Roblox thật.

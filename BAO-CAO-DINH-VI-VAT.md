@@ -84,6 +84,23 @@ khoảng cách · vật bị xoá thì tự bỏ định vị · nhiều từ kh
 > Bí quyết: hub + test nằm chung một chunk Luau (test thấy được `S`, `D`, `MV`… là biến local),
 > nhưng thân test bọc trong một hàm riêng để không vượt giới hạn **200 local/hàm** của Luau.
 
+## 5b. Cập nhật theo góp ý: màu xanh nước + giống hệt khung "phân tích toạ độ"
+
+Sau khi dùng thử, yêu cầu bổ sung: **định vị cây phải giống kiểu "phân tích toạ độ"** và dùng
+**màu xanh nước**. Đã sửa:
+
+| Việc | Trước | Sau |
+|---|---|---|
+| Màu mặc định | Xanh ngọc `RGB(0,255,170)` | **Xanh nước `RGB(0,170,255)`** (vẫn còn 6 màu khác để bấm 🎨 đổi) |
+| Kiểu Highlight | trong mờ 0,55 | **giống hệt Highlight của 🎯 Phân Tích Vật Thể**: FillTransparency **0,7** + `AlwaysOnTop` |
+| Nhãn trên vật | chỉ `Tên  📏 30m` | thêm dòng **`🧭 X 30.0 · Y 5.0 · Z 0.0`** (bật/tắt bằng nút 🧭 Nhãn toạ độ) |
+| Thông tin vật | không có | **khung 🎯 VẬT THỂ ĐƯỢC CHỌN** ngay trong khung 🌳: Name · Class · **Position** · Size · Rotation · Look · Material · Color · **Path** — y hệt khung phân tích toạ độ, **cập nhật liên tục theo vật đang chuyển động** |
+| Nút copy | không có | **📋 Copy Tọa Độ** + **📋 Copy Path** (dùng đúng `S.CopyToClipboard` của hub) |
+| Mỗi dòng danh sách | 🚀 Bay · 📋 Tên | thêm **📊 Xem** → chọn vật để mở khung 🎯 |
+
+Bố cục khung 🌳 giờ cao 418 px: hàng nút · 🧭 · danh sách 8 dòng · khung 🎯 148 px (không chồng nhau,
+có test kiểm tra bố cục). Bộ test tăng **93 → 118 case**, chạy `node chay-test.mjs` → `pass=118 fail=0`.
+
 ## 6. Lỗi tìm thấy qua test & đã sửa
 
 | # | Lỗi | Cách phát hiện | Đã sửa |
@@ -92,7 +109,8 @@ khoảng cách · vật bị xoá thì tự bỏ định vị · nhiều từ kh
 | 2 | **Mất dấu tiếng Việt**: `OT.Norm` chỉ bỏ dấu nếu môi trường có `utf8.graphemes`; thiếu hàm này thì `cây` ≠ `cay` — đúng lúc đó tính năng mất tác dụng | Test `Norm("Cây Cổ Thụ")` trả `cây cổ thụ` thay vì `cay co thu` | Chuyển sang `utf8.codes` + `utf8.char` (có ở cả Luau WASM 0,739 và Roblox), vẫn có nhánh dự phòng nếu thiếu `utf8` |
 | 3 | **Tắt định vị không dừng 🚀 bay**: bấm 🧹 / tắt 🌳 mà nhân vật vẫn đang bay tới vật | Rà luồng UI: `OT.Set(false)` chỉ xoá định vị, không đụng `MV._objFlyActive` | `OT.Set(false)` gọi `S.Move.StopObjectFly()` |
 | 4 | **33 dòng lệch chuẩn CRLF** khi chèn code (tệp gốc 100% CRLF) | Đếm byte `\r\n` / `\n`: `LF-only = 33`, bản gốc = 0 | Chuẩn hoá lại toàn bộ về CRLF |
-| 5 | **Không test được UI** vì các control không có tên | Viết test UI thì `FindFirstChild("OTQuery")` trả `nil` | Đặt tên `OTQuery/OTToggle/OTRescan/OTClear/OTStatus` |
+| 5 | **Không test được UI** vì các control không có tên | Viết test UI thì `FindFirstChild("OTQuery")` trả `nil` | Đặt tên `OTQuery/OTToggle/OTRescan/OTClear/OTStatus/OTXyz/OTInfoRow/OTFlyRow/OTCopyRow…` |
+| 6 | **Tràn 200 local của Luau** khi thêm khung 🎯 (`Out of local registers … copyPathBtn`) | Compile check `node kiem-tra-cu-phap.mjs` báo lỗi ngay | Gom khối 🎯 vào một hàm riêng `otBuildInfo()` + bỏ biến `PH`, giữ đúng trần 200 local/hàm |
 
 Lỗi trong **khung test** (không phải lỗi sản phẩm, đã sửa để test chạy đúng): giả lập bỏ qua tham
 số `parent` khi tạo Instance; nhân vật người chơi khác thiếu `Humanoid`/`HumanoidRootPart` nên
@@ -100,6 +118,7 @@ không test được 📍; bảng 🌳 cố tình không dựng khi tab 👥 đa
 
 ## 7. Lỗi có sẵn, **chưa** sửa (ngoài phạm vi yêu cầu)
 
+- Khung 🌳 chỉ chạy khi đã mở tab 👥 và bấm (giống các tính năng khác của hub) — không có gì tự bật khi mới vào game.
 - `tests/portal.test.cjs`: 16/17 test fail **từ trước** — do `index.html` bị nhúng block lạ ở đầu
   `<head>` (dòng 4–8) và thẻ `<script></script>` rỗng ở dòng 1478.
 - `tools/kiem-tra-key.cjs`: `Error: Không đọc được KEY_PREFIX trong script.js` — tool này còn viết

@@ -243,6 +243,91 @@ pcall(S.Loc.Tick)
 S.Loc.Set(false)
 t("📍 tắt lại sạch", next(S.Loc._items) == nil)
 
+-- ---------- 13b. MÀU XANH NƯỚC + GIỐNG KHUNG "PHÂN TÍCH TOẠ ĐỘ" ----------
+-- (dùng "Cây Dừa" vì "Cây Cổ Thụ" đã bị xoá ở test 🚀 phía trên)
+local tree2 = __TEST_TREES[2]
+OT.color = 1          -- về đúng màu mặc định của hub (các test trên đã bấm 🎨 đổi màu)
+OT.keys = OT.Split("cay")
+OT.on = true
+OT.Rescan(true)
+OT.Tick()             -- nhãn + khung 🎯 được cập nhật trong Tick (0,2s/lần)
+t("màu mặc định là Xanh nước", OT.palette[1].name == "Xanh nước" and OT.Pal().name == "Xanh nước",
+    OT.Pal().name)
+t("màu xanh nước = RGB(0,170,255)", math.floor(OT.Pal().fill.B * 255) == 255
+    and math.floor(OT.Pal().fill.G * 255) == 170 and math.floor(OT.Pal().fill.R * 255) == 0,
+    tostring(OT.Pal().fill.G))
+local it1 = OT.items[tree2]
+t("Highlight giống kiểu phân tích toạ độ (FillTransparency 0.7, AlwaysOnTop)",
+    it1.hl.FillTransparency == 0.7 and it1.hl.DepthMode == Enum.HighlightDepthMode.AlwaysOnTop,
+    tostring(it1.hl.FillTransparency))
+t("nhãn có dòng toạ độ 🧭 X/Y/Z", tostring(it1.lbl.Text):find("🧭", 1, true) ~= nil, it1.lbl.Text)
+t("toạ độ trên nhãn đúng với vị trí vật (X 30.0)",
+    tostring(it1.lbl.Text):find("X 30.0", 1, true) ~= nil, it1.lbl.Text)
+
+local rows = OT.Info(tree2, tree2)
+local kv = {}
+for _, r in ipairs(rows) do kv[r.k] = r.v end
+t("khung thông tin có đủ 9 dòng như 🎯 phân tích toạ độ",
+    kv.Name and kv.Class and kv.Position and kv.Size and kv.Rotation and kv.Look and kv.Material and kv.Color and kv.Path,
+    tostring(#rows))
+t("Name/Class đúng", kv.Name == "Cây Dừa" and kv.Class == "Part", kv.Name .. "/" .. tostring(kv.Class))
+t("Position đúng toạ độ vật", kv.Position == "30.000, 5.000, 0.000", kv.Position)
+t("Size đúng", kv.Size == "4.000, 10.000, 4.000", kv.Size)
+t("Rotation/Look/Material/Color đọc được", kv.Rotation ~= nil and kv.Look == "0.000, 0.000, -1.000"
+    and kv.Material == "Plastic" and kv.Color == "R=163 G=162 B=165", tostring(kv.Material) .. " " .. tostring(kv.Color))
+t("Path đúng dạng Workspace.…", tostring(kv.Path):sub(1, 9) == "Workspace", kv.Path)
+
+-- bấm 📊 Xem trong danh sách -> khung thông tin hiện ra
+D.playerTab.Visible = true
+OT.RefreshList()
+local listFrame = D.playerTab:FindFirstChild("HubObjTrack_Panel"):FindFirstChild("ObjTrackList")
+local row1 = listFrame:FindFirstChild("OTRow_1")
+local infoRowBtn = row1 and row1:FindFirstChild("OTInfoRow")
+t("mỗi dòng có nút 📊 Xem", infoRowBtn ~= nil)
+infoRowBtn.Activated:Fire()
+local infoFrame = D.playerTab:FindFirstChild("HubObjTrack_Panel"):FindFirstChild("OTInfo")
+t("bấm 📊 -> khung 🎯 hiện ra", OT._sel ~= nil and infoFrame.Visible == true, tostring(OT._sel))
+t("khung 🎯 hiện đúng nội dung vật đã chọn",
+    tostring(infoFrame:FindFirstChild("OTInfoLbl").Text):find("Name: " .. tostring(OT._sel.Name), 1, true) ~= nil,
+    infoFrame:FindFirstChild("OTInfoLbl").Text)
+
+-- vật di chuyển -> số liệu trong khung cập nhật theo
+OT._sel.Position = Vector3.new(-42.5, 7, 3)
+OT.Tick()
+t("vật di chuyển -> toạ độ trong khung 🎯 cập nhật theo",
+    tostring(infoFrame:FindFirstChild("OTInfoLbl").Text):find("-42.500", 1, true) ~= nil,
+    infoFrame:FindFirstChild("OTInfoLbl").Text)
+
+-- 2 nút copy
+local copyPos = infoFrame:FindFirstChild("OTCopyPos")
+local copyPath = infoFrame:FindFirstChild("OTCopyPath")
+t("khung 🎯 có nút Copy Tọa Độ + Copy Path", copyPos ~= nil and copyPath ~= nil)
+copyPos.Activated:Fire()
+t("Copy Tọa Độ -> clipboard đúng chuỗi toạ độ mới",
+    _G.__clipboard == "-42.500, 7.000, 3.000", tostring(_G.__clipboard))
+copyPath.Activated:Fire()
+local pathNow = tostring(_G.__clipboard)
+t("Copy Path -> clipboard đúng đường dẫn vật",
+    pathNow:find("Cây Dừa", 1, true) ~= nil, pathNow)
+
+-- nút 🧭 trên khung: tắt toạ độ trên nhãn
+local xyzBtn = D.playerTab:FindFirstChild("HubObjTrack_Panel"):FindFirstChild("OTXyz")
+t("khung có nút 🧭 Nhãn toạ độ", xyzBtn ~= nil)
+xyzBtn.Activated:Fire()
+OT.Tick()
+t("tắt 🧭 -> nhãn không còn dòng toạ độ", tostring(it1.lbl.Text):find("🧭", 1, true) == nil, it1.lbl.Text)
+xyzBtn.Activated:Fire()
+OT.Tick()
+t("bật lại 🧭 -> nhãn có toạ độ trở lại", tostring(it1.lbl.Text):find("🧭", 1, true) ~= nil)
+
+-- xoá vật đang chọn -> khung 🎯 tự ẩn, không lỗi
+local selNow = OT._sel
+selNow:Destroy()
+OT.Tick()
+t("vật đang chọn bị xoá -> khung 🎯 tự ẩn", infoFrame.Visible == false and OT._sel == nil)
+OT.on = false
+OT.Clear()
+
 -- ---------- 14. KHÔNG MẤT TÍNH NĂNG: mọi thẻ 📚 Script Hub vẫn chạy ----------
 local errs = {}
 for _, e in ipairs(S.ScriptHubList) do
@@ -261,6 +346,24 @@ for _, nm in ipairs(needPanels) do
     if not D.playerTab:FindFirstChild(nm) then missing[#missing + 1] = nm end
 end
 t("tab 👥 vẫn đủ 4 khung", #missing == 0, table.concat(missing, ","))
+-- khung 🌳 không chồng lên nhau + khung 🎯 nằm gọn trong khung
+local panelOT = D.playerTab:FindFirstChild("HubObjTrack_Panel")
+local listOT = panelOT:FindFirstChild("ObjTrackList")
+local infoOT = panelOT:FindFirstChild("OTInfo")
+t("khung 🌳 đủ cao cho danh sách + khung 🎯",
+    panelOT.Size.Y.Offset >= (infoOT.Position.Y.Offset + infoOT.Size.Y.Offset),
+    panelOT.Size.Y.Offset .. " vs " .. tostring(infoOT.Position.Y.Offset + infoOT.Size.Y.Offset))
+t("khung 🎯 nằm dưới danh sách, không chồng",
+    infoOT.Position.Y.Offset >= (listOT.Position.Y.Offset + listOT.Size.Y.Offset),
+    tostring(listOT.Position.Y.Offset + listOT.Size.Y.Offset) .. " <= " .. tostring(infoOT.Position.Y.Offset))
+OT.keys = OT.Split("cay"); OT.on = true; OT.Rescan(true)   -- dựng lại danh sách để soi bố cục dòng
+D.playerTab.Visible = true
+OT.RefreshList()
+local rowTmp = listOT:FindFirstChild("OTRow_1")
+t("dòng danh sách có đủ 3 nút 📊/🚀/📋",
+    rowTmp ~= nil and rowTmp:FindFirstChild("OTInfoRow") ~= nil
+    and rowTmp:FindFirstChild("OTFlyRow") ~= nil and rowTmp:FindFirstChild("OTCopyRow") ~= nil)
+
 local ys = {}
 for _, nm in ipairs(needPanels) do
     local pnl = D.playerTab:FindFirstChild(nm)

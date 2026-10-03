@@ -12669,6 +12669,7 @@ S.ObjTrack = {
     thru = true,          -- xuyên tường (thấy cả vật sau tường)
     showLabel = true,     -- nhãn tên + khoảng cách
     showBox = false,      -- hộp bao quanh vật (BoxHandleAdornment)
+    showXYZ = true,       -- hiện toạ độ X/Y/Z dưới nhãn (giống khung 🎯 Phân Tích Toạ Độ)
     skipPlayers = true,   -- bỏ qua nhân vật người chơi (đã có 📍 riêng)
     color = 1,
     items = {},           -- [instance] = { hl, bb, lbl, box, part, dist }
@@ -12677,10 +12678,12 @@ S.ObjTrack = {
     rescanEvery = 1.5,    -- giây: quét lại workspace
     labelEvery = 0.2,     -- giây: cập nhật khoảng cách + nhãn
     _gui = nil, _acc = 0, _scanAcc = 0, _bound = false,
+    _sel = nil, _selPart = nil,   -- vật đang xem thông tin (khung 🎯 giống phân tích toạ độ)
     _found = 0, _scanMs = 0, _capped = false, _err = nil, _rowSig = nil,
 }
 local OT = S.ObjTrack
 OT.palette = {
+    { name = "Xanh nước", fill = Color3.fromRGB(0, 170, 255), out = Color3.fromRGB(186, 231, 255) },
     { name = "Xanh ngọc", fill = Color3.fromRGB(0, 255, 170), out = Color3.fromRGB(255, 255, 255) },
     { name = "Cam",       fill = Color3.fromRGB(255, 165, 0), out = Color3.fromRGB(255, 240, 210) },
     { name = "Hồng",      fill = Color3.fromRGB(255, 105, 180), out = Color3.fromRGB(255, 214, 236) },
@@ -12694,6 +12697,91 @@ function OT.Pal()
     return OT.palette[i] or OT.palette[1]
 end
 local function otRound(n) return math.floor((tonumber(n) or 0) + 0.5) end
+
+-- Toạ độ 1 dòng "X 12.3 · Y 5.0 · Z -8.4" — y như khung 📍 Toạ Độ của hub.
+local function otXYZ(part)
+    local ok, pos = pcall(function() return part.Position end)
+    if not ok or not pos then return "" end
+    return string.format("X %.1f · Y %.1f · Z %.1f", pos.X, pos.Y, pos.Z)
+end
+
+-- Đường dẫn đầy đủ kiểu "Workspace.Rừng Cây.ThanCay"
+function OT.PathOf(inst)
+    if inst == nil then return "nil" end
+    local parts, cur, guard = {}, inst, 0
+    while cur and cur ~= game and guard < 40 do
+        table.insert(parts, 1, tostring(cur.Name))
+        cur = cur.Parent
+        guard = guard + 1
+    end
+    return table.concat(parts, ".")
+end
+
+-- Bảng thông tin 1 vật: ĐÚNG các dòng của khung "🎯 VẬT THỂ ĐƯỢC CHỌN" (phân tích toạ độ).
+function OT.Info(inst, part)
+    if inst == nil then return {} end
+    if part == nil then part = OT.PartOf(inst) end
+    local rows = {}
+    local function add(k, v) rows[#rows + 1] = { k = k, v = tostring(v) } end
+    add("Name", tostring(inst.Name))
+    add("Class", tostring(inst.ClassName))
+    add("Path", OT.PathOf(inst))
+    if part then
+        local okP, pos = pcall(function() return part.Position end)
+        if okP and pos then add("Position", string.format("%.3f, %.3f, %.3f", pos.X, pos.Y, pos.Z)) end
+        local okS, size = pcall(function() return part.Size end)
+        if okS and size then add("Size", string.format("%.3f, %.3f, %.3f", size.X, size.Y, size.Z)) end
+        local okC, cf = pcall(function() return part.CFrame end)
+        if okC and cf then
+            pcall(function()
+                local rx, ry, rz = cf:ToOrientation()
+                add("Rotation", string.format("P=%.1f° Y=%.1f° R=%.1f°", math.deg(rx), math.deg(ry), math.deg(rz)))
+            end)
+            pcall(function()
+                local look = cf.LookVector
+                add("Look", string.format("%.3f, %.3f, %.3f", look.X, look.Y, look.Z))
+            end)
+        end
+        local okM, mat = pcall(function() return part.Material end)
+        if okM and mat then add("Material", tostring(mat):gsub("Enum.Material.", "")) end
+        local okCol, col = pcall(function() return part.Color end)
+        if okCol and col then
+            add("Color", string.format("R=%d G=%d B=%d",
+                math.floor(col.R * 255), math.floor(col.G * 255), math.floor(col.B * 255)))
+        end
+    end
+    return rows
+end
+
+-- Chọn 1 vật để hiện thông tin (giống chọn vật bằng 🎯 Phân Tích Vật Thể)
+function OT.Select(inst)
+    if inst == nil or inst.Parent == nil then
+        OT._sel, OT._selPart = nil, nil
+    else
+        OT._sel = inst
+        OT._selPart = OT.PartOf(inst)
+    end
+    if OT.RefreshInfo then pcall(OT.RefreshInfo) end
+    return OT._sel
+end
+
+function OT.CopyCoords(inst)
+    local part = (inst and OT.PartOf(inst)) or OT._selPart
+    if part == nil then return false, "chưa chọn vật nào" end
+    local ok, pos = pcall(function() return part.Position end)
+    if not ok or not pos then return false, "vật không còn toạ độ" end
+    local txt = string.format("%.3f, %.3f, %.3f", pos.X, pos.Y, pos.Z)
+    local did = (S.CopyToClipboard and S.CopyToClipboard(txt)) or false
+    return did, txt
+end
+
+function OT.CopyPath(inst)
+    local target = inst or OT._sel
+    if target == nil then return false, "chưa chọn vật nào" end
+    local txt = OT.PathOf(target)
+    local did = (S.CopyToClipboard and S.CopyToClipboard(txt)) or false
+    return did, txt
+end
 
 -- Bảng "bỏ dấu" tiếng Việt: gõ "cay" vẫn khớp "Cây", gõ "da" khớp "Đá".
 local OT_FOLD = {}
@@ -12813,6 +12901,7 @@ end
 function OT.Clear()
     for inst in pairs(OT.items) do OT.Kill(inst) end
     OT.items = {}
+    OT._sel, OT._selPart = nil, nil
     OT.list = {}
     OT._found = 0
     OT._capped = false
@@ -12843,13 +12932,13 @@ function OT.Make(inst, part)
     local pal = OT.Pal()
     local hl = New("Highlight", {
         Name = "OT_HL", Adornee = inst,
-        FillColor = pal.fill, FillTransparency = 0.55,
+        FillColor = pal.fill, FillTransparency = 0.7,   -- giống hệt Highlight của 🎯 Phân Tích Vật Thể
         OutlineColor = pal.out, OutlineTransparency = 0,
         DepthMode = OT.thru and Enum.HighlightDepthMode.AlwaysOnTop or Enum.HighlightDepthMode.Occluded,
     }, g)
     local bb = New("BillboardGui", {
         Name = "OT_BB", Adornee = part,
-        Size = UDim2.new(0, 190, 0, 30), StudsOffset = Vector3.new(0, 2.4, 0),
+        Size = UDim2.new(0, 210, 0, OT.showXYZ and 46 or 30), StudsOffset = Vector3.new(0, 2.4, 0),
         AlwaysOnTop = OT.thru, MaxDistance = 3000, ResetOnSpawn = false,
     }, g)
     local lbl = New("TextLabel", {
@@ -12892,10 +12981,16 @@ function OT.Tick()
                 it.bb.Adornee = part
                 it.bb.Enabled = (not far) and OT.showLabel
                 it.bb.AlwaysOnTop = OT.thru
+                pcall(function() it.bb.Size = UDim2.new(0, 210, 0, OT.showXYZ and 46 or 30) end)
             end
             if it.lbl then
-                it.lbl.Text = tostring(inst.Name)
+                local txt = tostring(inst.Name)
                     .. (d and ("  📏 " .. otRound(d) .. "m") or "  📏 --m")
+                if OT.showXYZ then
+                    local xyz = otXYZ(part)
+                    if xyz ~= "" then txt = txt .. "\n🧭 " .. xyz end
+                end
+                it.lbl.Text = txt
                 it.lbl.TextColor3 = pal.out
             end
             if it.box then
@@ -12907,6 +13002,8 @@ function OT.Tick()
             end
         end
     end
+    -- khung 🎯 thông tin vật đang chọn cập nhật theo vật (vật đi đâu số liệu theo đó)
+    if OT.RefreshInfo then pcall(OT.RefreshInfo) end
 end
 
 -- Quét workspace, giữ lại tối đa maxItems vật GẦN NHẤT
@@ -13140,15 +13237,14 @@ do
     local OT = S.ObjTrack
     local function otRound(n) return math.floor((tonumber(n) or 0) + 0.5) end
     local function otAlive(inst) return inst ~= nil and inst.Parent ~= nil end
-    local PH = 232
     local P = New("Frame", {
         Name = "HubObjTrack_Panel",
-        Size = UDim2.new(1, -16, 0, PH),
+        Size = UDim2.new(1, -16, 0, 418),
         Position = UDim2.new(0, 8, 0, D.playerY or 46),
         LayoutOrder = 4,
         BackgroundColor3 = C.SURFACE, BackgroundTransparency = 0.12, BorderSizePixel = 0, ZIndex = 6,
     }, D.playerTab)
-    D.playerY = (D.playerY or 46) + PH + 8
+    D.playerY = (D.playerY or 46) + 418 + 8
     Corner(P, UDim.new(0, 10))
     Stroke(P, C.HAIRLINE, 1)
     D.Shade(P, Color3.fromRGB(255, 255, 255), Color3.fromRGB(188, 192, 205), 90)
@@ -13226,16 +13322,92 @@ do
         Font = Enum.Font.GothamBold, TextSize = 9,
         TextXAlignment = Enum.TextXAlignment.Left, ZIndex = 7,
     }, P)
+    local xyzBtn = otAct("🧭 Nhãn toạ độ: BẬT", 8, 146, 168, C.GREEN)
     local list = New("ScrollingFrame", {
-        Name = "ObjTrackList", Size = UDim2.new(1, -16, 0, 84), Position = UDim2.new(0, 8, 0, 146),
+        Name = "ObjTrackList", Size = UDim2.new(1, -16, 0, 84), Position = UDim2.new(0, 8, 0, 172),
         BackgroundTransparency = 1, BorderSizePixel = 0, ScrollBarThickness = 4,
         CanvasSize = UDim2.new(0, 0, 0, 0), ZIndex = 7,
     }, P)
     New("UIListLayout", { Padding = UDim.new(0, 3), SortOrder = Enum.SortOrder.LayoutOrder }, list)
 
+    -- 🎯 Khung thông tin vật đang chọn — y hệt khung "🎯 VẬT THỂ ĐƯỢC CHỌN" của phần
+    -- "Phân Tích Vật Thể": Name/Class/Position/Size/Rotation/Look/Material/Color/Path,
+    -- cập nhật theo vật đang chuyển động + 2 nút Copy Tọa Độ / Copy Path.
+    -- (gói trong 1 hàm riêng: mỗi hàm chỉ được 200 local — xem chú thích ở tests/luau/README.md)
+    local function otBuildInfo()
+    local info = New("Frame", {
+        Name = "OTInfo",
+        Size = UDim2.new(1, -16, 0, 148), Position = UDim2.new(0, 8, 0, 262),
+        BackgroundColor3 = Color3.fromRGB(20, 25, 35), BackgroundTransparency = 0,
+        BorderSizePixel = 0, ZIndex = 7, Visible = false,
+    }, P)
+    Corner(info, UDim.new(0, 6))
+    Stroke(info, C.BLUE, 1.5)
+    New("TextLabel", {
+        Size = UDim2.new(1, -16, 0, 16), Position = UDim2.new(0, 8, 0, 4),
+        Text = "🎯 VẬT THỂ ĐƯỢC CHỌN (giống khung phân tích toạ độ — bấm 📊 ở danh sách)",
+        TextColor3 = Color3.fromRGB(150, 210, 255), Font = Enum.Font.GothamBold, TextSize = 9,
+        BackgroundTransparency = 1, TextXAlignment = Enum.TextXAlignment.Left, ZIndex = 8,
+    }, info)
+    local infoLbl = New("TextLabel", {
+        Size = UDim2.new(1, -16, 0, 104), Position = UDim2.new(0, 8, 0, 22),
+        Text = "bấm 📊 ở 1 dòng trong danh sách để xem toạ độ vật đó",
+        TextColor3 = Color3.fromRGB(255, 255, 255), Font = Enum.Font.Code, TextSize = 10,
+        BackgroundTransparency = 1, TextXAlignment = Enum.TextXAlignment.Left,
+        TextYAlignment = Enum.TextYAlignment.Top, TextWrapped = true, ZIndex = 8,
+    }, info)
+    local copyPosBtn = New("TextButton", {
+        Size = UDim2.new(0, 120, 0, 18), Position = UDim2.new(0, 8, 0, 128),
+        Text = "📋 Copy Tọa Độ", BackgroundColor3 = C.BLUE, TextColor3 = D.BestText(C.BLUE),
+        Font = Enum.Font.GothamBold, TextSize = 8, BorderSizePixel = 0, ZIndex = 9,
+    }, info)
+    Corner(copyPosBtn, UDim.new(0, 4)); D.Tactile(copyPosBtn, 0.08)
+    local copyPathBtn = New("TextButton", {
+        Size = UDim2.new(0, 120, 0, 18), Position = UDim2.new(0, 134, 0, 128),
+        Text = "📋 Copy Path", BackgroundColor3 = C.PURPLE, TextColor3 = D.BestText(C.PURPLE),
+        Font = Enum.Font.GothamBold, TextSize = 8, BorderSizePixel = 0, ZIndex = 9,
+    }, info)
+    Corner(copyPathBtn, UDim.new(0, 4)); D.Tactile(copyPathBtn, 0.08)
+
+    local function refreshInfo()
+        local sel, part = OT._sel, OT._selPart
+        if sel == nil or not otAlive(sel) then
+            OT._sel, OT._selPart = nil, nil
+            info.Visible = false
+            return
+        end
+        if part == nil or not otAlive(part) then
+            part = OT.PartOf(sel)
+            OT._selPart = part
+        end
+        local rows = OT.Info(sel, part)
+        local out = {}
+        for i = 1, #rows do out[i] = rows[i].k .. ": " .. rows[i].v end
+        infoLbl.Text = table.concat(out, "\n")
+        info.Visible = true
+    end
+    OT.RefreshInfo = refreshInfo
+    infoLbl.Name, copyPosBtn.Name, copyPathBtn.Name = "OTInfoLbl", "OTCopyPos", "OTCopyPath"
+
+    copyPosBtn.Activated:Connect(function()
+        ReleaseHubFocus()
+        local did, txt = OT.CopyCoords()
+        D.Say(did and ("📋 đã copy toạ độ: " .. tostring(txt)) or ("⚠️ " .. tostring(txt)),
+              did and C.GREEN or C.RED)
+    end)
+    copyPathBtn.Activated:Connect(function()
+        ReleaseHubFocus()
+        local did, txt = OT.CopyPath()
+        D.Say(did and ("📋 đã copy path: " .. tostring(txt)) or ("⚠️ " .. tostring(txt)),
+              did and C.GREEN or C.RED)
+    end)
+    end
+    otBuildInfo()
+
     -- đặt tên control để dễ soi lỗi / kiểm thử tự động
     queryIn.Name, toggleBtn.Name, rescanBtn.Name = "OTQuery", "OTToggle", "OTRescan"
     statusLbl.Name, clearBtn.Name = "OTStatus", "OTClear"
+    xyzBtn.Name = "OTXyz"
 
     local function paint()
         toggleBtn.Text = OT.on and "🌳 Định vị: BẬT" or "🌳 Định vị: TẮT"
@@ -13251,6 +13423,9 @@ do
         labelBtn.BackgroundColor3 = OT.showLabel and C.GREEN or C.SURFACE3
         labelBtn.TextColor3 = D.BestText(labelBtn.BackgroundColor3)
         colorBtn.Text = "🎨 " .. OT.Pal().name
+        xyzBtn.Text = OT.showXYZ and "🧭 Nhãn toạ độ: BẬT" or "🧭 Nhãn toạ độ: TẮT"
+        xyzBtn.BackgroundColor3 = OT.showXYZ and C.GREEN or C.SURFACE3
+        xyzBtn.TextColor3 = D.BestText(xyzBtn.BackgroundColor3)
         local flying = (S.Move and S.Move._objFlyActive == true)
         flyStop.BackgroundColor3 = flying and C.RED or C.SURFACE3
         flyStop.TextColor3 = D.BestText(flyStop.BackgroundColor3)
@@ -13286,13 +13461,27 @@ do
                 Stroke(row, (S.Move and S.Move._objFlyTarget == inst) and C.ACCENT or C.BORDER, 1)
                 New("TextLabel", {
                     Name = "OTName",
-                    Size = UDim2.new(1, -186, 1, 0), Position = UDim2.new(0, 7, 0, 0),
+                    Size = UDim2.new(1, -250, 1, 0), Position = UDim2.new(0, 7, 0, 0),
                     Text = string.format("#%d  %s  (%s, %dm)", i, tostring(inst.Name),
                         tostring(inst.ClassName or "?"), otRound(h.dist)),
                     BackgroundTransparency = 1, TextColor3 = C.DARK, Font = Enum.Font.GothamBold,
                     TextSize = 8, TextXAlignment = Enum.TextXAlignment.Left, ZIndex = 9,
                 }, row)
+                local infoRow = New("TextButton", {
+                    Name = "OTInfoRow",
+                    Size = UDim2.new(0, 56, 0, 20), Position = UDim2.new(1, -244, 0, 3),
+                    Text = "📊 Xem", BackgroundColor3 = C.BLUE, TextColor3 = D.BestText(C.BLUE),
+                    Font = Enum.Font.GothamBold, TextSize = 8, BorderSizePixel = 0, ZIndex = 9,
+                }, row)
+                Corner(infoRow, UDim.new(0, 5)); D.Tactile(infoRow, 0.08)
+                infoRow.Activated:Connect(function()
+                    ReleaseHubFocus()
+                    S.ObjTrack.Select(inst)
+                    D.Say("📊 đang xem '" .. tostring(inst.Name) .. "' — số liệu cập nhật theo vật", C.BLUE)
+                    pcall(S.ObjTrack.RefreshList)
+                end)
                 local flyRow = New("TextButton", {
+                    Name = "OTFlyRow",
                     Size = UDim2.new(0, 84, 0, 20), Position = UDim2.new(1, -176, 0, 3),
                     Text = "🚀 Bay", BackgroundColor3 = C.ACCENT, TextColor3 = D.BestText(C.ACCENT),
                     Font = Enum.Font.GothamBold, TextSize = 8, BorderSizePixel = 0, ZIndex = 9,
@@ -13309,6 +13498,7 @@ do
                     pcall(S.ObjTrack.RefreshList)
                 end)
                 local copyRow = New("TextButton", {
+                    Name = "OTCopyRow",
                     Size = UDim2.new(0, 86, 0, 20), Position = UDim2.new(1, -88, 0, 3),
                     Text = "📋 Tên", BackgroundColor3 = C.SURFACE3, TextColor3 = D.BestText(C.SURFACE3),
                     Font = Enum.Font.GothamBold, TextSize = 8, BorderSizePixel = 0, ZIndex = 9,
@@ -13451,6 +13641,13 @@ do
         speedIn.Text = tostring(S.Move.objectFlySpeed or 60)
     end)
 
+    xyzBtn.Activated:Connect(function()
+        ReleaseHubFocus()
+        OT.showXYZ = not OT.showXYZ
+        pcall(OT.Tick)
+        D.Say(OT.showXYZ and "🧭 hiện toạ độ X/Y/Z trên nhãn: BẬT" or "🧭 hiện toạ độ trên nhãn: TẮT", C.YELLOW)
+        pcall(S.ObjTrack.RefreshList)
+    end)
     paint()
     pcall(S.ObjTrack.RefreshList)
     pcall(function()
