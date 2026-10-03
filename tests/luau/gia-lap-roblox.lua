@@ -79,6 +79,12 @@ Vector3.__eq = function(a, b) return a.X == b.X and a.Y == b.Y and a.Z == b.Z en
 Vector2 = {}
 function Vector2.new(x, y) return setmetatable({ X = x or 0, Y = y or 0, _rbx = "Vector2" }, Vector2) end
 Vector2.__index = function(t, k) if k == "Magnitude" then return math.sqrt(t.X^2 + t.Y^2) end return rawget(t, k) end
+Vector2.__add = function(a, b) return Vector2.new(a.X + b.X, a.Y + b.Y) end
+Vector2.__sub = function(a, b) return Vector2.new(a.X - b.X, a.Y - b.Y) end
+Vector2.__mul = function(a, b) if type(a) == "number" then return Vector2.new(a * b.X, a * b.Y) end if type(b) == "number" then return Vector2.new(a.X * b, a.Y * b) end return Vector2.new(a.X * b.X, a.Y * b.Y) end
+Vector2.__div = function(a, b) if type(b) == "number" then return Vector2.new(a.X / b, a.Y / b) end return Vector2.new(a.X / b.X, a.Y / b.Y) end
+Vector2.__unm = function(a) return Vector2.new(-a.X, -a.Y) end
+Vector2.__eq = function(a, b) return a.X == b.X and a.Y == b.Y end
 
 Color3 = {}
 function Color3.new(r, g, b) return setmetatable({ R = r or 0, G = g or 0, B = b or 0, _rbx = "Color3" }, Color3) end
@@ -280,6 +286,13 @@ local function newInstance(cls, parent)
                 t._sig[k] = t._sig[k] or Signal.new()
                 return t._sig[k]
             end
+            -- Roblox cho truy cập con bằng dấu chấm: playerGui.ExMenu (nếu trùng tên thì ưu tiên thuộc tính/hàm)
+            local kids = rawget(t, "_kids")
+            if kids then
+                for i = 1, #kids do
+                    if rawget(kids[i], "Name") == k then return kids[i] end
+                end
+            end
             return nil
         end,
         __newindex = function(t, k, v)
@@ -391,6 +404,12 @@ defm("GetBoundingBox", function(self) return CFrame.new(0, 0, 0), Vector3.new(1,
 defm("GetExtentsSize", function(self) return Vector3.new(1, 1, 1) end)
 defm("GetPivot", function(self) local pp = self.PrimaryPart or self:FindFirstChildWhichIsA("BasePart", true); return pp and CFrame.new(pp.Position) or CFrame.new(0, 0, 0) end)
 defm("GetPlayers", function(self) return _G.__TEST_PLAYERS or {} end)
+defm("GetPlayerFromCharacter", function(self, char)
+    for _, p in ipairs(_G.__TEST_PLAYERS or {}) do
+        if rawget(p, "Character") == char then return p end
+    end
+    return nil
+end)
 defm("GetServers", function() return {} end)
 defm("JSONEncode", function(_, t) return _G.__json_encode(t) end)
 defm("JSONDecode", function(_, s) return _G.__json_decode(s) end)
@@ -402,7 +421,55 @@ end)
 defm("UnbindFromRenderStep", function(self, name) if _G.__renderSteps then _G.__renderSteps[name] = nil end end)
 defm("IsKeyDown", function() return false end)
 defm("GetFocusedTextBox", function() return nil end)
-defm("GetPartBoundsInRadius", function() return {} end)
+-- Lọc theo FilterDescendantsInstances (Exclude/Include) + MaxParts, giống engine thật.
+local function __overlapHit(inst, ex)
+    for _, o in ipairs(ex) do
+        local p = inst
+        while p do
+            if p == o then return true end
+            p = rawget(p, "Parent")
+        end
+    end
+    return false
+end
+defm("GetPartBoundsInRadius", function(self, center, radius, op)
+    local list, n = {}, 0
+    if type(center) ~= "table" or rawget(center, "_rbx") ~= "Vector3" then return list end
+    local r = tonumber(radius) or 0
+    local maxParts, ex, filterType = 250, {}, "Exclude"
+    if op ~= nil then
+        local mp = rawget(op, "MaxParts")
+        if tonumber(mp) ~= nil then maxParts = tonumber(mp) end
+        if maxParts <= 0 then maxParts = math.huge end
+        local ft = rawget(op, "FilterType")
+        if ft ~= nil then filterType = tostring(rawget(ft, "Name") or ft) end
+        local fl = rawget(op, "FilterDescendantsInstances")
+        if type(fl) == "table" then ex = fl end
+    end
+    local desc = self:GetDescendants()
+    for i = 1, #desc do
+        local d = desc[i]
+        if d:IsA("BasePart") and rawget(d, "CanQuery") ~= false then
+            local okPos, pos = pcall(function() return d.Position end)
+            if okPos and type(pos) == "table" then
+                local okD, dist = pcall(function() return (pos - center).Magnitude end)
+                if okD and dist <= r then
+                    local take = true
+                    if #ex > 0 then
+                        local hit = __overlapHit(d, ex)
+                        take = (filterType == "Exclude") and (not hit) or (filterType ~= "Exclude" and hit)
+                    end
+                    if take then
+                        n = n + 1
+                        if n <= maxParts then list[#list + 1] = d end
+                    end
+                end
+            end
+        end
+    end
+    return list
+end)
+OverlapParams = { new = function() return Instance.new("OverlapParams") end }
 defm("GetPartsInPart", function() return {} end)
 defm("Raycast", function() return { Instance = nil, Position = Vector3.zero, Normal = Vector3.new(0, 1, 0) } end)
 defm("Create", function(self, obj, info, goal) return {

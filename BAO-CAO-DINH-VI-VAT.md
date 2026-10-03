@@ -194,6 +194,44 @@ lúc, từ chối ghim trùng/rỗng, xoá riêng 1 mục (mục kia vẫn chạ
 ➕/✕ thật trên khung, nhấn Enter trong ô nhập, xoá object khỏi game khi mục path còn đó, và gõ tên
 trong ô nhập vẫn tự định vị như cũ.
 
+## 5f. ⭕ Định vị VÒNG trong tab 🛠 Hỗ Trợ (mọi vật + người chơi/NPC đang di chuyển)
+
+Theo yêu cầu: thêm **⭕ định vị vòng** vào tab **🛠 Hỗ Trợ**, **nằm NGAY TRÊN** phần "🎯 Định vị tốc độ game".
+
+| Thành phần | Công dụng |
+|---|---|
+| **⭕ Vòng: BẬT/TẮT** | Bật/tắt vòng định vị (tắt là dọn sạch marker) |
+| **🎯 Đổ vị trí** | Đặt tâm vòng **tại chân bạn** ngay lập tức |
+| **⏪ Lùi / ⏩ Tới** | Dịch tâm vòng theo **hướng camera** (song song mặt đất), mỗi lần `step` mét (mặc định 14) |
+| **🧲 Theo bạn** | Bật thì vòng **đi theo bạn** mỗi khung hình; bấm ⏪/⏩ thì tự tắt bám |
+| **⭕ Bán kính (m)** + **✅ Đặt** / **➖ ➕** | **Chỉnh độ to/nhỏ của vòng** (kẹp 5–2000 m, mặc định 60 m) |
+| **🖼 Vòng** | Hiện/ẩn **vòng nhìn thấy được trong map** (đĩa Neon mờ + vành `CylinderHandleAdornment`) |
+| **🕶 Xuyên tường / 💬 Nhãn / 👁 3 nút ảo / 🎨 màu / ↩️ Đặt lại nút** | Tuỳ chọn hiển thị và màu (6 màu, mặc định **xanh nước**) |
+| **Danh sách "TRONG VÒNG"** | 3 đơn vị gần tâm nhất: `#số · tên · loại · Class · ⭕cách tâm · 🧍cách bạn` + nút **📊 Xem / 🚀 Bay / 📋 Tên** |
+| **Khung 🎯 THÔNG TIN VẬT ĐANG CHỌN** | Đầy đủ **đúng 9 dòng như "📊 phân tích toạ độ"**: Name, Class, Position, Size, Rotation, Look, Material, Color, Path + **📍 Cách tâm vòng** + **🧍 Cách bạn**; tự cập nhật khi vật di chuyển; có **📋 Copy Tọa Độ / 📋 Copy Path** |
+
+### Định vị *mọi thứ* trong vòng (kể cả người chơi/NPC đang di chuyển)
+
+- Quét bằng `workspace:GetPartBoundsInRadius(tâm, bán kính, OverlapParams)` — **engine tự lọc theo bán kính** nên rất nhẹ; `OverlapParams` loại trừ vòng nhìn thấy, GUI của hub và **nhân vật của chính bạn**.
+- Gộp mỗi "đơn vị" lại thành **1 marker**: Model có `Humanoid` → **1 người = 1 marker** (`🧑 Người chơi` nếu là người chơi thật, `🤖 NPC` nếu không); vật trong Model/Folder → gộp theo **cấp cao nhất** (`📦 Bộ phận`); còn lại là từng vật (`🧱 Vật`).
+- Quét lại **0,6 s/lần** → vật/người **đi vào vòng thì tự hiện, đi ra thì tự mất**; số marker tối đa `maxItems` (40, giữ các đơn vị **gần tâm nhất**).
+- Chống khựng như khối 🌳: tạo marker **chia ngân sách** `makeBudget=6`/khung hình, nhãn cập nhật **xoay vòng** `labelBudget=16` với **trần thời gian** 1,5 ms/lượt, khung 🎯 làm mới thưa `infoEvery=0,5 s`.
+
+### Ba nút ảo trên màn hình + chỉnh vị trí nút
+
+- `BC_RingBtns` (ScreenGui) có 3 nút tròn: **🎯 Đổ vòng · ⏪ Lùi · ⏩ Tới** — **mỗi nút có một hình tròn nhỏ bên trong** (`Inner` + `UICorner 0.5`) chứa icon + chú thích.
+- Nút thứ 4 **🔒/🔓 Chỉnh nút** (nhỏ hơn) bật/tắt chế độ chỉnh; trong tab cũng có nút **🖐 Chỉnh nút: BẬT/TẮT**.
+- **BẬT** → kéo nút **bất kì** tới chỗ mong muốn (kẹp trong màn hình), thả ra là **lưu vị trí** (`R.btns`), viền nút sáng vàng; **TẮT** → **không kéo được nữa** (đúng yêu cầu), và **kéo nút không kích hoạt nút** (không đổ vòng khi đang chỉnh).
+- **↩️ Đặt lại nút** đưa 3 nút về vị trí mặc định (mép phải màn hình).
+
+Thêm **cổng "chạy lại script"** (`tests/luau/chay-lai-hub.mjs`, 11 case): nạp hub **2 lần liên tiếp** — đúng
+thao tác bấm chạy lại script — với vòng đang bật ở lần 1, rồi kiểm tra lần 2 **chỉ còn 1 cửa sổ hub / 1 bộ
+3 nút ảo**, **marker + vòng nhìn thấy của lần 1 đã bị dọn sạch**, render step `BC_Ring` cũ đã gỡ, và tính
+năng ⭕ của lần 2 vẫn chạy (đã thử **gỡ phần dọn dẹp ra** → cổng báo đỏ `chỉ còn ĐÚNG 1 ScreenGui 3 nút ảo -> 2`,
+tức cổng thật sự bắt được lỗi).
+
+Test: **189 → 252 case** (`pass=252 fail=0`), nhóm 16 có **63 case** kiểm tra: khung nằm **trên** phần tốc độ game, chỉnh bán kính (kẹp 5–2000, nút ➖ ➕, ô nhập tay), đổ vòng đúng chân, quét được vật trong bán kính & **không** quét vật ngoài, **bỏ qua chính mình**, gộp 1 marker/người, **NPC/vật đi vào vòng thì hiện – đi ra thì mất**, Folder gộp nhóm, MeshPart, **9 dòng thông tin trùng khớp từng chữ với `OT.Info`** (📊 phân tích toạ độ) và cập nhật khi vật di chuyển, 3 nút ảo + hình tròn nhỏ bên trong, **kéo nút khi TẮT không đổi vị trí / khi BẬT thì đổi và lưu lại**, nút 🔒 bật–tắt, ⏪⏩ dịch đúng hướng nhìn, 🧲 bám theo khi bạn di chuyển, 🖼 bật/tắt vòng nhìn thấy, ngân sách Tick ≤ `labelBudget`, và dọn sạch khi tắt.
+
 ## 6. Lỗi tìm thấy qua test & đã sửa
 
 | # | Lỗi | Cách phát hiện | Đã sửa |
@@ -206,6 +244,18 @@ trong ô nhập vẫn tự định vị như cũ.
 | 8 | **Lệch 1 chữ `end` làm 6 hàm không bao giờ được định nghĩa** (🌳 ngừng chạy dù compile OK): `OT.ScanBegin`, `OT.ScanSlice`… bị "nuốt" vào trong `OT.Tick` | Test chạy thật báo `ScanBegin` không phải hàm; soi cây cú pháp (`tests/luau/kiem-tra-cau-truc.mjs`) chỉ đúng "bị lồng trong 1 lớp hàm" | Viết lại `OT.Tick`/`OT.TickOne` + `OT.ScanBegin`/`OT.ScanHit`/`OT.ScanSlice` cho gọn và **thêm cổng kiểm tra cấu trúc** vào bộ test để lỗi này không tái diễn |
 | 7 | **"Nhập tên mà không hiện gì"**: Highlight gắn vào PlayerGui nên không render | Soi lại khung "🎯 Phân Tích Vật Thể" đang gắn Highlight vào vật; tra tài liệu/devforum Roblox xác nhận Highlight phải nằm trong Workspace | Gắn Highlight/nhãn/hộp thẳng vào vật + part, Tick tự giữ đúng chỗ, tạo từng phần riêng để lỗi 1 phần không mất cả định vị (§5c) |
 | 6 | **Tràn 200 local của Luau** khi thêm khung 🎯 (`Out of local registers … copyPathBtn`) | Compile check `node kiem-tra-cu-phap.mjs` báo lỗi ngay | Gom khối 🎯 vào một hàm riêng `otBuildInfo()` + bỏ biến `PH`, giữ đúng trần 200 local/hàm |
+
+| 9 | **Vòng định vị chết nếu executor/game chặn `OverlapParams`**: `OverlapParams.new()` gọi ngoài `pcall` → lỗi là mất luôn cả lượt quét | Soi lại code khi ráp khối ⭕ + đối chiếu cách khối 🌳 xử lý (`pcall` rồi mới dùng) | Bọc `pcall` và có **nhánh dự phòng `Instance.new("OverlapParams")`**; thiếu cả hai thì `R.Scan` trả lỗi rõ ràng chứ không hỏng |
+| 10 | **Highlight gắn `Adornee` = Folder thì KHÔNG hiện** (Folder không phải `BasePart`/`Model`): vật nằm trong Folder vẫn được định vị nhưng vô hình | Kiểm lại kiến thức từ lần sửa §5c (Highlight chỉ render trong Workspace và phải trỏ vào part/model) | `R.Make` chọn `Adornee` = chính vật nếu là `BasePart`/`Model`, **ngược lại dùng part đại diện** (`R.PartOf`) |
+| 11 | **Trạng thái kéo nút lưu vào Instance** (`btn._dragState = …`): Roblox **không cho gán thuộc tính lạ** lên Instance → lỗi ngay khi bắt đầu kéo | Rà code trước khi ráp; thay bằng bảng trạng thái `R._drag[key]` / `R._btnRefs[key]` | Toàn bộ tham chiếu + trạng thái kéo nằm trong **bảng của module**, không gán gì lên Instance |
+
+Lỗi trong **khung test** (không phải lỗi sản phẩm, đã sửa để test chạy đúng) — bổ sung cho lần này:
+giả lập **thiếu toán tử `Vector2`** (`inp.Position - d.startInput` là phép trừ hợp lệ trong Roblox thật,
+nhưng `pcall` nuốt lỗi nên test kéo nút báo sai) → đã thêm `__add/__sub/__mul/__div/__unm/__eq`;
+`workspace:GetPartBoundsInRadius` cũ chỉ trả `{}` → nay lọc thật theo bán kính +
+`FilterDescendantsInstances`/`MaxParts`/`CanQuery`; thiếu `Players:GetPlayerFromCharacter` → mọi người
+chơi bị xếp nhầm thành 🤖 NPC; thiếu **truy cập con bằng dấu chấm** (`playerGui.ExMenu` — Roblox cho phép,
+giả lập thì không) làm việc **chạy lại hub lần 2** báo lỗi `attempt to index nil with 'Destroy'`.
 
 Lỗi trong **khung test** (không phải lỗi sản phẩm, đã sửa để test chạy đúng): giả lập bỏ qua tham
 số `parent` khi tạo Instance; nhân vật người chơi khác thiếu `Humanoid`/`HumanoidRootPart` nên

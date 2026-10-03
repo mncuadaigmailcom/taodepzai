@@ -13,9 +13,11 @@ nguyên không, khung/tab có dựng đủ không, và tính năng mới 🌳 đ
 ```bash
 cd tests/luau
 npm install                                # cài @luau-rs/luau (Luau 0.739 → WASM) + luau-parser
-node chay-test.mjs                         # 189 test hành vi trên ../../script.js
+node chay-test.mjs                         # 252 test hành vi trên ../../script.js
+node chay-lai-hub.mjs                      # 11 test "chạy lại script" (không chồng GUI/marker)
 node kiem-tra-cu-phap.mjs                  # chỉ kiểm tra compile
 node kiem-tra-cau-truc.mjs                 # kiểm tra cấu trúc (hàm không bị lồng)
+npm run check                              # cả 3 cổng trên (compile + cấu trúc + chạy lại)
 ```
 
 Tuỳ chọn:
@@ -33,10 +35,11 @@ script in ra dòng lỗi và vị trí (trong `script.js` hay trong file test).
 
 | File | Vai trò |
 |---|---|
-| `gia-lap-roblox.lua` | Giả lập API Roblox đủ để load + chạy hub: Instance, Signal, GUI, `task.*`, `RunService`, `Players`, `workspace`, `TweenService`… |
-| `test-tinh-nang.lua` | 189 test: API sống sót, tính năng cũ còn nguyên, 🌳 định vị vật theo tên, màu xanh nước + khung 🎯 thông tin/toạ độ giống "phân tích toạ độ", Highlight nằm trong Workspace (nếu gắn vào PlayerGui là KHÔNG hiện), dán path, **ghim nhiều mục (nhiều path/tên) chạy cùng lúc + xoá từng mục**, Folder, 🚀 bay tới vật, luồng UI thật trong tab 👥, bố cục khung, và mọi thẻ 📚 Script Hub vẫn chạy không lỗi |
+| `gia-lap-roblox.lua` | Giả lập API Roblox đủ để load + chạy hub: Instance, Signal, GUI, `task.*`, `RunService`, `Players` (kể cả `GetPlayerFromCharacter`), `workspace` (`GetPartBoundsInRadius` lọc thật theo bán kính + `FilterDescendantsInstances`/`MaxParts`/`CanQuery`), `OverlapParams`, toán tử `Vector2`, `TweenService`… |
+| `test-tinh-nang.lua` | 252 test: API sống sót, tính năng cũ còn nguyên, 🌳 định vị vật theo tên, màu xanh nước + khung 🎯 thông tin/toạ độ giống "phân tích toạ độ", Highlight nằm trong Workspace (nếu gắn vào PlayerGui là KHÔNG hiện), dán path, **ghim nhiều mục (nhiều path/tên) chạy cùng lúc + xoá từng mục**, Folder, 🚀 bay tới vật, luồng UI thật trong tab 👥, bố cục khung, mọi thẻ 📚 Script Hub vẫn chạy không lỗi, và **nhóm 16 cho ⭕ định vị vòng** (khung nằm ngay trên phần định vị tốc độ game; chỉnh bán kính 5–2000; 🎯 đổ vòng tại chân; vật/NPC/người chơi **đi vào vòng thì hiện – đi ra thì mất**; gộp 1 marker/người; 9 dòng thông tin **trùng khớp từng chữ** với `OT.Info` của 📊 phân tích toạ độ và cập nhật khi vật di chuyển; 3 nút ảo có hình tròn nhỏ bên trong; **kéo nút chỉ khi BẬT chỉnh — TẮT thì không đổi vị trí**; 🔒/⏪/⏩/🧲/🖼/↩️ và ngân sách chống khựng) |
 | `chay-test.mjs` | Nạp giả lập + hub + test trong cùng một chunk Luau rồi in kết quả |
 | `kiem-tra-cu-phap.mjs` | Compile `script.js` bằng Luau thật (cổng chặn cú pháp) |
+| `chay-lai-hub.mjs` | Nạp hub **hai lần liên tiếp** (đúng tình huống bấm chạy lại script): bật ⭕ định vị vòng ở lần 1 (để có marker + vòng nhìn thấy), rồi kiểm tra lần 2 **chỉ còn 1 cửa sổ hub / 1 bộ 3 nút ảo**, marker + vòng cũ **đã bị dọn sạch**, render step cũ đã gỡ, và tính năng ⭕ của lần 2 chạy bình thường |
 | `kiem-tra-cau-truc.mjs` | Soi cây cú pháp: mọi `function X.Y()` phải ở **cấp cao nhất**. Chỉ cần lệch 1 chữ `end` là một loạt hàm bị lồng vào hàm khác → **không bao giờ được định nghĩa** mà script vẫn compile OK (đúng lỗi từng làm 🌳 định vị vật không chạy) |
 
 ## Lưu ý kỹ thuật
