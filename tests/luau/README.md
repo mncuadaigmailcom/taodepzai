@@ -33,7 +33,7 @@ script in ra dòng lỗi và vị trí (trong `script.js` hay trong file test).
 | File | Vai trò |
 |---|---|
 | `gia-lap-roblox.lua` | Giả lập API Roblox đủ để load + chạy hub: Instance, Signal, GUI, `task.*`, `RunService`, `Players`, `workspace`, `TweenService`… |
-| `test-tinh-nang.lua` | 118 test: API sống sót, tính năng cũ còn nguyên, 🌳 định vị vật theo tên, màu xanh nước + khung 🎯 thông tin/toạ độ giống "phân tích toạ độ", 🚀 bay tới vật, luồng UI thật trong tab 👥, bố cục khung, và mọi thẻ 📚 Script Hub vẫn chạy không lỗi |
+| `test-tinh-nang.lua` | 139 test: API sống sót, tính năng cũ còn nguyên, 🌳 định vị vật theo tên, màu xanh nước + khung 🎯 thông tin/toạ độ giống "phân tích toạ độ", Highlight nằm trong Workspace (nếu gắn vào PlayerGui là KHÔNG hiện), dán path, Folder, 🚀 bay tới vật, luồng UI thật trong tab 👥, bố cục khung, và mọi thẻ 📚 Script Hub vẫn chạy không lỗi |
 | `chay-test.mjs` | Nạp giả lập + hub + test trong cùng một chunk Luau rồi in kết quả |
 | `kiem-tra-cu-phap.mjs` | Compile `script.js` bằng Luau thật (cổng chặn cú pháp) |
 

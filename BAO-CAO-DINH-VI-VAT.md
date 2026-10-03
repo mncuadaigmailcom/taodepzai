@@ -101,6 +101,40 @@ Sau khi dùng thử, yêu cầu bổ sung: **định vị cây phải giống ki
 Bố cục khung 🌳 giờ cao 418 px: hàng nút · 🧭 · danh sách 8 dòng · khung 🎯 148 px (không chồng nhau,
 có test kiểm tra bố cục). Bộ test tăng **93 → 118 case**, chạy `node chay-test.mjs` → `pass=118 fail=0`.
 
+## 5c. Sửa lỗi "nhập tên mà KHÔNG HIỆN GÌ"
+
+**Nguyên nhân chính (lỗi thật của bản trước):** Highlight được gắn vào **ScreenGui trong PlayerGui**.
+Theo tài liệu Roblox và báo lỗi engine, Highlight chỉ render khi **nằm trong Workspace** — gắn vào
+PlayerGui thì có cái hiện, có cái không, phần lớn là **không thấy gì**. Khung "🎯 Phân Tích Vật Thể"
+vẫn hiện vì nó gắn thẳng Highlight vào vật (`hl.Parent = target`).
+
+**Đã sửa:**
+
+| Việc | Trước | Sau |
+|---|---|---|
+| Highlight | gắn vào ScreenGui (PlayerGui) | **gắn thẳng vào VẬT** (`BC_OT_HL`) — đúng như khung phân tích; Tick tự kéo về vật nếu bị đổi chỗ, tự tạo lại nếu bị xoá |
+| Nhãn BillboardGui | trong PlayerGui | **gắn vào part** (trong Workspace) — chắc chắn hiện và bám theo vật |
+| Hộp bao quanh | trong PlayerGui | **gắn vào part** (`BC_OT_BOX`) — adornment trong GUI cũng không hiện |
+| Dọn rác lần chạy trước | chỉ quét PlayerGui | **quét cả Workspace** tìm `BC_OT_HL/BC_OT_BB/BC_OT_BOX` |
+| Tạo từng phần | 1 `pcall` chung: Highlight lỗi là mất luôn cả nhãn | tạo **riêng từng phần**, phần nào lỗi chỉ thiếu phần đó; báo lỗi ra `Status` |
+
+**Nhập PATH cũng tìm được (theo yêu cầu):** dán `Workspace.Rừng Cây.ThanCay`, `game.Workspace.Cây`
+hay chỉ `cây` đều chạy — từ khoá có dấu `.` `/` `\` sẽ được hiểu là path (bỏ tiền tố `game.`, khớp
+cả path đầy đủ **lẫn** tên đoạn cuối).
+
+**Không còn im lặng khi không khớp:**
+- Cuối ô 🔎 hiện dòng gợi ý: *"⚠️ Không có vật nào khớp "xyz" · Đã quét N vật trong Workspace · Thử tên ngắn hơn (VD: cây) hoặc dán đúng Path"*.
+- Hiện toast 🔔 `⚠️ không thấy vật nào khớp "xyz" — thử tên ngắn hơn`.
+- Thanh trạng thái ghi rõ từ khoá + số vật đã quét.
+
+**Thêm cho đúng "vạn vật":** Model lồng nhau + **Folder** (VD folder "Khu Cây" chứa nhiều cây) đều
+định vị được — Folder thì Highlight trỏ vào part bên trong; part con không bị định vị trùng.
+Thêm nút **🚫 Bỏ qua người chơi: BẬT/TẮT** để tìm cả vật nằm trong nhân vật người chơi.
+
+Bộ test: **118 → 139 case** (`node chay-test.mjs` → `pass=139 fail=0`), thêm nhóm kiểm tra Highlight
+nằm trong Workspace, tự kéo về vật khi bị đổi chỗ/xoá, dán path, Folder, nút bỏ qua người chơi, và
+dòng gợi ý khi không khớp.
+
 ## 6. Lỗi tìm thấy qua test & đã sửa
 
 | # | Lỗi | Cách phát hiện | Đã sửa |
@@ -110,6 +144,7 @@ có test kiểm tra bố cục). Bộ test tăng **93 → 118 case**, chạy `no
 | 3 | **Tắt định vị không dừng 🚀 bay**: bấm 🧹 / tắt 🌳 mà nhân vật vẫn đang bay tới vật | Rà luồng UI: `OT.Set(false)` chỉ xoá định vị, không đụng `MV._objFlyActive` | `OT.Set(false)` gọi `S.Move.StopObjectFly()` |
 | 4 | **33 dòng lệch chuẩn CRLF** khi chèn code (tệp gốc 100% CRLF) | Đếm byte `\r\n` / `\n`: `LF-only = 33`, bản gốc = 0 | Chuẩn hoá lại toàn bộ về CRLF |
 | 5 | **Không test được UI** vì các control không có tên | Viết test UI thì `FindFirstChild("OTQuery")` trả `nil` | Đặt tên `OTQuery/OTToggle/OTRescan/OTClear/OTStatus/OTXyz/OTInfoRow/OTFlyRow/OTCopyRow…` |
+| 7 | **"Nhập tên mà không hiện gì"**: Highlight gắn vào PlayerGui nên không render | Soi lại khung "🎯 Phân Tích Vật Thể" đang gắn Highlight vào vật; tra tài liệu/devforum Roblox xác nhận Highlight phải nằm trong Workspace | Gắn Highlight/nhãn/hộp thẳng vào vật + part, Tick tự giữ đúng chỗ, tạo từng phần riêng để lỗi 1 phần không mất cả định vị (§5c) |
 | 6 | **Tràn 200 local của Luau** khi thêm khung 🎯 (`Out of local registers … copyPathBtn`) | Compile check `node kiem-tra-cu-phap.mjs` báo lỗi ngay | Gom khối 🎯 vào một hàm riêng `otBuildInfo()` + bỏ biến `PH`, giữ đúng trần 200 local/hàm |
 
 Lỗi trong **khung test** (không phải lỗi sản phẩm, đã sửa để test chạy đúng): giả lập bỏ qua tham

@@ -580,6 +580,14 @@ modelPart.Name = "ThanCay"
 modelPart.Position = Vector3.new(0, 5, 40)
 modelPart.Size = Vector3.new(3, 12, 3)
 modelPart.AssemblyLinearVelocity = Vector3.zero
+-- Folder tên "Cây" chứa nhiều cây (test định vị vạn vật theo Folder)
+_G.__TEST_TREE_FOLDER = newInstance("Folder", workspace)
+_G.__TEST_TREE_FOLDER.Name = "Khu Cây"
+local folderTree = newInstance("Part", _G.__TEST_TREE_FOLDER)
+folderTree.Name = "Gốc Cây"
+folderTree.Position = Vector3.new(-30, 5, 20)
+folderTree.Size = Vector3.new(3, 8, 3)
+folderTree.AssemblyLinearVelocity = Vector3.zero
 part("Hòn Đá", Vector3.new(15, 5, 15), Vector3.new(3, 3, 3))
 part("Rương Gỗ", Vector3.new(-10, 5, -10), Vector3.new(4, 4, 4))
 part("Tường", Vector3.new(0, 5, 80), Vector3.new(20, 20, 1))

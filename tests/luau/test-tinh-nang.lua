@@ -72,11 +72,11 @@ OT.on = true
 OT.Bind()
 t("Bind đã đăng ký render step BC_ObjTrack", _G.__renderSteps["BC_ObjTrack"] ~= nil)
 local found = OT.Rescan(true)
-t("tìm thấy đúng 5 vật 'cây' trong map (4 part + 1 model rừng)", found == 5, found)
-t("KHÔNG định vị 'Cây' nằm trong nhân vật mình / người khác", #OT.list == 5, #OT.list)
+t("tìm thấy đúng 6 vật 'cây' trong map (4 part + 1 model + 1 folder)", found == 6, found)
+t("KHÔNG định vị 'Cây' nằm trong nhân vật mình / người khác", #OT.list == 6, #OT.list)
 local nItems = 0
 for _ in pairs(OT.items) do nItems = nItems + 1 end
-t("tạo đủ 5 Highlight+nhãn đang theo dõi", nItems == 5, nItems)
+t("tạo đủ 6 Highlight+nhãn đang theo dõi", nItems == 6, nItems)
 local first = OT.items[__TEST_TREES[1]]
 t("vật đầu có Highlight gắn đúng vào vật", first and first.hl and first.hl.Adornee == __TEST_TREES[1])
 t("nhãn BillboardGui gắn vào part của vật (nên vật đi đâu nhãn theo đó)",
@@ -98,11 +98,11 @@ tree.Position = Vector3.new(30, 5, 0)     -- trả lại vị trí cũ
 
 -- ---------- 6. lọc khoảng cách ----------
 OT.SetMaxDist(50)
-t("giới hạn 50m -> chỉ còn 3 vật 'cây'", OT._found == 3, OT._found)
+t("giới hạn 50m -> chỉ còn 4 vật 'cây'", OT._found == 4, OT._found)
 t("giới hạn khoảng cách được lưu", OT.maxDist == 50)
 OT.SetMaxDist(0)
 OT.Rescan(true)
-t("bỏ giới hạn -> lại thấy 5 vật", OT._found == 5, OT._found)
+t("bỏ giới hạn -> lại thấy 6 vật", OT._found == 6, OT._found)
 
 -- ---------- 7. vật bị xoá thì tự bỏ định vị ----------
 local victim = __TEST_TREES[3]
@@ -110,7 +110,7 @@ victim:Destroy()
 OT.Tick()
 t("vật bị xoá thì mất định vị ngay", OT.items[victim] == nil)
 OT.Rescan(true)
-t("quét lại: còn 4 vật", OT._found == 4, OT._found)
+t("quét lại: còn 5 vật", OT._found == 5, OT._found)
 
 -- ---------- 8. nhiều từ khoá + giới hạn số lượng ----------
 OT.SetQuery("cây, đá")
@@ -118,11 +118,11 @@ local okWait = (function()
     local t0 = os.clock()
     while os.clock() - t0 < 1.2 do
         __pump(1)
-        if #OT.keys == 2 and OT._found == 5 then return true end
+        if #OT.keys == 2 and OT._found == 6 then return true end
     end
     return false
 end)()
-t("gõ 'cây, đá' (debounce) -> quét ra 5 vật", okWait, (OT._found or -1) .. " keys=" .. #OT.keys)
+t("gõ 'cây, đá' (debounce) -> quét ra 6 vật", okWait, (OT._found or -1) .. " keys=" .. #OT.keys)
 OT.maxItems = 2
 OT.Rescan(true)
 local shown = 0
@@ -139,7 +139,7 @@ OT.RefreshList()
 local listFrame = D.playerTab:FindFirstChild("HubObjTrack_Panel"):FindFirstChild("ObjTrackList")
 local rows = 0
 for _, c in ipairs(listFrame:GetChildren()) do if c.Name:sub(1, 6) == "OTRow_" then rows = rows + 1 end end
-t("bảng 🌳 dựng đủ dòng (5 vật)", rows == 5, rows)
+t("bảng 🌳 dựng đủ dòng (6 vật)", rows == 6, rows)
 t("trạng thái có số vật + từ khoá", tostring(OT.Status()):find("cay", 1, true) ~= nil, OT.Status())
 
 -- ---------- 10. đổi kiểu hiển thị ----------
@@ -326,6 +326,142 @@ selNow:Destroy()
 OT.Tick()
 t("vật đang chọn bị xoá -> khung 🎯 tự ẩn", infoFrame.Visible == false and OT._sel == nil)
 OT.on = false
+OT.Clear()
+
+-- ---------- 13c. VẼ ĐÚNG CHỖ (lỗi "nhập tên mà không thấy gì") + DÁN PATH ----------
+OT.color = 1
+OT.keys = OT.Split("cay")
+OT.on = true
+OT.Rescan(true)
+OT.Tick()
+local t3 = __TEST_TREES[4]   -- "CÂY THÔNG" (các cây khác đã bị xoá ở test trên)
+local it3 = OT.items[t3]
+t("Highlight gắn thẳng vào VẬT (không phải PlayerGui)", it3 ~= nil and it3.hl.Parent == t3,
+    it3 and tostring(it3.hl.Parent and it3.hl.Parent.Name))
+t("Highlight nằm trong Workspace nên chắc chắn render", it3.hl:IsDescendantOf(workspace) == true)
+t("nhãn BillboardGui gắn vào part (trong Workspace)", it3.bb.Parent == t3 and it3.bb:IsDescendantOf(workspace) == true)
+t("Highlight vẫn giữ Adornee = vật", it3.hl.Adornee == t3)
+
+-- Highlight bị xoá / bị chuyển sang PlayerGui -> Tick phải tự kéo về vật
+it3.hl.Parent = OT._gui
+OT.Tick()
+t("Highlight bị chuyển sang PlayerGui -> Tick tự kéo về vật", OT.items[t3].hl.Parent == t3,
+    tostring(OT.items[t3].hl.Parent and OT.items[t3].hl.Parent.Name))
+it3.hl:Destroy()
+OT.Tick()
+t("Highlight bị xoá -> Tick tự tạo lại gắn vào vật",
+    OT.items[t3].hl ~= nil and OT.items[t3].hl.Parent == t3)
+
+-- bật 🔲 Hộp -> hộp cũng nằm trong Workspace
+OT.showBox = true
+OT.ApplyStyle()
+t("hộp bao quanh gắn vào part (trong Workspace)",
+    OT.items[t3].box ~= nil and OT.items[t3].box.Parent == t3
+    and OT.items[t3].box:IsDescendantOf(workspace) == true)
+OT.showBox = false
+OT.ApplyStyle()
+
+-- DÁN PATH vào ô tên vật vẫn tìm được
+OT.SetQuery("Workspace.Rừng Cây")
+local okPath = (function()
+    local t0 = os.clock()
+    while os.clock() - t0 < 1.5 do
+        __pump(1)
+        if #OT.pathKeys > 0 and OT._found >= 1 then return true end
+    end
+    return false
+end)()
+t("dán path 'Workspace.Rừng Cây' -> tìm được (không còn 0 vật)", okPath,
+    tostring(OT._found) .. " pathKeys=" .. tostring(#OT.pathKeys))
+local foundModel = false
+for inst in pairs(OT.items) do if inst == __TEST_TREE_MODEL then foundModel = true end end
+t("path trỏ đúng Model 'Rừng Cây'", foundModel)
+
+OT.SetQuery("game.Workspace.CÂY THÔNG")
+local okPath2 = (function()
+    local t0 = os.clock()
+    while os.clock() - t0 < 1.5 do
+        __pump(1)
+        if OT._found == 1 then return true end
+    end
+    return false
+end)()
+t("dán path 'game.Workspace.CÂY THÔNG' -> đúng 1 vật", okPath2, tostring(OT._found))
+t("path có tiền tố game. vẫn hiểu", #OT.pathKeys == 1 and OT.pathKeys[1] == "workspace.cay thong",
+    tostring(OT.pathKeys[1]))
+
+-- KHÔNG khớp -> phải báo rõ, không im lặng
+OT.SetQuery("vật-không-tồn-tại-xyz")
+local okZero = (function()
+    local t0 = os.clock()
+    while os.clock() - t0 < 1.5 do
+        __pump(1)
+        if OT._found == 0 and #OT.list == 0 then return true end
+    end
+    return false
+end)()
+t("tên không khớp -> 0 vật + có quét workspace", okZero and (OT._scanned or 0) > 0,
+    tostring(OT._scanned))
+t("Status nói rõ 'không thấy vật nào khớp' + số vật đã quét",
+    tostring(OT.Status()):find("không thấy vật nào khớp", 1, true) ~= nil
+    and tostring(OT.Status()):find("đã quét", 1, true) ~= nil, OT.Status())
+D.playerTab.Visible = true
+OT.RefreshList()
+local listOT2 = D.playerTab:FindFirstChild("HubObjTrack_Panel"):FindFirstChild("ObjTrackList")
+t("danh sách hiện dòng gợi ý OТEmpty thay vì trống trơn",
+    listOT2:FindFirstChild("OTEmpty") ~= nil)
+
+-- FOLDER: "Khu Cây" chứa "Gốc Cây" cũng định vị được, không bị trùng 2 lần
+OT.SetQuery("khu cây")
+local okFolder = (function()
+    local t0 = os.clock()
+    while os.clock() - t0 < 1.5 do
+        __pump(1)
+        if OT._found >= 1 then return true end
+    end
+    return false
+end)()
+local fl = OT.items[__TEST_TREE_FOLDER]
+t("định vị được cả Folder tên 'Khu Cây'", okFolder and fl ~= nil, tostring(OT._found))
+t("Folder -> Highlight trỏ vào part bên trong (Folder không render được)",
+    fl ~= nil and fl.hl.Adornee ~= nil and fl.hl.Adornee.Name == "Gốc Cây",
+    fl and tostring(fl.hl.Adornee.Name))
+-- đổi sang từ khoá "cây" để CẢ folder lẫn cây con đều khớp -> phải gộp lại 1
+OT.SetQuery("cây")
+local okFold2 = (function()
+    local t0 = os.clock()
+    while os.clock() - t0 < 1.5 do
+        __pump(1)
+        if OT.items[__TEST_TREE_FOLDER] ~= nil and (OT._skipped or 0) >= 1 then return true end
+    end
+    return false
+end)()
+local childPart = __TEST_TREE_FOLDER:FindFirstChild("Gốc Cây")
+t("cây con trong Folder không bị định vị trùng (Folder đã đại diện)",
+    okFold2 and OT.items[childPart] == nil, "gộp=" .. tostring(OT._skipped))
+
+-- nút 🚫 Bỏ qua người chơi
+local skipBtn = D.playerTab:FindFirstChild("HubObjTrack_Panel"):FindFirstChild("OTSkip")
+t("khung có nút 🚫 Bỏ qua người chơi", skipBtn ~= nil)
+OT.SetQuery("cây trên đầu")          -- chỉ có trong nhân vật mình -> đang bị bỏ qua
+local okSkip = (function()
+    local t0 = os.clock()
+    while os.clock() - t0 < 1.5 do
+        __pump(1)
+        if #OT.list == 0 then return true end
+    end
+    return false
+end)()
+t("đang bật bỏ qua người chơi -> không thấy cây trên nhân vật", okSkip, tostring(OT._found))
+skipBtn.Activated:Fire()
+t("bấm 🚫 -> TẮT bỏ qua, thấy cây trong nhân vật", OT.skipPlayers == false and OT._found >= 1,
+    tostring(OT._found))
+skipBtn.Activated:Fire()
+t("bấm lại -> BẬT bỏ qua như cũ", OT.skipPlayers == true)
+
+-- dọn
+OT.SetQuery("")
+__pump(3)
 OT.Clear()
 
 -- ---------- 14. KHÔNG MẤT TÍNH NĂNG: mọi thẻ 📚 Script Hub vẫn chạy ----------

@@ -89,6 +89,16 @@ for _, parent in ipairs({targetGui, playerGui, game:GetService("CoreGui")}) do
     end)
 end
 
+-- v5.1.1: Highlight/nhãn/hộp giờ gắn thẳng vào VẬT (trong Workspace) nên phải dọn trong workspace
+pcall(function()
+    for _, d in ipairs(workspace:GetDescendants()) do
+        local n = d.Name
+        if n == "BC_OT_HL" or n == "BC_OT_BB" or n == "BC_OT_BOX" then
+            pcall(function() d:Destroy() end)
+        end
+    end
+end)
+
 local function trackConn(conn)
     local t = _G.BananaCatHub_Connections
     if #t > 300 then
@@ -12677,7 +12687,9 @@ S.ObjTrack = {
     lastScan = 0,
     rescanEvery = 1.5,    -- giây: quét lại workspace
     labelEvery = 0.2,     -- giây: cập nhật khoảng cách + nhãn
+    pathKeys = {},        -- từ khoá dạng PATH dán vào (VD: workspace.rung cay.thancay)
     _gui = nil, _acc = 0, _scanAcc = 0, _bound = false,
+    _scanned = 0, _renderErr = false,
     _sel = nil, _selPart = nil,   -- vật đang xem thông tin (khung 🎯 giống phân tích toạ độ)
     _found = 0, _scanMs = 0, _capped = false, _err = nil, _rowSig = nil,
 }
@@ -12823,13 +12835,43 @@ function OT.Norm(s)
     return (s2:lower())
 end
 
+-- Gõ tên thường (cây) hoặc dán cả PATH (Workspace.Rừng Cây.ThanCay / game.Workspace.Cây) đều được.
 function OT.Split(q)
-    local out = {}
+    local out, paths = {}, {}
     for part in tostring(q or ""):gmatch("[^,;]+") do
         local k = (OT.Norm(part):gsub("^%s+", ""):gsub("%s+$", ""))
-        if #k > 0 then out[#out + 1] = k end
+        if #k > 0 then
+            local hasPath = k:find(".", 1, true) ~= nil or k:find("/", 1, true) ~= nil
+                        or k:find("\\", 1, true) ~= nil
+            if hasPath then
+                local full = k:gsub("[/\\]", ".")
+                if full:sub(1, 5) == "game." then full = full:sub(6) end   -- "game.Workspace.…" -> "workspace.…"
+                paths[#paths + 1] = full
+                local last = full:match("([^%.]+)$")
+                if last and #last > 0 then out[#out + 1] = last end
+            else
+                out[#out + 1] = k
+            end
+        end
     end
+    OT.pathKeys = paths
     return out
+end
+
+-- Khớp theo TÊN hoặc theo PATH đầy đủ của vật
+function OT.Hit(inst)
+    if inst == nil then return false end
+    local okN, nm = pcall(function() return inst.Name end)
+    if okN and type(nm) == "string" and OT.Matches(nm) then return true end
+    if #(OT.pathKeys or {}) > 0 then
+        local okP, path = pcall(function() return OT.Norm(OT.PathOf(inst)):gsub("%s+", "") end)
+        if okP and path then
+            for i = 1, #OT.pathKeys do
+                if path:find((OT.pathKeys[i]:gsub("%s+", "")), 1, true) then return true end
+            end
+        end
+    end
+    return false
 end
 
 function OT.Matches(name)
@@ -12850,7 +12892,8 @@ function OT.PartOf(inst, depth)
     if okA and isA then return inst end
     local okP, pp = pcall(function() return inst.PrimaryPart end)
     if okP and pp and pp.Parent then return pp end
-    local okW, found = pcall(function() return inst:FindFirstChildWhichIsA("BasePart") end)
+    local okW, found = pcall(function() return inst:FindFirstChildWhichIsA("BasePart", true) end)   -- true = tìm sâu (Model/Folder lồng nhau)
+    if not okW then okW, found = pcall(function() return inst:FindFirstChildWhichIsA("BasePart") end) end
     if okW and found and found.Parent then return found end
     local okC, kids = pcall(function() return inst:GetChildren() end)
     if okC and type(kids) == "table" then
@@ -12912,12 +12955,12 @@ end
 function OT._MakeBox(part, pal)
     local ok, box = pcall(function()
         -- BoxHandleAdornment là lớp tạo được bằng Instance.new; nếu executor chặn thì bỏ qua hộp.
-        return New("BoxHandleAdornment", {
-            Name = "OT_BOX", Adornee = part,
+        return New("BoxHandleAdornment", {   -- phải nằm trong Workspace mới hiện -> gắn vào part
+            Name = "BC_OT_BOX", Adornee = part,
             Size = part.Size + Vector3.new(0.4, 0.4, 0.4),
             Color3 = pal.fill, Transparency = 0.35,
             AlwaysOnTop = OT.thru, ZIndex = 3, Visible = OT.showBox,
-        }, OT.Gui())
+        }, part)
     end)
     if ok and box then return box end
     return nil
@@ -12930,27 +12973,73 @@ function OT.Make(inst, part)
     OT.Kill(inst)
     local g = OT.Gui()
     local pal = OT.Pal()
-    local hl = New("Highlight", {
-        Name = "OT_HL", Adornee = inst,
-        FillColor = pal.fill, FillTransparency = 0.7,   -- giống hệt Highlight của 🎯 Phân Tích Vật Thể
-        OutlineColor = pal.out, OutlineTransparency = 0,
-        DepthMode = OT.thru and Enum.HighlightDepthMode.AlwaysOnTop or Enum.HighlightDepthMode.Occluded,
-    }, g)
-    local bb = New("BillboardGui", {
-        Name = "OT_BB", Adornee = part,
-        Size = UDim2.new(0, 210, 0, OT.showXYZ and 46 or 30), StudsOffset = Vector3.new(0, 2.4, 0),
-        AlwaysOnTop = OT.thru, MaxDistance = 3000, ResetOnSpawn = false,
-    }, g)
-    local lbl = New("TextLabel", {
-        Size = UDim2.new(1, 0, 1, 0), BackgroundTransparency = 1,
-        Text = tostring(inst.Name), TextColor3 = pal.out,
-        Font = Enum.Font.GothamBold, TextSize = 11,
-        TextStrokeColor3 = Color3.fromRGB(0, 0, 0), TextStrokeTransparency = 0.35,
-        TextWrapped = true,
-    }, bb)
+
+    -- ⚠️ QUAN TRỌNG: Highlight phải nằm trong Workspace mới render. Gắn vào PlayerGui là
+    -- "nhập tên mà không thấy gì" — nên gắn thẳng vào vật (giống 🎯 Phân Tích Vật Thể).
+    -- Folder không phải BasePart/Model nên Adornee phải trỏ vào part bên trong mới hiện
+    local okAM, adornee = pcall(function()
+        return (inst:IsA("BasePart") or inst:IsA("Model")) and inst or part
+    end)
+    if not okAM or adornee == nil then adornee = part end
+    local hl = nil
+    local okH = pcall(function()
+        hl = New("Highlight", {
+            Name = "BC_OT_HL", Adornee = adornee,
+            FillColor = pal.fill, FillTransparency = 0.7,   -- giống hệt Highlight của 🎯 Phân Tích Vật Thể
+            OutlineColor = pal.out, OutlineTransparency = 0,
+            DepthMode = OT.thru and Enum.HighlightDepthMode.AlwaysOnTop or Enum.HighlightDepthMode.Occluded,
+        }, inst)
+    end)
+    if not okH then
+        hl = nil
+        pcall(function()   -- executor chặn gắn vào vật -> thử lại vào GUI (một số bản vẫn hiện)
+            hl = New("Highlight", {
+                Name = "BC_OT_HL", Adornee = adornee,
+                FillColor = pal.fill, FillTransparency = 0.7,
+                OutlineColor = pal.out, OutlineTransparency = 0,
+                DepthMode = OT.thru and Enum.HighlightDepthMode.AlwaysOnTop or Enum.HighlightDepthMode.Occluded,
+            }, g)
+        end)
+    end
+
+    -- Nhãn BillboardGui: gắn vào part (nằm trong Workspace) nên chắc chắn hiện + bám theo vật
+    local bb, lbl = nil, nil
+    pcall(function()
+        bb = New("BillboardGui", {
+            Name = "BC_OT_BB", Adornee = part,
+            Size = UDim2.new(0, 210, 0, OT.showXYZ and 46 or 30), StudsOffset = Vector3.new(0, 2.4, 0),
+            AlwaysOnTop = OT.thru, MaxDistance = 3000, ResetOnSpawn = false,
+        }, part)
+        lbl = New("TextLabel", {
+            Size = UDim2.new(1, 0, 1, 0), BackgroundTransparency = 1,
+            Text = tostring(inst.Name), TextColor3 = pal.out,
+            Font = Enum.Font.GothamBold, TextSize = 11,
+            TextStrokeColor3 = Color3.fromRGB(0, 0, 0), TextStrokeTransparency = 0.35,
+            TextWrapped = true,
+        }, bb)
+    end)
+    if bb == nil then
+        pcall(function()   -- dự phòng: nếu không gắn được vào part thì để trong GUI
+            bb = New("BillboardGui", {
+                Name = "BC_OT_BB", Adornee = part,
+                Size = UDim2.new(0, 210, 0, OT.showXYZ and 46 or 30), StudsOffset = Vector3.new(0, 2.4, 0),
+                AlwaysOnTop = OT.thru, MaxDistance = 3000, ResetOnSpawn = false,
+            }, g)
+            lbl = New("TextLabel", {
+                Size = UDim2.new(1, 0, 1, 0), BackgroundTransparency = 1,
+                Text = tostring(inst.Name), TextColor3 = pal.out,
+                Font = Enum.Font.GothamBold, TextSize = 11,
+                TextStrokeColor3 = Color3.fromRGB(0, 0, 0), TextStrokeTransparency = 0.35,
+                TextWrapped = true,
+            }, bb)
+        end)
+    end
+
     local box = nil
     if OT.showBox then box = OT._MakeBox(part, pal) end
-    OT.items[inst] = { hl = hl, bb = bb, lbl = lbl, box = box, part = part, dist = 0 }
+    OT.items[inst] = { hl = hl, bb = bb, lbl = lbl, box = box, part = part, dist = 0, adornee = adornee }
+    OT._renderErr = (hl == nil and bb == nil)
+    if OT._renderErr then OT._err = "executor chặn Highlight/BillboardGui — không vẽ được định vị" end
 end
 
 -- Cập nhật nhãn/khoảng cách + xoá vật đã biến mất. Highlight và nhãn gắn vào vật
@@ -12969,6 +13058,28 @@ function OT.Tick()
             d = (okD and d) or nil
             it.dist = d or 0
             local far = (OT.maxDist > 0 and d ~= nil and d > OT.maxDist)
+            -- giữ mọi thứ gắn đúng chỗ (Highlight trong PlayerGui là KHÔNG hiện)
+            local anchor = it.adornee or inst
+            if it.hl and it.hl.Parent ~= anchor then
+                local okRe = pcall(function() it.hl.Parent = anchor end)
+                if not okRe then
+                    pcall(function() it.hl:Destroy() end)
+                    it.hl = nil
+                end
+            end
+            if it.hl == nil then
+                pcall(function()
+                    it.hl = New("Highlight", {
+                        Name = "BC_OT_HL", Adornee = anchor,
+                        FillColor = pal.fill, FillTransparency = 0.7,
+                        OutlineColor = pal.out, OutlineTransparency = 0,
+                        DepthMode = OT.thru and Enum.HighlightDepthMode.AlwaysOnTop or Enum.HighlightDepthMode.Occluded,
+                    }, anchor)
+                end)
+            end
+            if it.hl then pcall(function() it.hl.Adornee = anchor end) end
+            if it.bb and it.bb.Parent ~= part then pcall(function() it.bb.Parent = part end) end
+            if it.box and it.box.Parent ~= part then pcall(function() it.box.Parent = part end) end
             if it.hl then
                 it.hl.Enabled = not far
                 it.hl.FillColor = pal.fill
@@ -13016,16 +13127,18 @@ function OT.Rescan(force)
     OT._err = nil
     local root = S.Move and S.Move.Root and S.Move.Root() or nil
     local myPos = root and root.Position or nil
-    local hits, skipped = {}, 0
+    local hits, skipped, scanned = {}, 0, 0
     local okAll = pcall(function()
         local desc = workspace:GetDescendants()
         for i = 1, #desc do
             local inst = desc[i]
             if inst ~= nil then
                 local nm = inst.Name
-                if type(nm) == "string" and OT.Matches(nm) and not OT.Skip(inst) then
+                scanned = scanned + 1
+                if type(nm) == "string" and OT.Hit(inst) and not OT.Skip(inst) then
                     local isPart = inst:IsA("BasePart")
-                    if isPart or inst:IsA("Model") then
+                    local isModel = inst:IsA("Model")
+                    if isPart or isModel or inst:IsA("Folder") then
                         -- chống trùng: part nằm trong 1 Model cũng khớp tên thì Model đã đại diện rồi
                         local covered = false
                         if isPart then
@@ -13033,8 +13146,8 @@ function OT.Rescan(force)
                             while anc and guard < 32 do
                                 guard = guard + 1
                                 if anc == workspace then break end
-                                local okM, isM = pcall(function() return anc:IsA("Model") end)
-                                if okM and isM and OT.Matches(anc.Name) then covered = true break end
+                                local okM, isM = pcall(function() return anc:IsA("Model") or anc:IsA("Folder") end)
+                                if okM and isM and OT.Hit(anc) then covered = true break end
                                 anc = anc.Parent
                             end
                         end
@@ -13079,6 +13192,7 @@ function OT.Rescan(force)
     end
     OT.list = list
     OT._found = #hits
+    OT._scanned = scanned      -- tổng số vật đã quét trong workspace
     OT._skipped = skipped      -- số part con bị gộp (Model cha đã được định vị)
     OT._capped = (#hits > #list)
     OT._scanMs = otRound((os.clock() - t0) * 1000)
@@ -13147,7 +13261,7 @@ function OT.SetQuery(q)
     OT.query = tostring(q or "")
     OT.keys = OT.Split(OT.query)
     S.Debounce("objtrack", 0.35, function()
-        if #OT.keys == 0 then
+        if #OT.keys == 0 and #(OT.pathKeys or {}) == 0 then
             if OT.on then OT.Set(false) end
             OT.Clear()
             if OT.RefreshList then pcall(OT.RefreshList) end
@@ -13155,7 +13269,15 @@ function OT.SetQuery(q)
         end
         OT.on = true
         OT.Bind()
-        OT.Rescan(true)
+        local n = OT.Rescan(true)
+        if n == 0 then
+            pcall(function()
+                if D.Say then
+                    D.Say("⚠️ không thấy vật nào khớp \"" .. tostring(OT.query) .. "\" — thử tên ngắn hơn (VD: cây)", C.RED)
+                end
+            end)
+        end
+        if OT.RefreshList then pcall(OT.RefreshList) end
     end)
     return OT.keys
 end
@@ -13211,9 +13333,14 @@ function OT.Nearest()
 end
 
 function OT.Status()
-    if #OT.keys == 0 then return "🌳 Định vị vật: chưa nhập tên" end
+    if #OT.keys == 0 and #(OT.pathKeys or {}) == 0 then return "🌳 Định vị vật: chưa nhập tên" end
     local n = 0
     for _ in pairs(OT.items) do n = n + 1 end
+    if n == 0 and (OT._found or 0) == 0 then
+        return "⚠️ không thấy vật nào khớp \"" .. tostring(OT.query)
+            .. "\" (đã quét " .. tostring(OT._scanned or 0)
+            .. " vật) — thử tên ngắn hơn (VD: cây) hoặc dán đúng path"
+    end
     local t = "🌳 " .. table.concat(OT.keys, " + ")
     t = t .. " · theo " .. n .. "/" .. (OT._found or 0) .. " vật"
     if (OT._skipped or 0) > 0 then t = t .. " (gộp " .. OT._skipped .. " part con)" end
@@ -13323,6 +13450,7 @@ do
         TextXAlignment = Enum.TextXAlignment.Left, ZIndex = 7,
     }, P)
     local xyzBtn = otAct("🧭 Nhãn toạ độ: BẬT", 8, 146, 168, C.GREEN)
+    local skipBtn = otAct("🚫 Bỏ qua người chơi: BẬT", 180, 146, 190, C.GREEN)
     local list = New("ScrollingFrame", {
         Name = "ObjTrackList", Size = UDim2.new(1, -16, 0, 84), Position = UDim2.new(0, 8, 0, 172),
         BackgroundTransparency = 1, BorderSizePixel = 0, ScrollBarThickness = 4,
@@ -13407,7 +13535,7 @@ do
     -- đặt tên control để dễ soi lỗi / kiểm thử tự động
     queryIn.Name, toggleBtn.Name, rescanBtn.Name = "OTQuery", "OTToggle", "OTRescan"
     statusLbl.Name, clearBtn.Name = "OTStatus", "OTClear"
-    xyzBtn.Name = "OTXyz"
+    xyzBtn.Name, skipBtn.Name = "OTXyz", "OTSkip"
 
     local function paint()
         toggleBtn.Text = OT.on and "🌳 Định vị: BẬT" or "🌳 Định vị: TẮT"
@@ -13426,6 +13554,9 @@ do
         xyzBtn.Text = OT.showXYZ and "🧭 Nhãn toạ độ: BẬT" or "🧭 Nhãn toạ độ: TẮT"
         xyzBtn.BackgroundColor3 = OT.showXYZ and C.GREEN or C.SURFACE3
         xyzBtn.TextColor3 = D.BestText(xyzBtn.BackgroundColor3)
+        skipBtn.Text = OT.skipPlayers and "🚫 Bỏ qua người chơi: BẬT" or "🚫 Bỏ qua người chơi: TẮT"
+        skipBtn.BackgroundColor3 = OT.skipPlayers and C.GREEN or C.SURFACE3
+        skipBtn.TextColor3 = D.BestText(skipBtn.BackgroundColor3)
         local flying = (S.Move and S.Move._objFlyActive == true)
         flyStop.BackgroundColor3 = flying and C.RED or C.SURFACE3
         flyStop.TextColor3 = D.BestText(flyStop.BackgroundColor3)
@@ -13443,10 +13574,24 @@ do
             sigParts[i] = tostring(h.inst.Name) .. "|" .. tostring(h.inst)
         end
         local sig = table.concat(sigParts, "#")
+        if #OT.list == 0 then sig = "EMPTY:" .. tostring(OT.query) .. ":" .. tostring(OT._scanned or 0) end
         if sig ~= OT._rowSig then
             OT._rowSig = sig
             for _, child in ipairs(list:GetChildren()) do
                 if not child:IsA("UIListLayout") then pcall(function() child:Destroy() end) end
+            end
+            if #OT.list == 0 then
+                -- nói rõ vì sao trống, thay vì để người dùng tưởng tính năng hỏng
+                New("TextLabel", {
+                    Name = "OTEmpty",
+                    Size = UDim2.new(1, 0, 0, 60), LayoutOrder = 1,
+                    Text = "⚠️ Không có vật nào khớp \"" .. tostring(OT.query) .. "\"\n"
+                        .. "Đã quét " .. tostring(OT._scanned or 0) .. " vật trong Workspace.\n"
+                        .. "Thử tên ngắn hơn (VD: cây) hoặc dán đúng Path (VD: Workspace.Rừng Cây).",
+                    TextWrapped = true, BackgroundColor3 = C.SURFACE2, BackgroundTransparency = 0.15,
+                    TextColor3 = C.RED, Font = Enum.Font.GothamMedium, TextSize = 9,
+                    BorderSizePixel = 0, ZIndex = 8, TextXAlignment = Enum.TextXAlignment.Left,
+                }, list)
             end
             for i = 1, shown do
                 local h = OT.list[i]
@@ -13641,6 +13786,13 @@ do
         speedIn.Text = tostring(S.Move.objectFlySpeed or 60)
     end)
 
+    skipBtn.Activated:Connect(function()
+        ReleaseHubFocus()
+        OT.skipPlayers = not OT.skipPlayers
+        if OT.on then pcall(OT.Rescan, true) end
+        D.Say(OT.skipPlayers and "🚫 bỏ qua nhân vật người chơi: BẬT" or "🚫 bỏ qua nhân vật người chơi: TẮT", C.YELLOW)
+        pcall(S.ObjTrack.RefreshList)
+    end)
     xyzBtn.Activated:Connect(function()
         ReleaseHubFocus()
         OT.showXYZ = not OT.showXYZ
