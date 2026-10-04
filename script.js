@@ -2083,10 +2083,9 @@ posY = posY + 30
 S.AnaUi.skipGuiBtn = Button(supportTab, "🛡 Phân tích xuyên HUD game: BẬT", 8, posY, 300, 24, C.GREEN)
 S.AnaUi.scanFbBtn  = Button(supportTab, "🧭 Quét dự phòng: BẬT", 314, posY, 162, 24, C.GREEN)
 posY = posY + 28
-S.AnaUi.centerAimBtn = Button(supportTab, "🔴 Ngắm tâm đỏ: TẮT · bật chấm + nút phân tích", 8, posY, 468, 24, C.GRAY)
-posY = posY + 28
+S.AnaUi.centerAimBtn = Button(supportTab, "🔴 Ngắm tâm: TẮT", 8, posY, 232, 24, C.GRAY)
 S.AnaUi.aimButtonMoveEnabled = false
-S.AnaUi.aimMoveBtn = Button(supportTab, "🔒 Nút 🔎: KHÓA VỊ TRÍ", 8, posY, 468, 24, C.GRAY)
+S.AnaUi.aimMoveBtn = Button(supportTab, "🔒 Kéo nút: TẮT", 246, posY, 230, 24, C.GRAY)
 posY = posY + 28
 S.AnaUi.aimMoveBtn.Activated:Connect(function()
     local moveEnabled = not (S.AnaUi.aimButtonMoveEnabled == true)
@@ -2097,7 +2096,7 @@ S.AnaUi.aimMoveBtn.Activated:Connect(function()
         S.AnaUi.aimButtonDragMoved = false
         S.AnaUi.aimButtonSuppressUntil = 0
     end
-    S.AnaUi.aimMoveBtn.Text = moveEnabled and "🔓 Nút 🔎: CHO PHÉP DI CHUYỂN" or "🔒 Nút 🔎: KHÓA VỊ TRÍ"
+    S.AnaUi.aimMoveBtn.Text = moveEnabled and "🔓 Kéo nút: BẬT" or "🔒 Kéo nút: TẮT"
     D.SetBg(S.AnaUi.aimMoveBtn, moveEnabled and C.ORANGE or C.GRAY)
     S.AnaSay(moveEnabled and "🔓 Đã mở khóa: kéo nút 🔎 để đổi vị trí" or "🔒 Đã khóa vị trí nút 🔎")
 end)
@@ -2105,8 +2104,8 @@ S.AnaUi.whyLbl = Label(supportTab, "🔎 Lý do: — (bật 🎯 Phân Tích V�
 S.AnaUi.whyLbl.TextSize = 9
 posY = posY + 16
 
-Label(supportTab, "💡 Mở khóa vị trí trong menu, đóng menu rồi kéo nút 🔎 đến chỗ muốn.", posY)
-Label(supportTab, "    Khóa lại để cố định; ngắm vật vào chấm đỏ và nhấn 🔎 để phân tích.", posY+14)
+Label(supportTab, "💡 Bật “Kéo nút” cạnh Ngắm tâm, đóng menu rồi kéo nút 🔎 đến chỗ muốn.", posY)
+Label(supportTab, "    Tắt “Kéo nút” để khóa; chạm 🔎 để phân tích vật đang ở tâm.", posY+14)
 Label(supportTab, "    Nút HUD/menu của game vẫn theo tùy chọn phân tích xuyên HUD ở trên.", posY+28)
 posY = posY + 44
 
@@ -3079,7 +3078,7 @@ function S.AnaAimSet(on)
     local active = (S.AnaUi.centerAimOn == true)
     local btn = S.AnaUi.centerAimBtn
     if btn and btn.Parent then
-        btn.Text = active and "🔴 Ngắm tâm đỏ: BẬT · nhấn nút 🔎 để phân tích" or "🔴 Ngắm tâm đỏ: TẮT · bật chấm + nút phân tích"
+        btn.Text = active and "🔴 Ngắm tâm: BẬT" or "🔴 Ngắm tâm: TẮT"
         D.SetBg(btn, active and C.RED or C.GRAY)
     end
     if active then
