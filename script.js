@@ -7494,6 +7494,15 @@ function OT.MatchesNorm(n) if n == "" or #OT.keys == 0 then return false end
         if n:find(keys[i], 1, true) then return true end end
     return false end
 
+-- Gộp part vào Model cha nếu mọi từ khóa khớp part cũng khớp Model;
+-- một từ khóa riêng của part vẫn được giữ làm kết quả độc lập.
+function OT.SharedNameMatch(a, b) local na, nb = OT.NormCached(a), OT.NormCached(b)
+    local shared = false for i = 1, #OT.keys do local key = OT.keys[i]
+        local inPart, inModel = na:find(key, 1, true) ~= nil, nb:find(key, 1, true) ~= nil
+        if inPart and not inModel then return false end
+        if inPart and inModel then shared = true end
+    end return shared end
+
 -- Dán PATH thì đi thẳng theo từng đoạn tên (không phải quét cả workspace để dò path nữa)
 function OT.ResolvePath(key) local segs = {}
     for s in tostring(key or ""):gmatch("[^%.]+") do s = s:gsub("^%s+", ""):gsub("%s+$", "")
@@ -7759,12 +7768,13 @@ function OT.ScanBegin() OT.RefreshPaths()
 end
 
 -- Phân loại 1 vật khớp: BasePart -> chính nó; Model/Folder -> part đại diện.
--- Part nằm trong Model/Folder cũng khớp tên thì bỏ qua (cấp trên đã đại diện) — chống trùng.
+-- Part cùng khớp một từ khóa với Model cha thì gộp lại để tránh định vị trùng.
 function OT.ScanHit(inst) local okP, posOrBool = pcall(function() return inst:IsA("BasePart") end)
     if okP and posOrBool then local anc, guard, covered = inst.Parent, 0, false
         while anc and guard < 32 do guard = guard + 1
-            if anc == workspace then break end if OT.Candidate(anc) then
-                local okM, isM = pcall(function() return anc:IsA("Model") or anc:IsA("Folder") end) if okM and isM then covered = true break end end
+            if anc == workspace then break end
+            local okM, isM = pcall(function() return anc:IsA("Model") end)
+            if okM and isM and OT.Candidate(anc) and OT.SharedNameMatch(inst, anc) then covered = true break end
             anc = anc.Parent end
         if covered then OT._skipped = OT._skipped + 1
             return end
