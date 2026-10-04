@@ -5380,25 +5380,22 @@ end)
 function S.Rebuild() pcall(function() if S.RebuildHubList then S.RebuildHubList() end end)
 end
 
--- ---------- v5.4: CPU + GIẢM LAG CẦU CÓ THỂ ĐIỀU CHỈNH ----------
+-- ---------- v5.4: CPU + GIẢM TẦM NHÌN CÓ THỂ ĐIỀU CHỈNH ----------
 do
     local STUDS_PER_METER = 1 / 0.28 -- quy đổi xấp xỉ theo kích thước chuẩn Roblox
     local modeList = {
         {id = "cpu", title = "🧠 CPU"},
-        {id = "range", title = "🌐 Giảm lag cầu"},
+        {id = "range", title = "🌫 Giảm tầm nhìn"},
     }
     local Perf = {
         Modes = {cpu = false, range = false},
         ViewDistanceMeters = 30,
         Saved = setmetatable({}, {__mode = "k"}),
         ScanToken = 0,
-        RangeToken = 0,
         Worker = nil,
-        RangeWatcher = nil,
-        RangeSphere = nil,
-        RangeAdornee = nil,
         Buttons = {},
         Status = nil,
+        RangeAtmosphere = nil,
     }
     S.Perf = Perf
     _G.BananaCatHub_Perf = Perf
@@ -5407,52 +5404,31 @@ do
         return Perf.ViewDistanceMeters * STUDS_PER_METER
     end
 
-    function Perf.GetRangeSphereColor()
-        local dark = false
-        pcall(function()
-            local lighting = game:GetService("Lighting")
-            local ambient, outdoor = lighting.Ambient, lighting.OutdoorAmbient
-            local ambientLevel = (ambient.R + ambient.G + ambient.B + outdoor.R + outdoor.G + outdoor.B) / 6
-            dark = lighting.ClockTime >= 19 or lighting.ClockTime <= 6
-                or lighting.Brightness * ambientLevel < 0.35
-        end)
-        return dark and Color3.fromRGB(80, 80, 92) or Color3.new(1, 1, 1)
-    end
-
-    function Perf.ClearRangeSphere()
-        local sphere = Perf.RangeSphere
-        Perf.RangeSphere, Perf.RangeAdornee = nil, nil
-        if sphere then pcall(function() sphere:Destroy() end) end
-    end
-
-    function Perf.SyncRangeSphere()
-        if not Perf.Modes.range then Perf.ClearRangeSphere(); return end
-        local character = player.Character
-        local root = character and character:FindFirstChild("HumanoidRootPart")
-        if not root then Perf.ClearRangeSphere(); return end
-        if Perf.RangeSphere and (not Perf.RangeSphere.Parent or Perf.RangeAdornee ~= root) then
-            Perf.ClearRangeSphere()
+    function Perf.SyncRangeFog()
+        local lighting = game:GetService("Lighting")
+        local atmosphere = lighting:FindFirstChildOfClass("Atmosphere")
+        if Perf.RangeAtmosphere and Perf.RangeAtmosphere ~= atmosphere then
+            Perf.RestoreProperty(Perf.RangeAtmosphere, "Density")
+            Perf.RangeAtmosphere = nil
         end
-        local sphereColor = Perf.GetRangeSphereColor()
-        if not Perf.RangeSphere then
-            local sphere = Instance.new("SphereHandleAdornment")
-            sphere.Name = "BananaCatHubRangeSphere"
-            sphere.Adornee = root
-            sphere.CFrame = CFrame.new()
-            sphere.Radius = Perf.GetViewDistanceStuds()
-            sphere.Color3 = sphereColor
-            sphere.Transparency = 0
-            sphere.AlwaysOnTop = false
-            sphere.Visible = true
-            sphere.ZIndex = 4
-            sphere.Parent = root
-            Perf.RangeSphere, Perf.RangeAdornee = sphere, root
-        else
-            pcall(function()
-                Perf.RangeSphere.Radius = Perf.GetViewDistanceStuds()
-                Perf.RangeSphere.Color3 = sphereColor
-            end)
+
+        local fogStart, fogEnd = nil, nil
+        if Perf.Modes.range and atmosphere then
+            -- Atmosphere uses density instead of legacy FogStart/FogEnd; add more haze without removing it.
+            local saved = Perf.Saved[atmosphere]
+            local originalDensity = saved and saved.Density or atmosphere.Density
+            local densityIncrease = math.clamp(40 / Perf.GetViewDistanceStuds(), 0.01, 0.7)
+            Perf.RangeAtmosphere = atmosphere
+            Perf.Write(atmosphere, "Density", math.clamp(originalDensity + densityIncrease, 0, 1))
+        elseif Perf.Modes.range then
+            fogEnd = Perf.GetViewDistanceStuds()
+            fogStart = fogEnd * 0.75
+        elseif Perf.RangeAtmosphere then
+            Perf.RestoreProperty(Perf.RangeAtmosphere, "Density")
+            Perf.RangeAtmosphere = nil
         end
+        Perf.Write(lighting, "FogStart", fogStart)
+        Perf.Write(lighting, "FogEnd", fogEnd)
     end
 
     function Perf.HasActive()
@@ -5544,7 +5520,9 @@ do
     function Perf.UpdateGlobals()
         local shadows = nil
         if Perf.Modes.cpu then shadows = false end
-        Perf.Write(game:GetService("Lighting"), "GlobalShadows", shadows)
+        local lighting = game:GetService("Lighting")
+        Perf.Write(lighting, "GlobalShadows", shadows)
+        Perf.SyncRangeFog()
 
         local terrain = workspace.Terrain
         local terrainDecoration, waveSize, waveSpeed = nil, nil, nil
@@ -5576,11 +5554,13 @@ do
             Perf.Worker = task.spawn(function()
                 Perf.UpdateGlobals()
                 Perf.RestoreAll(240, token)
+                if token ~= Perf.ScanToken then return end
+                Perf.UpdateGlobals()
                 if token == Perf.ScanToken then
                     Perf.Worker = nil
                     if Perf.Status and Perf.Status.Parent then
                         Perf.Status.Text = Perf.Modes.range
-                            and "✅ Cầu đang bật; vật thể không bị ẩn hay xóa."
+                            and "✅ Giảm tầm nhìn đang bật; cảnh xa mờ đi, không xóa vật thể."
                             or "✅ Đã khôi phục hình ảnh gốc."
                     end
                 end
@@ -5629,34 +5609,24 @@ do
         return true
     end
 
-    function Perf.SyncRangeWatcher()
-        Perf.RangeToken += 1
-        local token = Perf.RangeToken
-        Perf.RangeWatcher = nil
-        if not Perf.Modes.range then return end
-        Perf.RangeWatcher = task.spawn(function()
-            while token == Perf.RangeToken and Perf.Modes.range do
-                task.wait(0.3)
-                if token ~= Perf.RangeToken or not Perf.Modes.range then break end
-                Perf.SyncRangeSphere() -- cầu theo nhân vật, đổi màu theo ánh sáng
-            end
-            if token == Perf.RangeToken then Perf.RangeWatcher = nil end
-        end)
-    end
-
     function Perf.Toggle(id)
         if Perf.Modes[id] == nil then return end
         Perf.Modes[id] = not Perf.Modes[id]
-        Perf.SyncRangeWatcher()
-        Perf.SyncRangeSphere()
-        if id == "cpu" then Perf.QueueScan() end
+        if id == "cpu" then Perf.QueueScan() else
+            Perf.UpdateGlobals()
+            if Perf.Status and Perf.Status.Parent then
+                Perf.Status.Text = Perf.Modes.range
+                    and ("🌫 Tầm nhìn đã giảm còn " .. tostring(Perf.ViewDistanceMeters) .. " m.")
+                    or "↩ Đã khôi phục tầm nhìn gốc."
+            end
+        end
         Perf.SyncPanel()
         local note
         if id == "cpu" then
             note = "🧠 CPU: giảm tải hiệu ứng và quét theo lô."
         else
-            note = "🌐 Cầu đặc · bán kính " .. tostring(Perf.ViewDistanceMeters) .. " m (~"
-                .. tostring(math.floor(Perf.GetViewDistanceStuds() + 0.5)) .. " studs; không sửa/xóa vật thể, màu theo sáng/tối."
+            note = "🌫 Tầm nhìn tối đa " .. tostring(Perf.ViewDistanceMeters) .. " m (~"
+                .. tostring(math.floor(Perf.GetViewDistanceStuds() + 0.5)) .. " studs); cảnh xa mờ dần, không xóa vật thể."
         end
         D.Say((Perf.Modes[id] and "✅ " or "↩ ") .. note, C.YELLOW)
     end
@@ -5664,27 +5634,25 @@ do
     function Perf.ApplyViewDistance(text)
         local value = tonumber(text)
         if not value or value ~= value or value == math.huge or value == -math.huge then
-            if Perf.Status and Perf.Status.Parent then Perf.Status.Text = "⚠️ Nhập bán kính từ 5 đến 1000 mét." end
+            if Perf.Status and Perf.Status.Parent then Perf.Status.Text = "⚠️ Nhập tầm nhìn từ 5 đến 1000 mét." end
             return
         end
         Perf.ViewDistanceMeters = math.clamp(math.floor(value + 0.5), 5, 1000)
         if Perf.DistanceBox and Perf.DistanceBox.Parent then
             Perf.DistanceBox.Text = tostring(Perf.ViewDistanceMeters)
         end
-        if Perf.Modes.range then
-            Perf.SyncRangeSphere()
-        elseif Perf.Status and Perf.Status.Parent then
+        if Perf.Modes.range then Perf.SyncRangeFog() end
+        if Perf.Status and Perf.Status.Parent then
             Perf.Status.Text = string.format(
-                "🌐 Đã đặt bán kính %dm (~%d studs). Bật Giảm lag cầu để áp dụng.",
-                Perf.ViewDistanceMeters, math.floor(Perf.GetViewDistanceStuds() + 0.5)
+                "🌫 Đã đặt %dm (~%d studs); %s.",
+                Perf.ViewDistanceMeters, math.floor(Perf.GetViewDistanceStuds() + 0.5),
+                Perf.Modes.range and "đã áp dụng" or "bật Giảm tầm nhìn để áp dụng"
             )
         end
     end
 
     function Perf.Reset()
         for id in pairs(Perf.Modes) do Perf.Modes[id] = false end
-        Perf.SyncRangeWatcher()
-        Perf.SyncRangeSphere()
         Perf.QueueScan()
         Perf.SyncPanel()
     end
@@ -5692,10 +5660,7 @@ do
     function Perf.Stop()
         for id in pairs(Perf.Modes) do Perf.Modes[id] = false end
         Perf.ScanToken += 1
-        Perf.RangeToken += 1
         if Perf.Worker then pcall(task.cancel, Perf.Worker); Perf.Worker = nil end
-        if Perf.RangeWatcher then pcall(task.cancel, Perf.RangeWatcher); Perf.RangeWatcher = nil end
-        Perf.ClearRangeSphere()
         Perf.RestoreAll()
     end
 
@@ -5707,7 +5672,7 @@ do
     D.Shade(panel, Color3.fromRGB(255,255,255), Color3.fromRGB(188,192,205), 90)
     New("TextLabel", {
         Size = UDim2.new(1, -174, 0, 16), Position = UDim2.new(0, 8, 0, 4),
-        Text = "⚡ CPU · CẦU ĐẶC", BackgroundTransparency = 1, TextColor3 = C.ACCENT,
+        Text = "⚡ CPU · TẦM NHÌN", BackgroundTransparency = 1, TextColor3 = C.ACCENT,
         Font = Enum.Font.GothamBold, TextSize = 9, TextXAlignment = Enum.TextXAlignment.Left, ZIndex = 7,
     }, panel)
     Perf.FpsLabel = New("TextLabel", {
@@ -5738,7 +5703,7 @@ do
     Corner(resetButton, UDim.new(0, 5)); D.Tactile(resetButton, 0.08)
     New("TextLabel", {
         Size = UDim2.new(1, -16, 0, 18), Position = UDim2.new(0, 8, 0, 20),
-        Text = "Cầu đặc theo tâm nhân vật; không va chạm, không ẩn/xóa vật thể. Màu theo ánh sáng.",
+        Text = "Sương mù làm mờ cảnh xa; vật thể vẫn còn nguyên, không bị xóa.",
         BackgroundTransparency = 1, TextColor3 = C.MUTED, Font = Enum.Font.GothamMedium,
         TextSize = 8, TextWrapped = true, TextXAlignment = Enum.TextXAlignment.Left, ZIndex = 7,
     }, panel)
@@ -5759,7 +5724,7 @@ do
 
     New("TextLabel", {
         Size = UDim2.new(0, 96, 0, 20), Position = UDim2.new(0, 8, 0, 72),
-        Text = "Bán kính (m)", BackgroundTransparency = 1, TextColor3 = C.MUTED,
+        Text = "Tầm nhìn (m)", BackgroundTransparency = 1, TextColor3 = C.MUTED,
         Font = Enum.Font.GothamMedium, TextSize = 8, TextXAlignment = Enum.TextXAlignment.Left, ZIndex = 7,
     }, panel)
     Perf.DistanceBox = New("TextBox", {
@@ -5782,7 +5747,7 @@ do
     }, panel)
     Perf.Status = New("TextLabel", {
         Name = "HubPerfStatus", Size = UDim2.new(1, -16, 0, 34), Position = UDim2.new(0, 8, 0, 112),
-        Text = "Đặt bán kính, bật Giảm lag cầu để tạo cầu đặc; vật thể không bị ẩn hoặc xóa.",
+        Text = "Đặt tầm nhìn (ví dụ 30 m), bật Giảm tầm nhìn; CPU có thể bật riêng.",
         BackgroundTransparency = 1, TextColor3 = C.MUTED, Font = Enum.Font.GothamMedium,
         TextSize = 8, TextWrapped = true, TextXAlignment = Enum.TextXAlignment.Left, TextYAlignment = Enum.TextYAlignment.Top, ZIndex = 7,
     }, panel)
@@ -5790,7 +5755,7 @@ do
     resetButton.Activated:Connect(function()
         ReleaseHubFocus()
         Perf.Reset()
-        D.Say("↩ Đang khôi phục CPU; cầu đã tắt, không sửa/xóa vật thể.", C.YELLOW)
+        D.Say("↩ Đang khôi phục CPU và tầm nhìn gốc.", C.YELLOW)
     end)
     applyRangeButton.Activated:Connect(function()
         ReleaseHubFocus()
@@ -5803,11 +5768,15 @@ do
     local function watchRoot(root)
         if not root then return end
         trackConn(root.DescendantAdded:Connect(function(instance)
+            if instance:IsA("Atmosphere") and Perf.Modes.range then task.defer(Perf.SyncRangeFog) end
             if not Perf.Modes.cpu then return end
             task.defer(function()
                 if not Perf.Modes.cpu then return end
                 pcall(Perf.ApplyInstance, instance)
             end)
+        end))
+        trackConn(root.DescendantRemoving:Connect(function(instance)
+            if instance == Perf.RangeAtmosphere and Perf.Modes.range then task.defer(Perf.SyncRangeFog) end
         end))
     end
     watchRoot(workspace)
@@ -5815,12 +5784,6 @@ do
     trackConn(player.CharacterAdded:Connect(function(character)
         task.defer(function()
             for _, instance in ipairs(character:GetDescendants()) do Perf.RestoreInstance(instance) end
-            if Perf.Modes.range then
-                character:WaitForChild("HumanoidRootPart", 5)
-                if player.Character == character and Perf.Modes.range then
-                    Perf.SyncRangeSphere()
-                end
-            end
         end)
     end))
     Perf.SyncPanel()
