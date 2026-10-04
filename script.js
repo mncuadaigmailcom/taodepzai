@@ -5731,10 +5731,30 @@ do
     Corner(panel, UDim.new(0, 10)); Stroke(panel, C.HAIRLINE, 1)
     D.Shade(panel, Color3.fromRGB(255,255,255), Color3.fromRGB(188,192,205), 90)
     New("TextLabel", {
-        Size = UDim2.new(1, -92, 0, 16), Position = UDim2.new(0, 8, 0, 4),
+        Size = UDim2.new(1, -174, 0, 16), Position = UDim2.new(0, 8, 0, 4),
         Text = "⚡ GIẢM LAG — 6 chế độ", BackgroundTransparency = 1, TextColor3 = C.ACCENT,
-        Font = Enum.Font.GothamBold, TextSize = 10, TextXAlignment = Enum.TextXAlignment.Left, ZIndex = 7,
+        Font = Enum.Font.GothamBold, TextSize = 9, TextXAlignment = Enum.TextXAlignment.Left, ZIndex = 7,
     }, panel)
+    Perf.FpsLabel = New("TextLabel", {
+        Name = "HubPerfFPS", Size = UDim2.new(0, 60, 0, 18), Position = UDim2.new(1, -152, 0, 3),
+        Text = "FPS: --", BackgroundTransparency = 1, TextColor3 = C.MUTED,
+        Font = Enum.Font.GothamBold, TextSize = 8, TextXAlignment = Enum.TextXAlignment.Center,
+        TextYAlignment = Enum.TextYAlignment.Center, ZIndex = 7,
+    }, panel)
+    local fpsFrames, fpsElapsed = 0, 0
+    trackConn(RunService.RenderStepped:Connect(function(dt)
+        local delta = tonumber(dt) or 0
+        if delta <= 0 then return end
+        fpsFrames += 1
+        fpsElapsed += delta
+        if fpsElapsed < 0.5 then return end
+        local fps = math.floor(fpsFrames / fpsElapsed + 0.5)
+        fpsFrames, fpsElapsed = 0, 0
+        if not Perf.FpsLabel or not Perf.FpsLabel.Parent then return end
+        local shown = math.clamp(fps, 0, 999)
+        Perf.FpsLabel.Text = "FPS: " .. tostring(shown)
+        Perf.FpsLabel.TextColor3 = (shown >= 50 and C.GREEN) or (shown >= 30 and C.YELLOW) or C.RED
+    end))
     local resetButton = New("TextButton", {
         Name = "HubPerfReset", Size = UDim2.new(0, 74, 0, 18), Position = UDim2.new(1, -82, 0, 3),
         Text = "↩ Hoàn tác", BackgroundColor3 = C.RED, TextColor3 = C.WHITE, Font = Enum.Font.GothamBold,

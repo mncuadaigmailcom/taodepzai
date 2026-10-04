@@ -45,3 +45,11 @@ test('chế độ CPU áp dụng theo lô và không tạo vòng lặp tải CPU
     assert.match(panel, /WaterWaveSize/);
     assert.match(panel, /WaterWaveSpeed/);
 });
+
+test('hiển thị FPS trong panel và cập nhật theo khung hình định kỳ', () => {
+    assert.match(panel, /Name = "HubPerfFPS"/);
+    assert.match(panel, /trackConn\(RunService\.RenderStepped:Connect/);
+    assert.match(panel, /if fpsElapsed < 0\.5 then return end/);
+    assert.match(panel, /local fps = math\.floor\(fpsFrames \/ fpsElapsed \+ 0\.5\)/);
+    assert.match(panel, /Perf\.FpsLabel\.Text = "FPS: " \.\. tostring\(shown\)/);
+});
