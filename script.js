@@ -5517,13 +5517,14 @@ do
         local desired = {}
 
         if instance:IsA("BasePart") then
-            if modes.ultra or distant then desired.LocalTransparencyModifier = 1 end
+            if modes.ultra then desired.LocalTransparencyModifier = 1 end
             if simplify then
                 desired.Material = Enum.Material.Plastic
                 desired.Reflectance = 0
                 desired.CastShadow = false
                 if instance:IsA("MeshPart") then
                     desired.RenderFidelity = Enum.RenderFidelity.Performance
+                    if distant then desired.TextureID = "" end
                 end
             end
         end
@@ -5532,6 +5533,17 @@ do
         local removeColorFilters = modes.gray and instance:IsA("PostEffect")
         if (reduceEffects or distant or removeColorFilters) and Perf.IsVisualEffect(instance) then
             desired.Enabled = false
+        end
+        if distant then
+            if instance:IsA("Decal") then desired.Transparency = 1 end
+            if instance:IsA("SpecialMesh") then desired.TextureId = "" end
+            if instance:IsA("SurfaceAppearance") then
+                desired.ColorMap, desired.MetalnessMap = "", ""
+                desired.NormalMap, desired.RoughnessMap = "", ""
+            end
+            if instance:IsA("BillboardGui") or instance:IsA("SurfaceGui") or instance:IsA("Highlight") then
+                desired.Enabled = false
+            end
         end
         if modes.ultra then
             if instance:IsA("Decal") then desired.Transparency = 1 end
@@ -5677,7 +5689,7 @@ do
             quick = "⚡ Nhanh: giảm bóng và tắt hiệu ứng nặng.",
             normal = "🎮 Bình thường: vật liệu nhẹ hơn, tắt bóng và hiệu ứng.",
             gray = "🩶 Mạnh xám: đổi màu vật thể; chỉnh mức xám từ 0 đến 255.",
-            far = "🌫 Vật ở xa: ẩn hình ảnh từ ngưỡng đã chọn; tới gần sẽ tự hiện lại.",
+            far = "🌫 Vật ở xa: giảm chi tiết; vật thể vẫn hiện, tới gần sẽ tự khôi phục.",
             cpu = "🧠 CPU: giảm hiệu ứng nước/địa hình, quét theo lô; không cố tình tải CPU thêm.",
             ultra = "🚫 Cực mạnh: ẩn hình ảnh vật thể cục bộ; va chạm và di chuyển vẫn giữ nguyên.",
         }
@@ -5803,7 +5815,7 @@ do
 
     New("TextLabel", {
         Size = UDim2.new(0, 128, 0, 20), Position = UDim2.new(0, 8, 0, 120),
-        Text = "Ẩn vật xa hơn (stud)", BackgroundTransparency = 1, TextColor3 = C.MUTED,
+        Text = "Giảm chi tiết xa (stud)", BackgroundTransparency = 1, TextColor3 = C.MUTED,
         Font = Enum.Font.GothamMedium, TextSize = 8, TextXAlignment = Enum.TextXAlignment.Left, ZIndex = 7,
     }, panel)
     Perf.FarBox = New("TextBox", {
