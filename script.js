@@ -5380,15 +5380,17 @@ end)
 function S.Rebuild() pcall(function() if S.RebuildHubList then S.RebuildHubList() end end)
 end
 
--- ---------- v5.4: CPU + GIẢM TẦM NHÌN CÓ THỂ ĐIỀU CHỈNH ----------
+-- ---------- v5.4: CPU + ĐỒ HỌA NHẸ + GIẢM TẦM NHÌN CÓ THỂ ĐIỀU CHỈNH ----------
 do
     local STUDS_PER_METER = 1 / 0.28 -- quy đổi xấp xỉ theo kích thước chuẩn Roblox
+    local PALE_COLOR = Color3.fromRGB(224, 224, 224)
     local modeList = {
-        {id = "cpu", title = "🧠 CPU"},
-        {id = "range", title = "🌫 Giảm tầm nhìn"},
+        {id = "cpu", title = "🧠 CPU", x = 8, y = 42},
+        {id = "range", title = "🌫 Giảm tầm nhìn", x = 140, y = 42},
+        {id = "quality", title = "🎨 Giảm lag nhẹ", x = 8, y = 68},
     }
     local Perf = {
-        Modes = {cpu = false, range = false},
+        Modes = {cpu = false, range = false, quality = false},
         ViewDistanceMeters = 30,
         Saved = setmetatable({}, {__mode = "k"}),
         ScanToken = 0,
@@ -5496,7 +5498,9 @@ do
         end
 
         local desired = {}
-        if Perf.Modes.cpu and instance:IsA("BasePart") then
+        local saved = Perf.Saved[instance]
+        local isPart = instance:IsA("BasePart")
+        if Perf.Modes.cpu and isPart then
             desired.Material = Enum.Material.Plastic
             desired.Reflectance = 0
             desired.CastShadow = false
@@ -5504,9 +5508,16 @@ do
                 desired.RenderFidelity = Enum.RenderFidelity.Performance
             end
         end
+        if Perf.Modes.quality and isPart then
+            desired.Material = Enum.Material.Plastic
+            if instance:IsA("MeshPart") then
+                desired.RenderFidelity = Enum.RenderFidelity.Performance
+            end
+            local originalColor = saved and saved.Color or instance.Color
+            desired.Color = originalColor:Lerp(PALE_COLOR, 0.22)
+        end
         if Perf.Modes.cpu and Perf.IsVisualEffect(instance) then desired.Enabled = false end
 
-        local saved = Perf.Saved[instance]
         if saved then
             local restore = {}
             for property in pairs(saved) do
@@ -5549,8 +5560,8 @@ do
         local token = Perf.ScanToken
         if Perf.Worker then pcall(task.cancel, Perf.Worker); Perf.Worker = nil end
 
-        if not Perf.Modes.cpu then
-            if Perf.Status and Perf.Status.Parent then Perf.Status.Text = "↩ Đang khôi phục cài đặt CPU..." end
+        if not Perf.Modes.cpu and not Perf.Modes.quality then
+            if Perf.Status and Perf.Status.Parent then Perf.Status.Text = "↩ Đang khôi phục cài đặt hình ảnh..." end
             Perf.Worker = task.spawn(function()
                 Perf.UpdateGlobals()
                 Perf.RestoreAll(240, token)
@@ -5568,7 +5579,7 @@ do
             return true
         end
 
-        if Perf.Status and Perf.Status.Parent then Perf.Status.Text = "⏳ Đang áp dụng CPU theo từng lô..." end
+        if Perf.Status and Perf.Status.Parent then Perf.Status.Text = "⏳ Đang áp dụng chế độ đồ họa theo từng lô..." end
         Perf.Worker = task.spawn(function()
             Perf.UpdateGlobals()
             local roots = {workspace, game:GetService("Lighting")}
@@ -5602,7 +5613,9 @@ do
             if token == Perf.ScanToken then
                 Perf.Worker = nil
                 if Perf.Status and Perf.Status.Parent then
-                    Perf.Status.Text = string.format("✅ Đã tối ưu %d đối tượng bằng CPU.", processed)
+                    local modeText = Perf.Modes.cpu and Perf.Modes.quality and "CPU + đồ họa nhẹ"
+                        or (Perf.Modes.quality and "đồ họa nhẹ" or "CPU")
+                    Perf.Status.Text = string.format("✅ Đã áp dụng %s cho %d đối tượng.", modeText, processed)
                 end
             end
         end)
@@ -5612,7 +5625,7 @@ do
     function Perf.Toggle(id)
         if Perf.Modes[id] == nil then return end
         Perf.Modes[id] = not Perf.Modes[id]
-        if id == "cpu" then Perf.QueueScan() else
+        if id == "cpu" or id == "quality" then Perf.QueueScan() else
             Perf.UpdateGlobals()
             if Perf.Status and Perf.Status.Parent then
                 Perf.Status.Text = Perf.Modes.range
@@ -5624,6 +5637,8 @@ do
         local note
         if id == "cpu" then
             note = "🧠 CPU: giảm tải hiệu ứng và quét theo lô."
+        elseif id == "quality" then
+            note = "🎨 Giảm chi tiết và làm màu nhạt hơn; giữ nguyên ánh sáng, bóng và hiệu ứng."
         else
             note = "🌫 Tầm nhìn tối đa " .. tostring(Perf.ViewDistanceMeters) .. " m (~"
                 .. tostring(math.floor(Perf.GetViewDistanceStuds() + 0.5)) .. " studs); cảnh xa mờ dần, không xóa vật thể."
@@ -5665,14 +5680,14 @@ do
     end
 
     local panel = New("Frame", {
-        Name = "HubPerf_Panel", Size = UDim2.new(1, 0, 0, 158), LayoutOrder = -5,
+        Name = "HubPerf_Panel", Size = UDim2.new(1, 0, 0, 184), LayoutOrder = -5,
         BackgroundColor3 = C.SURFACE, BackgroundTransparency = 0.12, BorderSizePixel = 0, ZIndex = 6,
     }, D.hubList)
     Corner(panel, UDim.new(0, 10)); Stroke(panel, C.HAIRLINE, 1)
     D.Shade(panel, Color3.fromRGB(255,255,255), Color3.fromRGB(188,192,205), 90)
     New("TextLabel", {
         Size = UDim2.new(1, -174, 0, 16), Position = UDim2.new(0, 8, 0, 4),
-        Text = "⚡ CPU · TẦM NHÌN", BackgroundTransparency = 1, TextColor3 = C.ACCENT,
+        Text = "⚡ GIẢM LAG · TẦM NHÌN", BackgroundTransparency = 1, TextColor3 = C.ACCENT,
         Font = Enum.Font.GothamBold, TextSize = 9, TextXAlignment = Enum.TextXAlignment.Left, ZIndex = 7,
     }, panel)
     Perf.FpsLabel = New("TextLabel", {
@@ -5703,17 +5718,16 @@ do
     Corner(resetButton, UDim.new(0, 5)); D.Tactile(resetButton, 0.08)
     New("TextLabel", {
         Size = UDim2.new(1, -16, 0, 18), Position = UDim2.new(0, 8, 0, 20),
-        Text = "Sương mù làm mờ cảnh xa; vật thể vẫn còn nguyên, không bị xóa.",
+        Text = "Đồ họa nhẹ giữ ánh sáng và hiệu ứng; sương mù chỉ làm mờ cảnh xa.",
         BackgroundTransparency = 1, TextColor3 = C.MUTED, Font = Enum.Font.GothamMedium,
         TextSize = 8, TextWrapped = true, TextXAlignment = Enum.TextXAlignment.Left, ZIndex = 7,
     }, panel)
 
-    for index, item in ipairs(modeList) do
+    for _, item in ipairs(modeList) do
         local modeId = item.id
-        local column = index - 1
         local button = New("TextButton", {
             Name = "HubPerf_" .. modeId, Size = UDim2.new(0, 124, 0, 22),
-            Position = UDim2.new(0, 8 + column * 132, 0, 42),
+            Position = UDim2.new(0, item.x, 0, item.y),
             Text = item.title .. ": TẮT", BackgroundColor3 = C.SURFACE2, TextColor3 = C.DARK,
             Font = Enum.Font.GothamBold, TextSize = 8, BorderSizePixel = 0, ZIndex = 8,
         }, panel)
@@ -5723,31 +5737,31 @@ do
     end
 
     New("TextLabel", {
-        Size = UDim2.new(0, 96, 0, 20), Position = UDim2.new(0, 8, 0, 72),
+        Size = UDim2.new(0, 96, 0, 20), Position = UDim2.new(0, 8, 0, 96),
         Text = "Tầm nhìn (m)", BackgroundTransparency = 1, TextColor3 = C.MUTED,
         Font = Enum.Font.GothamMedium, TextSize = 8, TextXAlignment = Enum.TextXAlignment.Left, ZIndex = 7,
     }, panel)
     Perf.DistanceBox = New("TextBox", {
-        Name = "HubPerfViewDistance", Size = UDim2.new(0, 56, 0, 20), Position = UDim2.new(0, 106, 0, 72),
+        Name = "HubPerfViewDistance", Size = UDim2.new(0, 56, 0, 20), Position = UDim2.new(0, 106, 0, 96),
         Text = tostring(Perf.ViewDistanceMeters), ClearTextOnFocus = false, BackgroundColor3 = C.SURFACE2,
         TextColor3 = C.DARK, Font = Enum.Font.GothamMedium, TextSize = 9, BorderSizePixel = 0, ZIndex = 8,
     }, panel)
     Corner(Perf.DistanceBox, UDim.new(0, 5))
     local applyRangeButton = New("TextButton", {
-        Size = UDim2.new(0, 72, 0, 20), Position = UDim2.new(0, 168, 0, 72),
+        Size = UDim2.new(0, 72, 0, 20), Position = UDim2.new(0, 168, 0, 96),
         Text = "✔ Áp dụng", BackgroundColor3 = C.BLUE, TextColor3 = C.WHITE,
         Font = Enum.Font.GothamBold, TextSize = 8, BorderSizePixel = 0, ZIndex = 8,
     }, panel)
     Corner(applyRangeButton, UDim.new(0, 5)); D.Tactile(applyRangeButton, 0.08)
     New("TextLabel", {
-        Size = UDim2.new(1, -16, 0, 12), Position = UDim2.new(0, 8, 0, 96),
+        Size = UDim2.new(1, -16, 0, 12), Position = UDim2.new(0, 8, 0, 120),
         Text = "1 m ≈ 3,57 studs · nhập từ 5 đến 1000 m.", BackgroundTransparency = 1,
         TextColor3 = C.MUTED, Font = Enum.Font.GothamMedium, TextSize = 8,
         TextXAlignment = Enum.TextXAlignment.Left, ZIndex = 7,
     }, panel)
     Perf.Status = New("TextLabel", {
-        Name = "HubPerfStatus", Size = UDim2.new(1, -16, 0, 34), Position = UDim2.new(0, 8, 0, 112),
-        Text = "Đặt tầm nhìn (ví dụ 30 m), bật Giảm tầm nhìn; CPU có thể bật riêng.",
+        Name = "HubPerfStatus", Size = UDim2.new(1, -16, 0, 34), Position = UDim2.new(0, 8, 0, 136),
+        Text = "Đồ họa nhẹ giữ hiệu ứng ánh sáng; CPU và tầm nhìn bật riêng.",
         BackgroundTransparency = 1, TextColor3 = C.MUTED, Font = Enum.Font.GothamMedium,
         TextSize = 8, TextWrapped = true, TextXAlignment = Enum.TextXAlignment.Left, TextYAlignment = Enum.TextYAlignment.Top, ZIndex = 7,
     }, panel)
@@ -5755,7 +5769,7 @@ do
     resetButton.Activated:Connect(function()
         ReleaseHubFocus()
         Perf.Reset()
-        D.Say("↩ Đang khôi phục CPU và tầm nhìn gốc.", C.YELLOW)
+        D.Say("↩ Đang khôi phục CPU, đồ họa và tầm nhìn gốc.", C.YELLOW)
     end)
     applyRangeButton.Activated:Connect(function()
         ReleaseHubFocus()
@@ -5769,9 +5783,9 @@ do
         if not root then return end
         trackConn(root.DescendantAdded:Connect(function(instance)
             if instance:IsA("Atmosphere") and Perf.Modes.range then task.defer(Perf.SyncRangeFog) end
-            if not Perf.Modes.cpu then return end
+            if not Perf.Modes.cpu and not Perf.Modes.quality then return end
             task.defer(function()
-                if not Perf.Modes.cpu then return end
+                if not Perf.Modes.cpu and not Perf.Modes.quality then return end
                 pcall(Perf.ApplyInstance, instance)
             end)
         end))
