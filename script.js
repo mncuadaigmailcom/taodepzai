@@ -562,7 +562,7 @@ function Hit.onHub(x, y)
             if o == gui or o:IsDescendantOf(gui) then return true end
         end
     end
-    local aimPanelHit = false
+    local aimOverlayHit = false
     pcall(function()
         local overlay = S.AnaUi and S.AnaUi.aimGui
         if not overlay then return end
@@ -577,7 +577,7 @@ function Hit.onHub(x, y)
                     if o:IsDescendantOf(overlay) then
                         local dot = S.AnaUi and S.AnaUi.aimDot
                         if not dot or (o ~= dot and not o:IsDescendantOf(dot)) then
-                            aimPanelHit = true
+                            aimOverlayHit = true
                             return
                         end
                     end
@@ -585,7 +585,7 @@ function Hit.onHub(x, y)
             end
         end
     end)
-    if aimPanelHit then return true end
+    if aimOverlayHit then return true end
     if Hit.inObject(main, x, y) then return true end
     if Hit.inObject(togBtn, x, y) then return true end
     return false
@@ -2021,6 +2021,8 @@ searchIn:GetPropertyChangedSignal("Text"):Connect(function() S.Debounce("savedSe
 RebuildScripts()
 
 local supportTab = AddTab("Hỗ Trợ", "🛠", 5)     -- v4.15: 4 -> 5 để nhường chỗ cho 👥 Người Chơi
+S.AnaUi = S.AnaUi or {}
+S.AnaUi.supportTabIndex = #tabContent
 
 local posY = 8
 
@@ -2081,13 +2083,13 @@ posY = posY + 30
 S.AnaUi.skipGuiBtn = Button(supportTab, "🛡 Phân tích xuyên HUD game: BẬT", 8, posY, 300, 24, C.GREEN)
 S.AnaUi.scanFbBtn  = Button(supportTab, "🧭 Quét dự phòng: BẬT", 314, posY, 162, 24, C.GREEN)
 posY = posY + 28
-S.AnaUi.centerAimBtn = Button(supportTab, "🔴 Ngắm tâm đỏ: TẮT · tự định vị vật đang ngắm", 8, posY, 468, 24, C.GRAY)
+S.AnaUi.centerAimBtn = Button(supportTab, "🔴 Ngắm tâm đỏ: TẮT · bật chấm + nút phân tích", 8, posY, 468, 24, C.GRAY)
 posY = posY + 28
 S.AnaUi.whyLbl = Label(supportTab, "🔎 Lý do: — (bật 🎯 Phân Tích Vật Thể rồi chạm/chuột phải vào vật)", posY)
 S.AnaUi.whyLbl.TextSize = 9
 posY = posY + 16
 
-Label(supportTab, "💡 🔴 Ngắm tâm đỏ: tự định vị vật giữa màn hình · hoặc bật 🎯 rồi chuột phải/giữ ngón để chọn", posY)
+Label(supportTab, "💡 Ngắm chấm đỏ vào vật rồi nhấn nút 🔎 tròn nổi để phân tích từng lần; kết quả mở tại đây.", posY)
 Label(supportTab, "    Click xuyên qua nút HUD/menu của game sẽ được tự động bỏ qua, không hit nhầm vật phía sau", posY+14)
 posY = posY + 30
 
@@ -2835,6 +2837,7 @@ function S.AnaAimEnsureDot()
         ZIndexBehavior = Enum.ZIndexBehavior.Global,
         DisplayOrder = 10000,
     }, targetGui)
+    S.AnaUi.aimGui = aimGui
     aimGui:SetAttribute("BCHub_External", true)
     local dot = New("Frame", {
         Name = "CenterAimDot",
@@ -2854,127 +2857,80 @@ function S.AnaAimEnsureDot()
         Transparency = 0,
         ApplyStrokeMode = Enum.ApplyStrokeMode.Border,
     }, dot)
+    local actionBtn = New("TextButton", {
+        Name = "CenterAimAnalyzeButton",
+        AnchorPoint = Vector2.new(0.5, 0.5),
+        Position = UDim2.new(1, -34, 0.55, 0),
+        Size = UDim2.new(0, 46, 0, 46),
+        Text = "🔎",
+        BackgroundColor3 = Color3.fromRGB(220, 55, 55),
+        BackgroundTransparency = 0.08,
+        TextColor3 = Color3.fromRGB(255, 255, 255),
+        Font = Enum.Font.GothamBold,
+        TextSize = 21,
+        AutoButtonColor = true,
+        Active = true,
+        Selectable = false,
+        BorderSizePixel = 0,
+        ZIndex = 10000,
+    }, aimGui)
+    Corner(actionBtn, UDim.new(1, 0))
+    New("UIStroke", {
+        Color = Color3.fromRGB(255, 235, 235),
+        Thickness = 1.5,
+        Transparency = 0.1,
+        ApplyStrokeMode = Enum.ApplyStrokeMode.Border,
+    }, actionBtn)
+    actionBtn.Activated:Connect(function()
+        if type(S.AnaAimAnalyzeOnce) == "function" then
+            local ok = pcall(S.AnaAimAnalyzeOnce)
+            if not ok then
+                pcall(function()
+                    if S.AnaUi.supportTabIndex then SwitchTab(S.AnaUi.supportTabIndex) end
+                    if main then main.Visible = true end
+                    if togBtn then togBtn.Text = "✕" end
+                    S.AnaSay("⚠️ Không phân tích được điểm ngắm")
+                end)
+            end
+        end
+    end)
     S.AnaUi.aimGui = aimGui
     S.AnaUi.aimDot = dot
+    S.AnaUi.aimActionBtn = actionBtn
     return aimGui
 end
 
-function S.AnaAimPanelSetExternal(on)
-    if on then
-        if not S.AnaUi.aimGui then return false end
-        if objResultPanel.Parent == S.AnaUi.aimGui then return true end
-        S.AnaUi.objPanelHome = objResultPanel.Parent
-        S.AnaUi.objPanelHomeSize = objResultPanel.Size
-        S.AnaUi.objPanelHomePosition = objResultPanel.Position
-        objResultPanel.Parent = S.AnaUi.aimGui
-        local cam = S.AnaCam()
-        local viewW = cam and cam.ViewportSize.X or 720
-        local panelW = math.max(260, math.min(420, viewW - 24))
-        objResultPanel.Size = UDim2.new(0, panelW, 0, 190)
-        objResultPanel.Position = UDim2.new(0.5, -panelW / 2, 1, -202)
-        return true
+function S.AnaAimStep()
+    if not S.AnaUi.centerAimOn or not S.AnaUi.aimGui then return end
+    local showOverlay = not (main and main.Visible)
+    if S.AnaUi.aimGui.Enabled ~= showOverlay then
+        S.AnaUi.aimGui.Enabled = showOverlay
     end
-
-    local home = S.AnaUi.objPanelHome
-    if home and objResultPanel.Parent == S.AnaUi.aimGui then
-        objResultPanel.Parent = home
-        objResultPanel.Size = S.AnaUi.objPanelHomeSize
-        objResultPanel.Position = S.AnaUi.objPanelHomePosition
-    end
-    return true
 end
 
-function S.AnaAimCast(allowFallback)
+function S.AnaAimAnalyzeOnce()
+    if not S.AnaUi.centerAimOn then return false end
+    S.AnaLast.ok = false
     local cam = S.AnaCam()
-    if not cam then return nil, nil, nil, nil, "camera chưa sẵn sàng" end
-    local viewport = cam.ViewportSize
-    local ray = cam:ViewportPointToRay(viewport.X * 0.5, viewport.Y * 0.5)
-    local filterList = {}
-    if player.Character then filterList[#filterList + 1] = player.Character end
-    if gui then filterList[#filterList + 1] = gui end
-
-    local maxD = tonumber(S.AnaCfg and S.AnaCfg.maxDist) or 10000
-    if maxD ~= maxD or maxD == math.huge or maxD <= 0 then maxD = 10000 end
-    maxD = math.clamp(maxD, 1, 10000)
-    local okParams, params = pcall(function()
-        local rp = RaycastParams.new()
-        rp.FilterType = Enum.RaycastFilterType.Exclude
-        rp.FilterDescendantsInstances = filterList
-        rp.IgnoreWater = (S.AnaCfg.ignoreWater == true)
-        return rp
-    end)
-    if okParams and params then
-        local okRay, result = pcall(function()
-            return workspace:Raycast(ray.Origin, ray.Direction * maxD, params)
-        end)
-        if okRay and result and result.Instance then
-            return result.Instance, result.Position, result.Normal, result.Material, "🔴 tia qua chấm tâm"
-        end
-    end
-
-    if allowFallback and S.AnaCfg.scanFallback then
-        local okScan, part, why = pcall(S.PickByRayScan, ray, filterList)
-        if okScan and part then
-            local pos, normal, material
-            pcall(function()
-                pos = part.Position
-                normal = part.CFrame.LookVector
-                material = part.Material
-            end)
-            return part, pos, normal, material, "🔴 " .. tostring(why or "quét dự phòng theo tia")
-        end
-    end
-    return nil, nil, nil, nil, "chấm tâm chưa trúng vật trong " .. string.format("%.0f", maxD) .. " studs"
-end
-
-function S.AnaAimStep(dt)
-    if not S.AnaUi.centerAimOn then return end
-    if main and main.Visible then
-        if S.AnaUi.aimDot then S.AnaUi.aimDot.Visible = false end
-        return
-    end
-    if S.AnaUi.aimDot and not S.AnaUi.aimDot.Visible then S.AnaUi.aimDot.Visible = true end
-    dt = tonumber(dt) or 0.016
-    S.AnaUi.aimAcc = (S.AnaUi.aimAcc or 0) + dt
-    if S.AnaUi.aimAcc < 0.12 then return end -- tối đa khoảng 8 lần dò/giây
-    local stepElapsed = S.AnaUi.aimAcc
-    S.AnaUi.aimAcc = 0
-
-    local inst, hitPos, hitNormal, hitMat, how = S.AnaAimCast(false)
-    if not inst and S.AnaCfg.scanFallback then
-        S.AnaUi.aimScanAcc = (S.AnaUi.aimScanAcc or 0) + stepElapsed
-        if S.AnaUi.aimScanAcc >= 0.5 then -- quét dự phòng xa, giới hạn 2 lần/giây
-            S.AnaUi.aimScanAcc = 0
-            inst, hitPos, hitNormal, hitMat, how = S.AnaAimCast(true)
-        end
+    if not cam then
+        S.AnaSay("⚠️ Camera chưa sẵn sàng để phân tích điểm giữa màn hình")
     else
-        S.AnaUi.aimScanAcc = 0
+        local viewport = cam.ViewportSize
+        PickObjectAt(Vector2.new(viewport.X * 0.5, viewport.Y * 0.5), false, true)
     end
 
-    if not inst then
-        local now = os.clock()
-        if now - (S.AnaUi.aimNoTargetAt or 0) >= 1.5 then
-            S.AnaUi.aimNoTargetAt = now
-            S.AnaSay(S.AnaUi.aimTarget and "🔴 Chấm tâm chưa trúng vật mới · giữ vật đã định vị"
-                or "🔴 Chấm tâm chưa trúng vật · hướng vào vật để tự định vị")
-        end
-        return
+    if S.AnaUi.supportTabIndex then
+        SwitchTab(S.AnaUi.supportTabIndex)
     end
-
-    S.AnaUi.aimScanAcc = 0
-    local now = os.clock()
-    local changed = (S.AnaUi.aimTarget ~= inst)
-    if changed or now - (S.AnaUi.aimRefreshAt or 0) >= 0.45 then
-        S.AnaUi.aimTarget = inst
-        S.AnaUi.aimRefreshAt = now
-        S.AnaNote = nil
-        if not hitPos then pcall(function() hitPos = inst.Position end) end
-        S.FillObjPanel(inst, hitPos, hitNormal, hitMat, how or "🔴 tia qua chấm tâm", true)
-        if changed then
-            S.AnaUi.aimNoTargetAt = now
-            S.AnaSay("🔴 Đang định vị: " .. tostring(inst.Name) .. " (" .. tostring(inst.ClassName) .. ")")
-        end
+    if main then main.Visible = true end
+    if S.AnaLast and S.AnaLast.ok then
+        supportTab.CanvasPosition = Vector2.new(0, math.max(0, objResultPanel.Position.Y.Offset - 24))
+    elseif S.AnaUi.whyLbl then
+        supportTab.CanvasPosition = Vector2.new(0, math.max(0, S.AnaUi.whyLbl.Position.Y.Offset - 24))
     end
+    if togBtn then togBtn.Text = "✕" end
+    ReleaseHubFocus()
+    return S.AnaLast and S.AnaLast.ok == true
 end
 
 function S.AnaAimSet(on)
@@ -2982,51 +2938,40 @@ function S.AnaAimSet(on)
     if on == (S.AnaUi.centerAimOn == true) then return on end
     S.AnaUi.centerAimOn = on
     if on then
-        S.AnaUi.aimAcc, S.AnaUi.aimScanAcc = 0, 0
-        S.AnaUi.aimRefreshAt, S.AnaUi.aimNoTargetAt = 0, 0
-        S.AnaUi.aimTarget = nil
         local okDot = pcall(S.AnaAimEnsureDot)
         local okBind = false
         if okDot then
             okBind = pcall(function()
                 RunService:UnbindFromRenderStep("BC_AnaAim")
-                RunService:BindToRenderStep("BC_AnaAim", Enum.RenderPriority.Camera.Value + 1, function(dt)
-                    pcall(S.AnaAimStep, dt)
+                RunService:BindToRenderStep("BC_AnaAim", Enum.RenderPriority.Camera.Value + 1, function()
+                    pcall(S.AnaAimStep)
                 end)
             end)
         end
-        local okPanel, panelReady = false, false
-        if okDot and okBind then
-            okPanel, panelReady = pcall(S.AnaAimPanelSetExternal, true)
-        end
-        if not okDot or not okBind or not okPanel or not panelReady then
+        if not okDot or not okBind then
             S.AnaUi.centerAimOn = false
             pcall(function() RunService:UnbindFromRenderStep("BC_AnaAim") end)
-            pcall(S.AnaAimPanelSetExternal, false)
             pcall(function() if S.AnaUi.aimGui then S.AnaUi.aimGui:Destroy() end end)
-            S.AnaUi.aimGui, S.AnaUi.aimDot = nil, nil
+            S.AnaUi.aimGui, S.AnaUi.aimDot, S.AnaUi.aimActionBtn = nil, nil, nil
         else
-            if main then main.Visible = false end -- menu ở giữa màn hình không che tia ngắm
+            if main then main.Visible = false end -- ngắm ngoài game, kết quả sẽ mở lại trong menu
             if togBtn then togBtn.Text = "" end
             ReleaseHubFocus()
         end
     else
         pcall(function() RunService:UnbindFromRenderStep("BC_AnaAim") end)
-        pcall(S.AnaAimPanelSetExternal, false)
         pcall(function() if S.AnaUi.aimGui then S.AnaUi.aimGui:Destroy() end end)
-        S.AnaUi.aimGui, S.AnaUi.aimDot = nil, nil
-        S.AnaUi.aimTarget = nil
-        S.AnaUi.aimAcc, S.AnaUi.aimScanAcc = 0, 0
+        S.AnaUi.aimGui, S.AnaUi.aimDot, S.AnaUi.aimActionBtn = nil, nil, nil
     end
 
     local active = (S.AnaUi.centerAimOn == true)
     local btn = S.AnaUi.centerAimBtn
     if btn and btn.Parent then
-        btn.Text = active and "🔴 Ngắm tâm đỏ: BẬT · tự định vị vật" or "🔴 Ngắm tâm đỏ: TẮT · tự định vị vật đang ngắm"
+        btn.Text = active and "🔴 Ngắm tâm đỏ: BẬT · nhấn nút 🔎 để phân tích" or "🔴 Ngắm tâm đỏ: TẮT · bật chấm + nút phân tích"
         D.SetBg(btn, active and C.RED or C.GRAY)
     end
     if active then
-        S.AnaSay("🔴 Ngắm tâm đã bật · hướng chấm đỏ vào vật để định vị (tối đa 10.000 studs)")
+        S.AnaSay("🔴 Ngắm tâm đã bật · canh vật ở chấm đỏ rồi nhấn nút 🔎 để phân tích")
     end
     return active
 end
@@ -3035,7 +2980,7 @@ S.AnaUi.centerAimBtn.Activated:Connect(function()
     local requested = not (S.AnaUi.centerAimOn == true)
     local active = S.AnaAimSet(requested)
     if requested and not active then
-        S.AnaSay("⚠️ Không bật được chế độ ngắm tâm — không tạo được điểm ngắm/bảng phân tích")
+        S.AnaSay("⚠️ Không bật được chế độ ngắm tâm — không tạo được chấm đỏ/nút phân tích")
     end
 end)
 
