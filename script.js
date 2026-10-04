@@ -2085,13 +2085,30 @@ S.AnaUi.scanFbBtn  = Button(supportTab, "🧭 Quét dự phòng: BẬT", 314, po
 posY = posY + 28
 S.AnaUi.centerAimBtn = Button(supportTab, "🔴 Ngắm tâm đỏ: TẮT · bật chấm + nút phân tích", 8, posY, 468, 24, C.GRAY)
 posY = posY + 28
+S.AnaUi.aimButtonMoveEnabled = false
+S.AnaUi.aimMoveBtn = Button(supportTab, "🔒 Nút 🔎: KHÓA VỊ TRÍ", 8, posY, 468, 24, C.GRAY)
+posY = posY + 28
+S.AnaUi.aimMoveBtn.Activated:Connect(function()
+    local moveEnabled = not (S.AnaUi.aimButtonMoveEnabled == true)
+    S.AnaUi.aimButtonMoveEnabled = moveEnabled
+    if not moveEnabled then
+        S.AnaUi.aimButtonDragging = false
+        S.AnaUi.aimButtonDragInput = nil
+        S.AnaUi.aimButtonDragMoved = false
+        S.AnaUi.aimButtonSuppressUntil = 0
+    end
+    S.AnaUi.aimMoveBtn.Text = moveEnabled and "🔓 Nút 🔎: CHO PHÉP DI CHUYỂN" or "🔒 Nút 🔎: KHÓA VỊ TRÍ"
+    D.SetBg(S.AnaUi.aimMoveBtn, moveEnabled and C.ORANGE or C.GRAY)
+    S.AnaSay(moveEnabled and "🔓 Đã mở khóa: kéo nút 🔎 để đổi vị trí" or "🔒 Đã khóa vị trí nút 🔎")
+end)
 S.AnaUi.whyLbl = Label(supportTab, "🔎 Lý do: — (bật 🎯 Phân Tích Vật Thể rồi chạm/chuột phải vào vật)", posY)
 S.AnaUi.whyLbl.TextSize = 9
 posY = posY + 16
 
-Label(supportTab, "💡 Ngắm chấm đỏ vào vật rồi nhấn nút 🔎 tròn nổi để phân tích từng lần; kết quả mở tại đây.", posY)
-Label(supportTab, "    Click xuyên qua nút HUD/menu của game sẽ được tự động bỏ qua, không hit nhầm vật phía sau", posY+14)
-posY = posY + 30
+Label(supportTab, "💡 Mở khóa vị trí trong menu, đóng menu rồi kéo nút 🔎 đến chỗ muốn.", posY)
+Label(supportTab, "    Khóa lại để cố định; ngắm vật vào chấm đỏ và nhấn 🔎 để phân tích.", posY+14)
+Label(supportTab, "    Nút HUD/menu của game vẫn theo tùy chọn phân tích xuyên HUD ở trên.", posY+28)
+posY = posY + 44
 
 local objResultPanel = New("Frame", {
     Size=UDim2.new(1,-16,0,190),
@@ -2860,7 +2877,7 @@ function S.AnaAimEnsureDot()
     local actionBtn = New("TextButton", {
         Name = "CenterAimAnalyzeButton",
         AnchorPoint = Vector2.new(0.5, 0.5),
-        Position = UDim2.new(1, -34, 0.55, 0),
+        Position = S.AnaUi.aimButtonPosition or UDim2.new(1, -34, 0.55, 0),
         Size = UDim2.new(0, 46, 0, 46),
         Text = "🔎",
         BackgroundColor3 = Color3.fromRGB(220, 55, 55),
@@ -2881,7 +2898,26 @@ function S.AnaAimEnsureDot()
         Transparency = 0.1,
         ApplyStrokeMode = Enum.ApplyStrokeMode.Border,
     }, actionBtn)
+    local cam = S.AnaCam()
+    local viewport = cam and cam.ViewportSize
+    if viewport and viewport.X > 0 and viewport.Y > 0 then
+        local saved = actionBtn.Position
+        local margin = 29
+        local x = math.clamp(saved.X.Scale * viewport.X + saved.X.Offset, margin, math.max(margin, viewport.X - margin))
+        local y = math.clamp(saved.Y.Scale * viewport.Y + saved.Y.Offset, margin, math.max(margin, viewport.Y - margin))
+        actionBtn.Position = UDim2.new(x / viewport.X, 0, y / viewport.Y, 0)
+        S.AnaUi.aimButtonPosition = actionBtn.Position
+    end
+    actionBtn.InputBegan:Connect(function(input)
+        if type(S.AnaAimBeginButtonDrag) == "function" then
+            pcall(S.AnaAimBeginButtonDrag, input)
+        end
+    end)
     actionBtn.Activated:Connect(function()
+        local dragged = S.AnaUi.aimButtonDragMoved == true
+        local suppressUntil = S.AnaUi.aimButtonSuppressUntil or 0
+        S.AnaUi.aimButtonDragMoved = false
+        if dragged or os.clock() < suppressUntil then return end
         if type(S.AnaAimAnalyzeOnce) == "function" then
             local ok = pcall(S.AnaAimAnalyzeOnce)
             if not ok then
@@ -2906,7 +2942,77 @@ function S.AnaAimStep()
     if S.AnaUi.aimGui.Enabled ~= showOverlay then
         S.AnaUi.aimGui.Enabled = showOverlay
     end
+    if not showOverlay then
+        S.AnaUi.aimButtonDragging = false
+        S.AnaUi.aimButtonDragInput = nil
+    end
 end
+
+function S.AnaAimBeginButtonDrag(input)
+    if not S.AnaUi.aimButtonMoveEnabled then return end
+    local inputType = input.UserInputType
+    if inputType ~= Enum.UserInputType.MouseButton1 and inputType ~= Enum.UserInputType.Touch then return end
+    local btn = S.AnaUi.aimActionBtn
+    if not btn then return end
+    local inputPos = input.Position
+    S.AnaUi.aimButtonDragging = true
+    S.AnaUi.aimButtonDragInput = input
+    S.AnaUi.aimButtonDragOrigin = Vector2.new(inputPos.X, inputPos.Y)
+    S.AnaUi.aimButtonDragCenter = btn.AbsolutePosition + btn.AbsoluteSize / 2
+    S.AnaUi.aimButtonDragMoved = false
+    S.AnaUi.aimButtonSuppressUntil = 0
+end
+
+function S.AnaAimDragMove(input)
+    if not S.AnaUi.aimButtonDragging or not S.AnaUi.aimButtonMoveEnabled then return end
+    local dragInput = S.AnaUi.aimButtonDragInput
+    if not dragInput then return end
+    local inputType = dragInput.UserInputType
+    local isPointerMove = (inputType == Enum.UserInputType.MouseButton1 and input.UserInputType == Enum.UserInputType.MouseMovement)
+        or (inputType == Enum.UserInputType.Touch and input == dragInput)
+    if not isPointerMove then return end
+    local cam = S.AnaCam()
+    local viewport = cam and cam.ViewportSize
+    if not viewport or viewport.X <= 0 or viewport.Y <= 0 then return end
+    local pointer = Vector2.new(input.Position.X, input.Position.Y)
+    local delta = pointer - S.AnaUi.aimButtonDragOrigin
+    if delta.Magnitude < 5 then return end
+    local btn = S.AnaUi.aimActionBtn
+    if not btn then return end
+    S.AnaUi.aimButtonDragMoved = true
+    local halfX = btn.AbsoluteSize.X / 2 + 6
+    local halfY = btn.AbsoluteSize.Y / 2 + 6
+    local x = math.clamp(S.AnaUi.aimButtonDragCenter.X + delta.X, halfX, math.max(halfX, viewport.X - halfX))
+    local y = math.clamp(S.AnaUi.aimButtonDragCenter.Y + delta.Y, halfY, math.max(halfY, viewport.Y - halfY))
+    btn.Position = UDim2.new(x / viewport.X, 0, y / viewport.Y, 0)
+    S.AnaUi.aimButtonPosition = btn.Position
+end
+
+function S.AnaAimEndButtonDrag(input)
+    if not S.AnaUi.aimButtonDragging then return end
+    local dragInput = S.AnaUi.aimButtonDragInput
+    if not dragInput then return end
+    local samePointer = input == dragInput
+        or (dragInput.UserInputType == Enum.UserInputType.MouseButton1 and input.UserInputType == Enum.UserInputType.MouseButton1)
+    if not samePointer then return end
+    if S.AnaUi.aimButtonDragMoved then
+        S.AnaUi.aimButtonSuppressUntil = os.clock() + 0.4
+    else
+        S.AnaUi.aimButtonDragMoved = false
+        S.AnaUi.aimButtonSuppressUntil = 0
+    end
+    S.AnaUi.aimButtonDragging = false
+    S.AnaUi.aimButtonDragInput = nil
+    S.AnaUi.aimButtonDragOrigin = nil
+    S.AnaUi.aimButtonDragCenter = nil
+end
+
+trackConn(UserInputService.InputChanged:Connect(function(input)
+    pcall(S.AnaAimDragMove, input)
+end))
+trackConn(UserInputService.InputEnded:Connect(function(input)
+    pcall(S.AnaAimEndButtonDrag, input)
+end))
 
 function S.AnaAimAnalyzeOnce()
     if not S.AnaUi.centerAimOn then return false end
@@ -2953,6 +3059,9 @@ function S.AnaAimSet(on)
             pcall(function() RunService:UnbindFromRenderStep("BC_AnaAim") end)
             pcall(function() if S.AnaUi.aimGui then S.AnaUi.aimGui:Destroy() end end)
             S.AnaUi.aimGui, S.AnaUi.aimDot, S.AnaUi.aimActionBtn = nil, nil, nil
+            S.AnaUi.aimButtonDragging, S.AnaUi.aimButtonDragInput = false, nil
+            S.AnaUi.aimButtonDragOrigin, S.AnaUi.aimButtonDragCenter = nil, nil
+            S.AnaUi.aimButtonDragMoved, S.AnaUi.aimButtonSuppressUntil = false, 0
         else
             if main then main.Visible = false end -- ngắm ngoài game, kết quả sẽ mở lại trong menu
             if togBtn then togBtn.Text = "" end
@@ -2962,6 +3071,9 @@ function S.AnaAimSet(on)
         pcall(function() RunService:UnbindFromRenderStep("BC_AnaAim") end)
         pcall(function() if S.AnaUi.aimGui then S.AnaUi.aimGui:Destroy() end end)
         S.AnaUi.aimGui, S.AnaUi.aimDot, S.AnaUi.aimActionBtn = nil, nil, nil
+        S.AnaUi.aimButtonDragging, S.AnaUi.aimButtonDragInput = false, nil
+        S.AnaUi.aimButtonDragOrigin, S.AnaUi.aimButtonDragCenter = nil, nil
+        S.AnaUi.aimButtonDragMoved, S.AnaUi.aimButtonSuppressUntil = false, 0
     end
 
     local active = (S.AnaUi.centerAimOn == true)
