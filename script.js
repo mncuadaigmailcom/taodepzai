@@ -5393,7 +5393,7 @@ do
     local Perf = {
         Modes = {quick = false, normal = false, gray = false, far = false, cpu = false, ultra = false},
         GrayValue = 128,
-        FarDistance = 500,
+        FarDistance = 250,
         Saved = setmetatable({}, {__mode = "k"}),
         ScanToken = 0,
         FarToken = 0,
@@ -5654,11 +5654,11 @@ do
         local lastPosition = camera and camera.CFrame.Position or nil
         Perf.FarWatcher = task.spawn(function()
             while token == Perf.FarToken and Perf.Modes.far do
-                task.wait(1.2)
+                task.wait(0.75)
                 if token ~= Perf.FarToken or not Perf.Modes.far then break end
                 local currentCamera = workspace.CurrentCamera
                 local position = currentCamera and currentCamera.CFrame.Position or nil
-                if position and (not lastPosition or (position - lastPosition).Magnitude >= 60) and not Perf.Worker then
+                if position and (not lastPosition or (position - lastPosition).Magnitude >= 32) and not Perf.Worker then
                     lastPosition = position
                     Perf.QueueScan(true)
                 end
@@ -5677,7 +5677,7 @@ do
             quick = "⚡ Nhanh: giảm bóng và tắt hiệu ứng nặng.",
             normal = "🎮 Bình thường: vật liệu nhẹ hơn, tắt bóng và hiệu ứng.",
             gray = "🩶 Mạnh xám: đổi màu vật thể; chỉnh mức xám từ 0 đến 255.",
-            far = "🌫 Vật ở xa: ẩn hình ảnh vật xa camera; chỉnh khoảng cách bên dưới.",
+            far = "🌫 Vật ở xa: ẩn hình ảnh từ ngưỡng đã chọn; tới gần sẽ tự hiện lại.",
             cpu = "🧠 CPU: giảm hiệu ứng nước/địa hình, quét theo lô; không cố tình tải CPU thêm.",
             ultra = "🚫 Cực mạnh: ẩn hình ảnh vật thể cục bộ; va chạm và di chuyển vẫn giữ nguyên.",
         }

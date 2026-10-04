@@ -32,10 +32,15 @@ test('màu xám chỉnh được và được giới hạn trong dải 0–255',
     assert.match(panel, /Name = "HubPerfGrayValue"/);
 });
 
-test('chế độ vật ở xa có khoảng cách cấu hình và cập nhật theo camera', () => {
+test('chế độ vật ở xa ẩn theo ngưỡng, tự khôi phục khi tới gần và cập nhật theo camera', () => {
+    assert.match(panel, /FarDistance = 250/);
     assert.match(panel, /\(anchor\.Position - cameraPosition\)\.Magnitude >= Perf\.FarDistance/);
     assert.match(panel, /Perf\.FarDistance = math\.clamp\(math\.floor\(value \+ 0\.5\), 50, 10000\)/);
     assert.match(panel, /Name = "HubPerfFarDistance"/);
+    assert.match(panel, /if modes\.ultra or distant then desired\.LocalTransparencyModifier = 1 end/);
+    assert.match(panel, /if desired\[property\] == nil then restore\[#restore \+ 1\] = property end/);
+    assert.match(panel, /task\.wait\(0\.75\)/);
+    assert.match(panel, /\(position - lastPosition\)\.Magnitude >= 32/);
     assert.match(panel, /Perf\.QueueScan\(true\)/);
 });
 
