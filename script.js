@@ -25,6 +25,12 @@ do local old = _G.BananaCatHub_MV
         old._wdToken = nil if type(old._wd) == "thread" then pcall(task.cancel, old._wd) end
         old._wd = nil end end
 
+pcall(function()
+    local oldPerf = _G.BananaCatHub_Perf
+    if type(oldPerf) == "table" and type(oldPerf.Stop) == "function" then pcall(oldPerf.Stop) end
+    _G.BananaCatHub_Perf = nil
+end)
+
 if _G.BananaCatHub_Connections then for _, c in ipairs(_G.BananaCatHub_Connections) do
         pcall(function() c:Disconnect() end) end
 end _G.BananaCatHub_Connections = {}
@@ -5374,7 +5380,469 @@ end)
 function S.Rebuild() pcall(function() if S.RebuildHubList then S.RebuildHubList() end end)
 end
 
-S.HubPanelCat = { HubTune_Panel = "Di chuyển",
+-- ---------- v5.3: GIẢM LAG CỤC BỘ, CÓ THỂ HOÀN TÁC ----------
+do
+    local modeList = {
+        {id = "quick", title = "⚡ Nhanh"},
+        {id = "normal", title = "🎮 Bình thường"},
+        {id = "gray", title = "🩶 Mạnh · xám"},
+        {id = "far", title = "🌫 Vật ở xa"},
+        {id = "cpu", title = "🧠 CPU"},
+        {id = "ultra", title = "🚫 Cực mạnh"},
+    }
+    local Perf = {
+        Modes = {quick = false, normal = false, gray = false, far = false, cpu = false, ultra = false},
+        GrayValue = 128,
+        FarDistance = 500,
+        Saved = setmetatable({}, {__mode = "k"}),
+        ScanToken = 0,
+        FarToken = 0,
+        Worker = nil,
+        FarWatcher = nil,
+        Buttons = {},
+        Status = nil,
+    }
+    S.Perf = Perf
+    _G.BananaCatHub_Perf = Perf
+
+    function Perf.HasActive()
+        for _, on in pairs(Perf.Modes) do
+            if on then return true end
+        end
+        return false
+    end
+
+    function Perf.RestoreProperty(instance, property)
+        local saved = Perf.Saved[instance]
+        local original = saved and saved[property]
+        if original == nil then return end
+        saved[property] = nil
+        pcall(function() instance[property] = original end)
+        if next(saved) == nil then Perf.Saved[instance] = nil end
+    end
+
+    function Perf.RestoreInstance(instance)
+        local saved = Perf.Saved[instance]
+        if not saved then return end
+        local properties = {}
+        for property in pairs(saved) do properties[#properties + 1] = property end
+        for _, property in ipairs(properties) do Perf.RestoreProperty(instance, property) end
+    end
+
+    function Perf.RestoreAll(yieldEvery, token)
+        local instances = {}
+        for instance in pairs(Perf.Saved) do instances[#instances + 1] = instance end
+        for index, instance in ipairs(instances) do
+            if token and token ~= Perf.ScanToken then return false end
+            Perf.RestoreInstance(instance)
+            if yieldEvery and index % yieldEvery == 0 then task.wait() end
+        end
+        return true
+    end
+
+    function Perf.Write(instance, property, value)
+        if value == nil then
+            Perf.RestoreProperty(instance, property)
+            return
+        end
+        local saved = Perf.Saved[instance]
+        if not saved then saved = {}; Perf.Saved[instance] = saved end
+        if saved[property] == nil then
+            local ok, original = pcall(function() return instance[property] end)
+            if not ok then return end
+            saved[property] = original
+        end
+        pcall(function() instance[property] = value end)
+    end
+
+    function Perf.IsVisualEffect(instance)
+        return instance:IsA("PostEffect") or instance:IsA("ParticleEmitter")
+            or instance:IsA("Trail") or instance:IsA("Beam")
+            or instance:IsA("Fire") or instance:IsA("Smoke")
+            or instance:IsA("Sparkles") or instance:IsA("Light")
+    end
+
+    function Perf.FindAnchor(instance)
+        local node = instance
+        for _ = 1, 6 do
+            if not node then return nil end
+            if node:IsA("BasePart") then return node end
+            node = node.Parent
+        end
+        return nil
+    end
+
+    function Perf.AddGrayProperties(instance, desired, gray)
+        if instance:IsA("BasePart") then
+            desired.Color = gray
+        elseif instance:IsA("Decal") then
+            desired.Color3 = gray
+        elseif instance:IsA("ParticleEmitter") or instance:IsA("Trail") or instance:IsA("Beam") then
+            desired.Color = ColorSequence.new(gray)
+        elseif instance:IsA("Fire") then
+            desired.Color, desired.SecondaryColor = gray, gray
+        elseif instance:IsA("Smoke") then
+            desired.Color = gray
+        elseif instance:IsA("Sparkles") then
+            desired.SparkleColor = gray
+        elseif instance:IsA("Light") then
+            desired.Color = gray
+        elseif instance:IsA("Highlight") then
+            desired.FillColor, desired.OutlineColor = gray, gray
+        elseif instance:IsA("SurfaceAppearance") then
+            pcall(function()
+                if typeof(instance.Color) == "Color3" then desired.Color = gray end
+            end)
+        end
+    end
+
+    function Perf.ApplyInstance(instance, cameraPosition)
+        local character = player.Character
+        if character and (instance == character or instance:IsDescendantOf(character)) then
+            Perf.RestoreInstance(instance)
+            return
+        end
+
+        local modes = Perf.Modes
+        local distant = false
+        if modes.far and cameraPosition then
+            local anchor = Perf.FindAnchor(instance)
+            if anchor then
+                pcall(function()
+                    distant = (anchor.Position - cameraPosition).Magnitude >= Perf.FarDistance
+                end)
+            end
+        end
+        local simplify = modes.normal or modes.gray or modes.cpu or modes.ultra or distant
+        local desired = {}
+
+        if instance:IsA("BasePart") then
+            if modes.ultra or distant then desired.LocalTransparencyModifier = 1 end
+            if simplify then
+                desired.Material = Enum.Material.Plastic
+                desired.Reflectance = 0
+                desired.CastShadow = false
+                if instance:IsA("MeshPart") then
+                    desired.RenderFidelity = Enum.RenderFidelity.Performance
+                end
+            end
+        end
+
+        local reduceEffects = modes.quick or modes.normal or modes.cpu or modes.ultra
+        local removeColorFilters = modes.gray and instance:IsA("PostEffect")
+        if (reduceEffects or distant or removeColorFilters) and Perf.IsVisualEffect(instance) then
+            desired.Enabled = false
+        end
+        if modes.ultra then
+            if instance:IsA("Decal") then desired.Transparency = 1 end
+            if instance:IsA("BillboardGui") or instance:IsA("SurfaceGui") or instance:IsA("Highlight") then
+                desired.Enabled = false
+            end
+        end
+        if modes.gray then
+            Perf.AddGrayProperties(instance, desired, Color3.fromRGB(Perf.GrayValue, Perf.GrayValue, Perf.GrayValue))
+        end
+
+        local saved = Perf.Saved[instance]
+        if saved then
+            local restore = {}
+            for property in pairs(saved) do
+                if desired[property] == nil then restore[#restore + 1] = property end
+            end
+            for _, property in ipairs(restore) do Perf.RestoreProperty(instance, property) end
+        end
+        for property, value in pairs(desired) do Perf.Write(instance, property, value) end
+    end
+
+    function Perf.UpdateGlobals()
+        local modes = Perf.Modes
+        local lowerShadows = modes.quick or modes.normal or modes.gray or modes.cpu or modes.ultra
+        local shadows = nil
+        if lowerShadows then shadows = false end
+        Perf.Write(game:GetService("Lighting"), "GlobalShadows", shadows)
+
+        local terrain = workspace.Terrain
+        local terrainDecoration, waveSize, waveSpeed = nil, nil, nil
+        if modes.cpu or modes.ultra then
+            terrainDecoration, waveSize, waveSpeed = false, 0, 0
+        end
+        Perf.Write(terrain, "Decoration", terrainDecoration)
+        Perf.Write(terrain, "WaterWaveSize", waveSize)
+        Perf.Write(terrain, "WaterWaveSpeed", waveSpeed)
+    end
+
+    function Perf.SyncPanel()
+        for _, item in ipairs(modeList) do
+            local button = Perf.Buttons[item.id]
+            if button and button.Parent then
+                local on = Perf.Modes[item.id] == true
+                button.Text = item.title .. ": " .. (on and "BẬT" or "TẮT")
+                D.SetBg(button, on and C.GREEN or C.SURFACE2)
+            end
+        end
+    end
+    S.SyncPerfPanel = Perf.SyncPanel
+
+    function Perf.QueueScan(fromFarWatcher)
+        if fromFarWatcher and Perf.Worker then return false end
+        Perf.ScanToken += 1
+        local token = Perf.ScanToken
+        if Perf.Worker then pcall(task.cancel, Perf.Worker); Perf.Worker = nil end
+
+        if not Perf.HasActive() then
+            if Perf.Status and Perf.Status.Parent then Perf.Status.Text = "↩ Đang khôi phục hình ảnh gốc..." end
+            Perf.Worker = task.spawn(function()
+                Perf.RestoreAll(240, token)
+                if token == Perf.ScanToken then
+                    Perf.Worker = nil
+                    if Perf.Status and Perf.Status.Parent then
+                        Perf.Status.Text = "✅ Đã khôi phục. Map, va chạm và nhân vật không bị xóa."
+                    end
+                end
+            end)
+            return true
+        end
+
+        if Perf.Status and Perf.Status.Parent then Perf.Status.Text = "⏳ Đang áp dụng theo từng lô..." end
+        Perf.Worker = task.spawn(function()
+            Perf.UpdateGlobals()
+            local roots = {workspace, game:GetService("Lighting")}
+            local camera = workspace.CurrentCamera
+            if camera then roots[#roots + 1] = camera end
+            local visited = setmetatable({}, {__mode = "k"})
+            local cameraPosition = camera and camera.CFrame.Position or nil
+            local batchSize = Perf.Modes.cpu and 90 or 220
+            local processed = 0
+
+            for _, root in ipairs(roots) do
+                local stack = {root}
+                while #stack > 0 do
+                    if token ~= Perf.ScanToken then return end
+                    local parent = table.remove(stack)
+                    local ok, children = pcall(function() return parent:GetChildren() end)
+                    if ok and type(children) == "table" then
+                        for _, child in ipairs(children) do
+                            if token ~= Perf.ScanToken then return end
+                            if not visited[child] then
+                                visited[child] = true
+                                processed += 1
+                                pcall(Perf.ApplyInstance, child, cameraPosition)
+                                stack[#stack + 1] = child
+                                if processed % batchSize == 0 then task.wait() end
+                            end
+                        end
+                    end
+                end
+            end
+
+            if token == Perf.ScanToken then
+                Perf.Worker = nil
+                if Perf.Status and Perf.Status.Parent then
+                    Perf.Status.Text = string.format("✅ Đã tối ưu %d đối tượng · chỉ đổi hình ảnh trên máy này; bật ↩ để hoàn tác.", processed)
+                end
+            end
+        end)
+        return true
+    end
+
+    function Perf.SyncFarWatcher()
+        Perf.FarToken += 1
+        local token = Perf.FarToken
+        Perf.FarWatcher = nil
+        if not Perf.Modes.far then return end
+        local camera = workspace.CurrentCamera
+        local lastPosition = camera and camera.CFrame.Position or nil
+        Perf.FarWatcher = task.spawn(function()
+            while token == Perf.FarToken and Perf.Modes.far do
+                task.wait(1.2)
+                if token ~= Perf.FarToken or not Perf.Modes.far then break end
+                local currentCamera = workspace.CurrentCamera
+                local position = currentCamera and currentCamera.CFrame.Position or nil
+                if position and (not lastPosition or (position - lastPosition).Magnitude >= 60) and not Perf.Worker then
+                    lastPosition = position
+                    Perf.QueueScan(true)
+                end
+            end
+            if token == Perf.FarToken then Perf.FarWatcher = nil end
+        end)
+    end
+
+    function Perf.Toggle(id)
+        if Perf.Modes[id] == nil then return end
+        Perf.Modes[id] = not Perf.Modes[id]
+        Perf.SyncFarWatcher()
+        Perf.QueueScan(false)
+        Perf.SyncPanel()
+        local notes = {
+            quick = "⚡ Nhanh: giảm bóng và tắt hiệu ứng nặng.",
+            normal = "🎮 Bình thường: vật liệu nhẹ hơn, tắt bóng và hiệu ứng.",
+            gray = "🩶 Mạnh xám: đổi màu vật thể; chỉnh mức xám từ 0 đến 255.",
+            far = "🌫 Vật ở xa: ẩn hình ảnh vật xa camera; chỉnh khoảng cách bên dưới.",
+            cpu = "🧠 CPU: giảm hiệu ứng nước/địa hình, quét theo lô; không cố tình tải CPU thêm.",
+            ultra = "🚫 Cực mạnh: ẩn hình ảnh vật thể cục bộ; va chạm và di chuyển vẫn giữ nguyên.",
+        }
+        D.Say((Perf.Modes[id] and "✅ " or "↩ ") .. notes[id], C.YELLOW)
+    end
+
+    function Perf.ApplyGrayValue(text)
+        local value = tonumber(text)
+        if not value or value ~= value or value == math.huge or value == -math.huge then
+            if Perf.Status and Perf.Status.Parent then Perf.Status.Text = "⚠️ Màu xám nhập số từ 0 đến 255." end
+            return
+        end
+        Perf.GrayValue = math.clamp(math.floor(value + 0.5), 0, 255)
+        if Perf.GrayBox and Perf.GrayBox.Parent then Perf.GrayBox.Text = tostring(Perf.GrayValue) end
+        if Perf.Modes.gray then Perf.QueueScan(false)
+        elseif Perf.Status and Perf.Status.Parent then Perf.Status.Text = "🩶 Đã chọn mức xám " .. tostring(Perf.GrayValue) .. " (0 đen · 255 trắng)." end
+    end
+
+    function Perf.ApplyFarDistance(text)
+        local value = tonumber(text)
+        if not value or value ~= value or value == math.huge or value == -math.huge then
+            if Perf.Status and Perf.Status.Parent then Perf.Status.Text = "⚠️ Khoảng cách nhập số từ 50 đến 10.000 studs." end
+            return
+        end
+        Perf.FarDistance = math.clamp(math.floor(value + 0.5), 50, 10000)
+        if Perf.FarBox and Perf.FarBox.Parent then Perf.FarBox.Text = tostring(Perf.FarDistance) end
+        if Perf.Modes.far then Perf.QueueScan(false)
+        elseif Perf.Status and Perf.Status.Parent then Perf.Status.Text = "🌫 Khoảng cách xa đã đặt: " .. tostring(Perf.FarDistance) .. " studs." end
+    end
+
+    function Perf.Reset()
+        for id in pairs(Perf.Modes) do Perf.Modes[id] = false end
+        Perf.SyncFarWatcher()
+        Perf.QueueScan(false)
+        Perf.SyncPanel()
+    end
+
+    function Perf.Stop()
+        for id in pairs(Perf.Modes) do Perf.Modes[id] = false end
+        Perf.ScanToken += 1
+        Perf.FarToken += 1
+        if Perf.Worker then pcall(task.cancel, Perf.Worker); Perf.Worker = nil end
+        if Perf.FarWatcher then pcall(task.cancel, Perf.FarWatcher); Perf.FarWatcher = nil end
+        Perf.RestoreAll()
+    end
+
+    local panel = New("Frame", {
+        Name = "HubPerf_Panel", Size = UDim2.new(1, 0, 0, 196), LayoutOrder = -5,
+        BackgroundColor3 = C.SURFACE, BackgroundTransparency = 0.12, BorderSizePixel = 0, ZIndex = 6,
+    }, D.hubList)
+    Corner(panel, UDim.new(0, 10)); Stroke(panel, C.HAIRLINE, 1)
+    D.Shade(panel, Color3.fromRGB(255,255,255), Color3.fromRGB(188,192,205), 90)
+    New("TextLabel", {
+        Size = UDim2.new(1, -92, 0, 16), Position = UDim2.new(0, 8, 0, 4),
+        Text = "⚡ GIẢM LAG — 6 chế độ", BackgroundTransparency = 1, TextColor3 = C.ACCENT,
+        Font = Enum.Font.GothamBold, TextSize = 10, TextXAlignment = Enum.TextXAlignment.Left, ZIndex = 7,
+    }, panel)
+    local resetButton = New("TextButton", {
+        Name = "HubPerfReset", Size = UDim2.new(0, 74, 0, 18), Position = UDim2.new(1, -82, 0, 3),
+        Text = "↩ Hoàn tác", BackgroundColor3 = C.RED, TextColor3 = C.WHITE, Font = Enum.Font.GothamBold,
+        TextSize = 8, BorderSizePixel = 0, ZIndex = 8,
+    }, panel)
+    Corner(resetButton, UDim.new(0, 5)); D.Tactile(resetButton, 0.08)
+    New("TextLabel", {
+        Size = UDim2.new(1, -16, 0, 14), Position = UDim2.new(0, 8, 0, 20),
+        Text = "Cực mạnh chỉ ẩn hình ảnh cục bộ; không xóa map, va chạm hay nhân vật bạn.",
+        BackgroundTransparency = 1, TextColor3 = C.MUTED, Font = Enum.Font.GothamMedium,
+        TextSize = 8, TextWrapped = true, TextXAlignment = Enum.TextXAlignment.Left, ZIndex = 7,
+    }, panel)
+
+    for index, item in ipairs(modeList) do
+        local modeId = item.id
+        local column = (index - 1) % 3
+        local row = math.floor((index - 1) / 3)
+        local button = New("TextButton", {
+            Name = "HubPerf_" .. modeId, Size = UDim2.new(0, 124, 0, 22),
+            Position = UDim2.new(0, 8 + column * 132, 0, 38 + row * 26),
+            Text = item.title .. ": TẮT", BackgroundColor3 = C.SURFACE2, TextColor3 = C.DARK,
+            Font = Enum.Font.GothamBold, TextSize = 8, BorderSizePixel = 0, ZIndex = 8,
+        }, panel)
+        Corner(button, UDim.new(0, 6)); D.Tactile(button, 0.08)
+        Perf.Buttons[modeId] = button
+        button.Activated:Connect(function() ReleaseHubFocus(); Perf.Toggle(modeId) end)
+    end
+
+    New("TextLabel", {
+        Size = UDim2.new(0, 106, 0, 20), Position = UDim2.new(0, 8, 0, 94),
+        Text = "Mức xám (0–255)", BackgroundTransparency = 1, TextColor3 = C.MUTED,
+        Font = Enum.Font.GothamMedium, TextSize = 8, TextXAlignment = Enum.TextXAlignment.Left, ZIndex = 7,
+    }, panel)
+    Perf.GrayBox = New("TextBox", {
+        Name = "HubPerfGrayValue", Size = UDim2.new(0, 52, 0, 20), Position = UDim2.new(0, 112, 0, 94),
+        Text = tostring(Perf.GrayValue), ClearTextOnFocus = false, BackgroundColor3 = C.SURFACE2,
+        TextColor3 = C.DARK, Font = Enum.Font.GothamMedium, TextSize = 9, BorderSizePixel = 0, ZIndex = 8,
+    }, panel)
+    Corner(Perf.GrayBox, UDim.new(0, 5))
+    local applyGrayButton = New("TextButton", {
+        Size = UDim2.new(0, 66, 0, 20), Position = UDim2.new(0, 170, 0, 94),
+        Text = "✔ Áp xám", BackgroundColor3 = C.PURPLE, TextColor3 = C.WHITE,
+        Font = Enum.Font.GothamBold, TextSize = 8, BorderSizePixel = 0, ZIndex = 8,
+    }, panel)
+    Corner(applyGrayButton, UDim.new(0, 5)); D.Tactile(applyGrayButton, 0.08)
+
+    New("TextLabel", {
+        Size = UDim2.new(0, 128, 0, 20), Position = UDim2.new(0, 8, 0, 120),
+        Text = "Ẩn vật xa hơn (stud)", BackgroundTransparency = 1, TextColor3 = C.MUTED,
+        Font = Enum.Font.GothamMedium, TextSize = 8, TextXAlignment = Enum.TextXAlignment.Left, ZIndex = 7,
+    }, panel)
+    Perf.FarBox = New("TextBox", {
+        Name = "HubPerfFarDistance", Size = UDim2.new(0, 64, 0, 20), Position = UDim2.new(0, 134, 0, 120),
+        Text = tostring(Perf.FarDistance), ClearTextOnFocus = false, BackgroundColor3 = C.SURFACE2,
+        TextColor3 = C.DARK, Font = Enum.Font.GothamMedium, TextSize = 9, BorderSizePixel = 0, ZIndex = 8,
+    }, panel)
+    Corner(Perf.FarBox, UDim.new(0, 5))
+    local applyFarButton = New("TextButton", {
+        Size = UDim2.new(0, 66, 0, 20), Position = UDim2.new(0, 204, 0, 120),
+        Text = "✔ Áp xa", BackgroundColor3 = C.BLUE, TextColor3 = C.WHITE,
+        Font = Enum.Font.GothamBold, TextSize = 8, BorderSizePixel = 0, ZIndex = 8,
+    }, panel)
+    Corner(applyFarButton, UDim.new(0, 5)); D.Tactile(applyFarButton, 0.08)
+
+    Perf.Status = New("TextLabel", {
+        Name = "HubPerfStatus", Size = UDim2.new(1, -16, 0, 32), Position = UDim2.new(0, 8, 0, 148),
+        Text = "Mỗi chế độ có thể bật/tắt riêng; 🔎 CPU dùng quét theo lô, không tạo vòng lặp nặng.",
+        BackgroundTransparency = 1, TextColor3 = C.MUTED, Font = Enum.Font.GothamMedium,
+        TextSize = 8, TextWrapped = true, TextXAlignment = Enum.TextXAlignment.Left, TextYAlignment = Enum.TextYAlignment.Top, ZIndex = 7,
+    }, panel)
+
+    resetButton.Activated:Connect(function()
+        ReleaseHubFocus()
+        Perf.Reset()
+        D.Say("↩ Đang khôi phục hình ảnh gốc của các chế độ giảm lag.", C.YELLOW)
+    end)
+    applyGrayButton.Activated:Connect(function() ReleaseHubFocus(); Perf.ApplyGrayValue(Perf.GrayBox.Text) end)
+    applyFarButton.Activated:Connect(function() ReleaseHubFocus(); Perf.ApplyFarDistance(Perf.FarBox.Text) end)
+    trackConn(Perf.GrayBox.FocusLost:Connect(function(enter)
+        if enter then Perf.ApplyGrayValue(Perf.GrayBox.Text) end
+    end))
+    trackConn(Perf.FarBox.FocusLost:Connect(function(enter)
+        if enter then Perf.ApplyFarDistance(Perf.FarBox.Text) end
+    end))
+
+    local function watchRoot(root)
+        if not root then return end
+        trackConn(root.DescendantAdded:Connect(function(instance)
+            if not Perf.HasActive() then return end
+            task.defer(function()
+                if not Perf.HasActive() then return end
+                local currentCamera = workspace.CurrentCamera
+                local position = currentCamera and currentCamera.CFrame.Position or nil
+                pcall(Perf.ApplyInstance, instance, position)
+            end)
+        end))
+    end
+    watchRoot(workspace)
+    watchRoot(game:GetService("Lighting"))
+    trackConn(player.CharacterAdded:Connect(function(character)
+        task.defer(function()
+            for _, instance in ipairs(character:GetDescendants()) do Perf.RestoreInstance(instance) end
+        end)
+    end))
+    Perf.SyncPanel()
+end
+
+S.HubPanelCat = { HubPerf_Panel = "Tiện ích", HubTune_Panel = "Di chuyển",
     HubFly_Panel = "Di chuyển", HubSpeed_Panel = "Di chuyển",
     HubHighJump_Panel = "Di chuyển", HubMove_Panel = "Di chuyển",
     HubSafe_Panel = "Di chuyển", HubGlow_Panel = "Tiện ích",
@@ -5465,6 +5933,7 @@ function S.RebuildHubList() local list = D.hubList
     if S.SyncFreePanel then pcall(S.SyncFreePanel) end         -- v4.64: 🎥 khán giả
     if S.SyncSafePanel then pcall(S.SyncSafePanel) end         -- v4.17: nhãn khung 🛡 bay an toàn
     if S.SyncAntiBanPanel then pcall(S.SyncAntiBanPanel) end   -- v4.43: 🔐 anti ban
+    if S.SyncPerfPanel then pcall(S.SyncPerfPanel) end         -- v5.3: ⚡️ giảm lag
     if #items == 0 and D.hubStatus then D.Say("🔍 không tìm thấy gì khớp '" .. tostring(S.hubSearch or "") .. "'", C.MUTED)
     end end
 
