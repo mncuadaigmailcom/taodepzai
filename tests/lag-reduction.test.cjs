@@ -4,20 +4,21 @@ const path = require('node:path');
 const test = require('node:test');
 
 const script = fs.readFileSync(path.join(__dirname, '..', 'script.js'), 'utf8');
-const start = script.indexOf('-- ---------- v5.4: CPU + VỎ CẦU CÓ THỂ ĐIỀU CHỈNH ----------');
+const start = script.indexOf('-- ---------- v5.4: CPU + GIẢM LAG CẦU CÓ THỂ ĐIỀU CHỈNH ----------');
 const end = script.indexOf('\nS.HubPanelCat =', start);
 assert.notEqual(start, -1, 'Script Hub phải có khối CPU + tầm nhìn');
 assert.notEqual(end, -1, 'khối CPU + tầm nhìn phải kết thúc trước phần lọc tab');
 const panel = script.slice(start, end);
 
-test('khung chỉ giữ nút CPU và vỏ cầu, không còn các chế độ cũ', () => {
+test('khung chỉ giữ CPU và giảm lag theo cầu, không còn các chế độ cũ', () => {
     const modes = [...panel.matchAll(/\{id = "(cpu|range)"/g)].map(match => match[1]);
     assert.deepEqual(modes, ['cpu', 'range']);
     assert.match(panel, /Name = "HubPerf_Panel"[^\n]*LayoutOrder = -5/);
     assert.match(script, /HubPerf_Panel = "Tiện ích"/);
     assert.match(panel, /Name = "HubPerf_" \.\. modeId/);
     assert.doesNotMatch(panel, /id = "(quick|normal|gray|far|ultra)"/);
-    assert.doesNotMatch(panel, /Tầm nhìn/);
+    assert.match(panel, /title = "🌐 Giảm lag cầu"/);
+    assert.doesNotMatch(panel, /Vỏ cầu|Tầm nhìn/);
 });
 
 test('tầm nhìn nhập bằng mét và được quy đổi sang studs có giới hạn hợp lệ', () => {
@@ -29,12 +30,18 @@ test('tầm nhìn nhập bằng mét và được quy đổi sang studs có gi�
     assert.match(panel, /Bán kính \(m\)/);
 });
 
-test('vùng nhìn là một vỏ cầu trong suốt, bám nhân vật và dùng cùng bán kính', () => {
+test('giảm lag tạo cầu trắng ban ngày, đổi màu tối ban đêm và bám nhân vật', () => {
     assert.match(panel, /Instance\.new\("SphereHandleAdornment"\)/);
     assert.match(panel, /sphere\.Adornee = root/);
     assert.match(panel, /sphere\.Parent = root/);
     assert.match(panel, /sphere\.Radius = Perf\.GetViewDistanceStuds\(\)/);
-    assert.match(panel, /sphere\.Transparency = 0\.82/);
+    assert.match(panel, /sphere\.Transparency = 0\.78/);
+    assert.match(panel, /function Perf\.GetRangeSphereColor\(\)/);
+    assert.match(panel, /lighting\.ClockTime >= 19 or lighting\.ClockTime <= 6/);
+    assert.match(panel, /lighting\.Brightness \* ambientLevel < 0\.35/);
+    assert.match(panel, /return dark and Color3\.fromRGB\(80, 80, 92\) or Color3\.new\(1, 1, 1\)/);
+    assert.match(panel, /Perf\.RangeSphere\.Color3 = sphereColor/);
+    assert.match(panel, /Perf\.SyncRangeSphere\(\) -- cập nhật bán kính và màu theo ánh sáng môi trường/);
     assert.match(panel, /sphere\.AlwaysOnTop = true/);
     assert.match(panel, /Perf\.RangeSphere\.Radius = Perf\.GetViewDistanceStuds\(\)/);
     assert.match(panel, /function Perf\.SyncRangeSphere\(\)/);

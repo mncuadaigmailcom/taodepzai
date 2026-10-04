@@ -5380,12 +5380,12 @@ end)
 function S.Rebuild() pcall(function() if S.RebuildHubList then S.RebuildHubList() end end)
 end
 
--- ---------- v5.4: CPU + VỎ CẦU CÓ THỂ ĐIỀU CHỈNH ----------
+-- ---------- v5.4: CPU + GIẢM LAG CẦU CÓ THỂ ĐIỀU CHỈNH ----------
 do
     local STUDS_PER_METER = 1 / 0.28 -- quy đổi xấp xỉ theo kích thước chuẩn Roblox
     local modeList = {
         {id = "cpu", title = "🧠 CPU"},
-        {id = "range", title = "🌐 Vỏ cầu"},
+        {id = "range", title = "🌐 Giảm lag cầu"},
     }
     local Perf = {
         Modes = {cpu = false, range = false},
@@ -5413,6 +5413,18 @@ do
         return root and root.Position or nil
     end
 
+    function Perf.GetRangeSphereColor()
+        local dark = false
+        pcall(function()
+            local lighting = game:GetService("Lighting")
+            local ambient, outdoor = lighting.Ambient, lighting.OutdoorAmbient
+            local ambientLevel = (ambient.R + ambient.G + ambient.B + outdoor.R + outdoor.G + outdoor.B) / 6
+            dark = lighting.ClockTime >= 19 or lighting.ClockTime <= 6
+                or lighting.Brightness * ambientLevel < 0.35
+        end)
+        return dark and Color3.fromRGB(80, 80, 92) or Color3.new(1, 1, 1)
+    end
+
     function Perf.ClearRangeSphere()
         local sphere = Perf.RangeSphere
         Perf.RangeSphere, Perf.RangeAdornee = nil, nil
@@ -5427,21 +5439,25 @@ do
         if Perf.RangeSphere and (not Perf.RangeSphere.Parent or Perf.RangeAdornee ~= root) then
             Perf.ClearRangeSphere()
         end
+        local sphereColor = Perf.GetRangeSphereColor()
         if not Perf.RangeSphere then
             local sphere = Instance.new("SphereHandleAdornment")
             sphere.Name = "BananaCatHubRangeSphere"
             sphere.Adornee = root
             sphere.CFrame = CFrame.new()
             sphere.Radius = Perf.GetViewDistanceStuds()
-            sphere.Color3 = C.BLUE
-            sphere.Transparency = 0.82
+            sphere.Color3 = sphereColor
+            sphere.Transparency = 0.78
             sphere.AlwaysOnTop = true
             sphere.Visible = true
             sphere.ZIndex = 4
             sphere.Parent = root
             Perf.RangeSphere, Perf.RangeAdornee = sphere, root
         else
-            pcall(function() Perf.RangeSphere.Radius = Perf.GetViewDistanceStuds() end)
+            pcall(function()
+                Perf.RangeSphere.Radius = Perf.GetViewDistanceStuds()
+                Perf.RangeSphere.Color3 = sphereColor
+            end)
         end
     end
 
@@ -5672,11 +5688,7 @@ do
                 task.wait(0.3)
                 if token ~= Perf.RangeToken or not Perf.Modes.range then break end
                 local position = Perf.GetRangePosition()
-                local character = player.Character
-                local root = character and character:FindFirstChild("HumanoidRootPart")
-                if root and (not Perf.RangeSphere or not Perf.RangeSphere.Parent or Perf.RangeAdornee ~= root) then
-                    Perf.SyncRangeSphere()
-                end
+                Perf.SyncRangeSphere() -- cập nhật bán kính và màu theo ánh sáng môi trường
                 local movementThreshold = math.max(2, math.min(12, Perf.GetViewDistanceStuds() * 0.1))
                 if position and (not lastPosition or (position - lastPosition).Magnitude >= movementThreshold) and not Perf.Worker then
                     lastPosition = position
@@ -5698,7 +5710,7 @@ do
         if id == "cpu" then
             note = "🧠 CPU: giảm tải hiệu ứng và quét theo lô."
         else
-            note = "🌐 Vỏ cầu bán kính " .. tostring(Perf.ViewDistanceMeters) .. " m (~"
+            note = "🌐 Giảm lag cầu · bán kính " .. tostring(Perf.ViewDistanceMeters) .. " m (~"
                 .. tostring(math.floor(Perf.GetViewDistanceStuds() + 0.5)) .. " studs); ngoài tầm sẽ ẩn, tới gần tự hiện."
         end
         D.Say((Perf.Modes[id] and "✅ " or "↩ ") .. note, C.YELLOW)
@@ -5719,7 +5731,7 @@ do
             Perf.QueueScan(false)
         elseif Perf.Status and Perf.Status.Parent then
             Perf.Status.Text = string.format(
-                "🌐 Đã đặt bán kính %dm (~%d studs). Bật Vỏ cầu để áp dụng.",
+                "🌐 Đã đặt bán kính %dm (~%d studs). Bật Giảm lag cầu để áp dụng.",
                 Perf.ViewDistanceMeters, math.floor(Perf.GetViewDistanceStuds() + 0.5)
             )
         end
@@ -5751,7 +5763,7 @@ do
     D.Shade(panel, Color3.fromRGB(255,255,255), Color3.fromRGB(188,192,205), 90)
     New("TextLabel", {
         Size = UDim2.new(1, -174, 0, 16), Position = UDim2.new(0, 8, 0, 4),
-        Text = "⚡ CPU · VỎ CẦU", BackgroundTransparency = 1, TextColor3 = C.ACCENT,
+        Text = "⚡ CPU · GIẢM LAG CẦU", BackgroundTransparency = 1, TextColor3 = C.ACCENT,
         Font = Enum.Font.GothamBold, TextSize = 9, TextXAlignment = Enum.TextXAlignment.Left, ZIndex = 7,
     }, panel)
     Perf.FpsLabel = New("TextLabel", {
@@ -5782,7 +5794,7 @@ do
     Corner(resetButton, UDim.new(0, 5)); D.Tactile(resetButton, 0.08)
     New("TextLabel", {
         Size = UDim2.new(1, -16, 0, 18), Position = UDim2.new(0, 8, 0, 20),
-        Text = "Vỏ cầu trong suốt, tâm tại bạn; vật ngoài bán kính ẩn cục bộ, tới gần tự hiện lại.",
+        Text = "Cầu theo tâm nhân vật; ngoài bán kính ẩn cục bộ. Màu tự đổi theo sáng/tối.",
         BackgroundTransparency = 1, TextColor3 = C.MUTED, Font = Enum.Font.GothamMedium,
         TextSize = 8, TextWrapped = true, TextXAlignment = Enum.TextXAlignment.Left, ZIndex = 7,
     }, panel)
@@ -5826,7 +5838,7 @@ do
     }, panel)
     Perf.Status = New("TextLabel", {
         Name = "HubPerfStatus", Size = UDim2.new(1, -16, 0, 34), Position = UDim2.new(0, 8, 0, 112),
-        Text = "Đặt bán kính (ví dụ 30 m), bật Vỏ cầu; CPU có thể bật riêng.",
+        Text = "Đặt bán kính (ví dụ 30 m), bật Giảm lag cầu; CPU có thể bật riêng.",
         BackgroundTransparency = 1, TextColor3 = C.MUTED, Font = Enum.Font.GothamMedium,
         TextSize = 8, TextWrapped = true, TextXAlignment = Enum.TextXAlignment.Left, TextYAlignment = Enum.TextYAlignment.Top, ZIndex = 7,
     }, panel)
@@ -5834,7 +5846,7 @@ do
     resetButton.Activated:Connect(function()
         ReleaseHubFocus()
         Perf.Reset()
-        D.Say("↩ Đang khôi phục hình ảnh gốc; CPU và vỏ cầu đã tắt.", C.YELLOW)
+        D.Say("↩ Đang khôi phục hình ảnh gốc; CPU và giảm lag cầu đã tắt.", C.YELLOW)
     end)
     applyRangeButton.Activated:Connect(function()
         ReleaseHubFocus()
