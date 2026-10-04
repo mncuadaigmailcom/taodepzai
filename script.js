@@ -5407,12 +5407,6 @@ do
         return Perf.ViewDistanceMeters * STUDS_PER_METER
     end
 
-    function Perf.GetRangePosition()
-        local character = player.Character
-        local root = character and character:FindFirstChild("HumanoidRootPart")
-        return root and root.Position or nil
-    end
-
     function Perf.GetRangeSphereColor()
         local dark = false
         pcall(function()
@@ -5447,8 +5441,8 @@ do
             sphere.CFrame = CFrame.new()
             sphere.Radius = Perf.GetViewDistanceStuds()
             sphere.Color3 = sphereColor
-            sphere.Transparency = 0.78
-            sphere.AlwaysOnTop = true
+            sphere.Transparency = 0
+            sphere.AlwaysOnTop = false
             sphere.Visible = true
             sphere.ZIndex = 4
             sphere.Parent = root
@@ -5518,63 +5512,23 @@ do
             or instance:IsA("Sparkles") or instance:IsA("Light")
     end
 
-    function Perf.FindAnchor(instance)
-        local node = instance
-        for _ = 1, 6 do
-            if not node then return nil end
-            if node:IsA("BasePart") then return node end
-            node = node.Parent
-        end
-        return nil
-    end
-
-    function Perf.ApplyInstance(instance, centerPosition)
+    function Perf.ApplyInstance(instance)
         local character = player.Character
         if character and (instance == character or instance:IsDescendantOf(character)) then
             Perf.RestoreInstance(instance)
             return
         end
 
-        local modes = Perf.Modes
-        local outOfRange = false
-        if modes.range and centerPosition then
-            local anchor = Perf.FindAnchor(instance)
-            if anchor then
-                pcall(function()
-                    outOfRange = (anchor.Position - centerPosition).Magnitude >= Perf.GetViewDistanceStuds()
-                end)
-            end
-        end
-        local simplify = modes.cpu or outOfRange
         local desired = {}
-
-        if instance:IsA("BasePart") then
-            if outOfRange then desired.LocalTransparencyModifier = 1 end
-            if simplify then
-                desired.Material = Enum.Material.Plastic
-                desired.Reflectance = 0
-                desired.CastShadow = false
-                if instance:IsA("MeshPart") then
-                    desired.RenderFidelity = Enum.RenderFidelity.Performance
-                end
+        if Perf.Modes.cpu and instance:IsA("BasePart") then
+            desired.Material = Enum.Material.Plastic
+            desired.Reflectance = 0
+            desired.CastShadow = false
+            if instance:IsA("MeshPart") then
+                desired.RenderFidelity = Enum.RenderFidelity.Performance
             end
         end
-
-        if (modes.cpu or outOfRange) and Perf.IsVisualEffect(instance) then
-            desired.Enabled = false
-        end
-        if outOfRange then
-            if instance:IsA("Decal") then desired.Transparency = 1 end
-            if instance:IsA("SpecialMesh") then desired.TextureId = "" end
-            if instance:IsA("MeshPart") then desired.TextureID = "" end
-            if instance:IsA("SurfaceAppearance") then
-                desired.ColorMap, desired.MetalnessMap = "", ""
-                desired.NormalMap, desired.RoughnessMap = "", ""
-            end
-            if instance:IsA("BillboardGui") or instance:IsA("SurfaceGui") or instance:IsA("Highlight") then
-                desired.Enabled = false
-            end
-        end
+        if Perf.Modes.cpu and Perf.IsVisualEffect(instance) then desired.Enabled = false end
 
         local saved = Perf.Saved[instance]
         if saved then
@@ -5612,35 +5566,36 @@ do
     end
     S.SyncPerfPanel = Perf.SyncPanel
 
-    function Perf.QueueScan(fromRangeWatcher)
-        if fromRangeWatcher and Perf.Worker then return false end
+    function Perf.QueueScan()
         Perf.ScanToken += 1
         local token = Perf.ScanToken
         if Perf.Worker then pcall(task.cancel, Perf.Worker); Perf.Worker = nil end
 
-        if not Perf.HasActive() then
-            if Perf.Status and Perf.Status.Parent then Perf.Status.Text = "↩ Đang khôi phục hình ảnh gốc..." end
+        if not Perf.Modes.cpu then
+            if Perf.Status and Perf.Status.Parent then Perf.Status.Text = "↩ Đang khôi phục cài đặt CPU..." end
             Perf.Worker = task.spawn(function()
+                Perf.UpdateGlobals()
                 Perf.RestoreAll(240, token)
                 if token == Perf.ScanToken then
                     Perf.Worker = nil
                     if Perf.Status and Perf.Status.Parent then
-                        Perf.Status.Text = "✅ Đã khôi phục hình ảnh gốc."
+                        Perf.Status.Text = Perf.Modes.range
+                            and "✅ Cầu đang bật; vật thể không bị ẩn hay xóa."
+                            or "✅ Đã khôi phục hình ảnh gốc."
                     end
                 end
             end)
             return true
         end
 
-        if Perf.Status and Perf.Status.Parent then Perf.Status.Text = "⏳ Đang áp dụng theo từng lô..." end
+        if Perf.Status and Perf.Status.Parent then Perf.Status.Text = "⏳ Đang áp dụng CPU theo từng lô..." end
         Perf.Worker = task.spawn(function()
             Perf.UpdateGlobals()
             local roots = {workspace, game:GetService("Lighting")}
             local camera = workspace.CurrentCamera
             if camera then roots[#roots + 1] = camera end
             local visited = setmetatable({}, {__mode = "k"})
-            local centerPosition = Perf.GetRangePosition()
-            local batchSize = Perf.Modes.cpu and 90 or 220
+            local batchSize = 90
             local processed = 0
 
             for _, root in ipairs(roots) do
@@ -5655,7 +5610,7 @@ do
                             if not visited[child] then
                                 visited[child] = true
                                 processed += 1
-                                pcall(Perf.ApplyInstance, child, centerPosition)
+                                pcall(Perf.ApplyInstance, child)
                                 stack[#stack + 1] = child
                                 if processed % batchSize == 0 then task.wait() end
                             end
@@ -5667,10 +5622,7 @@ do
             if token == Perf.ScanToken then
                 Perf.Worker = nil
                 if Perf.Status and Perf.Status.Parent then
-                    Perf.Status.Text = string.format(
-                        "✅ Đã quét %d đối tượng · bán kính %dm (~%d studs).",
-                        processed, Perf.ViewDistanceMeters, math.floor(Perf.GetViewDistanceStuds() + 0.5)
-                    )
+                    Perf.Status.Text = string.format("✅ Đã tối ưu %d đối tượng bằng CPU.", processed)
                 end
             end
         end)
@@ -5682,18 +5634,11 @@ do
         local token = Perf.RangeToken
         Perf.RangeWatcher = nil
         if not Perf.Modes.range then return end
-        local lastPosition = Perf.GetRangePosition()
         Perf.RangeWatcher = task.spawn(function()
             while token == Perf.RangeToken and Perf.Modes.range do
                 task.wait(0.3)
                 if token ~= Perf.RangeToken or not Perf.Modes.range then break end
-                local position = Perf.GetRangePosition()
-                Perf.SyncRangeSphere() -- cập nhật bán kính và màu theo ánh sáng môi trường
-                local movementThreshold = math.max(2, math.min(12, Perf.GetViewDistanceStuds() * 0.1))
-                if position and (not lastPosition or (position - lastPosition).Magnitude >= movementThreshold) and not Perf.Worker then
-                    lastPosition = position
-                    Perf.QueueScan(true)
-                end
+                Perf.SyncRangeSphere() -- cầu theo nhân vật, đổi màu theo ánh sáng
             end
             if token == Perf.RangeToken then Perf.RangeWatcher = nil end
         end)
@@ -5704,14 +5649,14 @@ do
         Perf.Modes[id] = not Perf.Modes[id]
         Perf.SyncRangeWatcher()
         Perf.SyncRangeSphere()
-        Perf.QueueScan(false)
+        if id == "cpu" then Perf.QueueScan() end
         Perf.SyncPanel()
         local note
         if id == "cpu" then
             note = "🧠 CPU: giảm tải hiệu ứng và quét theo lô."
         else
-            note = "🌐 Giảm lag cầu · bán kính " .. tostring(Perf.ViewDistanceMeters) .. " m (~"
-                .. tostring(math.floor(Perf.GetViewDistanceStuds() + 0.5)) .. " studs); ngoài tầm sẽ ẩn, tới gần tự hiện."
+            note = "🌐 Cầu đặc · bán kính " .. tostring(Perf.ViewDistanceMeters) .. " m (~"
+                .. tostring(math.floor(Perf.GetViewDistanceStuds() + 0.5)) .. " studs; không sửa/xóa vật thể, màu theo sáng/tối."
         end
         D.Say((Perf.Modes[id] and "✅ " or "↩ ") .. note, C.YELLOW)
     end
@@ -5728,7 +5673,6 @@ do
         end
         if Perf.Modes.range then
             Perf.SyncRangeSphere()
-            Perf.QueueScan(false)
         elseif Perf.Status and Perf.Status.Parent then
             Perf.Status.Text = string.format(
                 "🌐 Đã đặt bán kính %dm (~%d studs). Bật Giảm lag cầu để áp dụng.",
@@ -5741,7 +5685,7 @@ do
         for id in pairs(Perf.Modes) do Perf.Modes[id] = false end
         Perf.SyncRangeWatcher()
         Perf.SyncRangeSphere()
-        Perf.QueueScan(false)
+        Perf.QueueScan()
         Perf.SyncPanel()
     end
 
@@ -5763,7 +5707,7 @@ do
     D.Shade(panel, Color3.fromRGB(255,255,255), Color3.fromRGB(188,192,205), 90)
     New("TextLabel", {
         Size = UDim2.new(1, -174, 0, 16), Position = UDim2.new(0, 8, 0, 4),
-        Text = "⚡ CPU · GIẢM LAG CẦU", BackgroundTransparency = 1, TextColor3 = C.ACCENT,
+        Text = "⚡ CPU · CẦU ĐẶC", BackgroundTransparency = 1, TextColor3 = C.ACCENT,
         Font = Enum.Font.GothamBold, TextSize = 9, TextXAlignment = Enum.TextXAlignment.Left, ZIndex = 7,
     }, panel)
     Perf.FpsLabel = New("TextLabel", {
@@ -5794,7 +5738,7 @@ do
     Corner(resetButton, UDim.new(0, 5)); D.Tactile(resetButton, 0.08)
     New("TextLabel", {
         Size = UDim2.new(1, -16, 0, 18), Position = UDim2.new(0, 8, 0, 20),
-        Text = "Cầu theo tâm nhân vật; ngoài bán kính ẩn cục bộ. Màu tự đổi theo sáng/tối.",
+        Text = "Cầu đặc theo tâm nhân vật; không va chạm, không ẩn/xóa vật thể. Màu theo ánh sáng.",
         BackgroundTransparency = 1, TextColor3 = C.MUTED, Font = Enum.Font.GothamMedium,
         TextSize = 8, TextWrapped = true, TextXAlignment = Enum.TextXAlignment.Left, ZIndex = 7,
     }, panel)
@@ -5838,7 +5782,7 @@ do
     }, panel)
     Perf.Status = New("TextLabel", {
         Name = "HubPerfStatus", Size = UDim2.new(1, -16, 0, 34), Position = UDim2.new(0, 8, 0, 112),
-        Text = "Đặt bán kính (ví dụ 30 m), bật Giảm lag cầu; CPU có thể bật riêng.",
+        Text = "Đặt bán kính, bật Giảm lag cầu để tạo cầu đặc; vật thể không bị ẩn hoặc xóa.",
         BackgroundTransparency = 1, TextColor3 = C.MUTED, Font = Enum.Font.GothamMedium,
         TextSize = 8, TextWrapped = true, TextXAlignment = Enum.TextXAlignment.Left, TextYAlignment = Enum.TextYAlignment.Top, ZIndex = 7,
     }, panel)
@@ -5846,7 +5790,7 @@ do
     resetButton.Activated:Connect(function()
         ReleaseHubFocus()
         Perf.Reset()
-        D.Say("↩ Đang khôi phục hình ảnh gốc; CPU và giảm lag cầu đã tắt.", C.YELLOW)
+        D.Say("↩ Đang khôi phục CPU; cầu đã tắt, không sửa/xóa vật thể.", C.YELLOW)
     end)
     applyRangeButton.Activated:Connect(function()
         ReleaseHubFocus()
@@ -5859,10 +5803,10 @@ do
     local function watchRoot(root)
         if not root then return end
         trackConn(root.DescendantAdded:Connect(function(instance)
-            if not Perf.HasActive() then return end
+            if not Perf.Modes.cpu then return end
             task.defer(function()
-                if not Perf.HasActive() then return end
-                pcall(Perf.ApplyInstance, instance, Perf.GetRangePosition())
+                if not Perf.Modes.cpu then return end
+                pcall(Perf.ApplyInstance, instance)
             end)
         end))
     end
@@ -5875,7 +5819,6 @@ do
                 character:WaitForChild("HumanoidRootPart", 5)
                 if player.Character == character and Perf.Modes.range then
                     Perf.SyncRangeSphere()
-                    Perf.QueueScan(false)
                 end
             end
         end)
