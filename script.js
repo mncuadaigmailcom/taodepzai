@@ -87,6 +87,10 @@ for _, parent in ipairs({targetGui, playerGui, game:GetService("CoreGui")}) do
         local old = parent:FindFirstChild("BC_ObjTrackESP")
         if old then old:Destroy() end
     end)
+    pcall(function()
+        local old = parent:FindFirstChild("BananaCatHub_AnaAimDot")
+        if old then old:Destroy() end
+    end)
 end
 
 -- v5.1.1: Highlight/nhãn/hộp giờ gắn thẳng vào VẬT (trong Workspace) nên phải dọn trong workspace
@@ -125,6 +129,7 @@ pcall(function() RunService:UnbindFromRenderStep("BC_AutoGlass") end)
 pcall(function() RunService:UnbindFromRenderStep("BC_GlassFly") end)
 pcall(function() RunService:UnbindFromRenderStep("BC_ObjTrack") end)  -- v5.1: định vị vật theo tên
 pcall(function() RunService:UnbindFromRenderStep("BC_ObjFly") end)    -- v5.1: bay tới vật
+pcall(function() RunService:UnbindFromRenderStep("BC_AnaAim") end)    -- v5.2: ngắm/chọn vật tại tâm màn hình
 
 local C = {
     WHITE  = Color3.fromRGB(255, 255, 255),
@@ -557,6 +562,30 @@ function Hit.onHub(x, y)
             if o == gui or o:IsDescendantOf(gui) then return true end
         end
     end
+    local aimPanelHit = false
+    pcall(function()
+        local overlay = S.AnaUi and S.AnaUi.aimGui
+        if not overlay then return end
+        local containers = {playerGui}
+        if targetGui and targetGui ~= playerGui then containers[#containers + 1] = targetGui end
+        for _, container in ipairs(containers) do
+            local okAim, aimObjs = pcall(function()
+                return container:GetGuiObjectsAtPosition(x, y)
+            end)
+            if okAim and type(aimObjs) == "table" then
+                for _, o in ipairs(aimObjs) do
+                    if o:IsDescendantOf(overlay) then
+                        local dot = S.AnaUi and S.AnaUi.aimDot
+                        if not dot or (o ~= dot and not o:IsDescendantOf(dot)) then
+                            aimPanelHit = true
+                            return
+                        end
+                    end
+                end
+            end
+        end
+    end)
+    if aimPanelHit then return true end
     if Hit.inObject(main, x, y) then return true end
     if Hit.inObject(togBtn, x, y) then return true end
     return false
@@ -2052,11 +2081,13 @@ posY = posY + 30
 S.AnaUi.skipGuiBtn = Button(supportTab, "🛡 Phân tích xuyên HUD game: BẬT", 8, posY, 300, 24, C.GREEN)
 S.AnaUi.scanFbBtn  = Button(supportTab, "🧭 Quét dự phòng: BẬT", 314, posY, 162, 24, C.GREEN)
 posY = posY + 28
+S.AnaUi.centerAimBtn = Button(supportTab, "🔴 Ngắm tâm đỏ: TẮT · tự định vị vật đang ngắm", 8, posY, 468, 24, C.GRAY)
+posY = posY + 28
 S.AnaUi.whyLbl = Label(supportTab, "🔎 Lý do: — (bật 🎯 Phân Tích Vật Thể rồi chạm/chuột phải vào vật)", posY)
 S.AnaUi.whyLbl.TextSize = 9
 posY = posY + 16
 
-Label(supportTab, "💡 Bật rồi NHẤP CHUỘT PHẢI (lệt) vào vật thể để chọn (chuột trái vẫn bắn/đi bình thường)", posY)
+Label(supportTab, "💡 🔴 Ngắm tâm đỏ: tự định vị vật giữa màn hình · hoặc bật 🎯 rồi chuột phải/giữ ngón để chọn", posY)
 Label(supportTab, "    Click xuyên qua nút HUD/menu của game sẽ được tự động bỏ qua, không hit nhầm vật phía sau", posY+14)
 posY = posY + 30
 
@@ -2422,9 +2453,15 @@ local function RemoveCurrentHighlight()
 end
 
 local function CreateHighlight(target)
-    RemoveCurrentHighlight()
-    if not target then return end
+    if not target then
+        RemoveCurrentHighlight()
+        return
+    end
     if not target:IsA("BasePart") then return end
+    if currentHighlight and currentHighlight.Parent and currentHighlight.Adornee == target then
+        return -- không dựng lại Highlight mỗi lần làm mới tọa độ của cùng vật
+    end
+    RemoveCurrentHighlight()
 
     local hl = Instance.new("Highlight")
     hl.Name = "BananaCatHub_Highlight"
@@ -2516,16 +2553,23 @@ function S.GuiBlockAt(x, y)
         local ok, objs = pcall(function() return cont:GetGuiObjectsAtPosition(x, y) end)
         if ok and type(objs) == "table" then
             for _, o in ipairs(objs) do
-                local area, trans, isAct = 0, 1, false
-                pcall(function() area = o.AbsoluteSize.X * o.AbsoluteSize.Y end)
-                pcall(function() trans = o.BackgroundTransparency end)
-                pcall(function() isAct = (o.Active == true) end)
-                local interactive = (o:IsA("GuiButton") or o:IsA("TextBox"))
-                local tag = tostring(o.Name) .. " (" .. tostring(o.ClassName) .. ")"
-                if interactive and area < bigArea then
-                    hard = hard or tag
-                elseif interactive or isAct or trans < 0.5 then
-                    soft = soft or tag
+                local isAimDot = false
+                pcall(function()
+                    local dot = S.AnaUi and S.AnaUi.aimDot
+                    isAimDot = dot and (o == dot or o:IsDescendantOf(dot)) or false
+                end)
+                if not isAimDot then
+                    local area, trans, isAct = 0, 1, false
+                    pcall(function() area = o.AbsoluteSize.X * o.AbsoluteSize.Y end)
+                    pcall(function() trans = o.BackgroundTransparency end)
+                    pcall(function() isAct = (o.Active == true) end)
+                    local interactive = (o:IsA("GuiButton") or o:IsA("TextBox"))
+                    local tag = tostring(o.Name) .. " (" .. tostring(o.ClassName) .. ")"
+                    if interactive and area < bigArea then
+                        hard = hard or tag
+                    elseif interactive or isAct or trans < 0.5 then
+                        soft = soft or tag
+                    end
                 end
             end
         end
@@ -2534,37 +2578,91 @@ function S.GuiBlockAt(x, y)
 end
 
 function S.PickByRayScan(ray, filterList)
-    local maxD = 220
-    local okOp, parts = pcall(function()
-        local op = OverlapParams.new()
-        op.FilterType = Enum.RaycastFilterType.Exclude
-        op.FilterDescendantsInstances = filterList or {}
-        op.MaxParts = 80
-        return workspace:GetPartBoundsInRadius(ray.Origin + ray.Direction * (maxD / 2), maxD / 2, op)
-    end)
-    if not okOp or type(parts) ~= "table" or #parts == 0 then
-        return nil, "không quét được vật nào quanh tia (game có thể chặn quét)"
+    if not ray or not ray.Origin or not ray.Direction then
+        return nil, "không có tia ngắm hợp lệ"
     end
-    local best, bestD = nil, math.huge
-    for _, pt in ipairs(parts) do
-        local okV, v = pcall(function() return pt.Position - ray.Origin end)
-        if okV and v then
-            local okT, t = pcall(function() return v:Dot(ray.Direction) end)
-            if okT and t and t > 0.5 then
-                local okD, d = pcall(function()
-                    local closest = ray.Origin + ray.Direction * t
-                    local dd = (pt.Position - closest).Magnitude
-                    local r = 0
-                    pcall(function() r = math.max(pt.Size.X, pt.Size.Y, pt.Size.Z) / 2 end)
-                    return math.max(0, dd - r)
+    local dir = ray.Direction
+    local dirMagnitude = dir.Magnitude
+    if dirMagnitude < 0.001 then return nil, "tia ngắm không có hướng hợp lệ" end
+    dir = dir / dirMagnitude
+    local maxD = tonumber(S.AnaCfg and S.AnaCfg.maxDist) or 10000
+    if maxD ~= maxD or maxD == math.huge or maxD <= 0 then maxD = 10000 end
+    maxD = math.clamp(maxD, 1, 10000)
+    local corridor = 6 -- nửa bề rộng dự phòng quanh tia, tính bằng studs
+    local okParams, op = pcall(function()
+        local overlap = OverlapParams.new()
+        overlap.FilterType = Enum.RaycastFilterType.Exclude
+        overlap.FilterDescendantsInstances = filterList or {}
+        overlap.MaxParts = 512
+        return overlap
+    end)
+    if not okParams or not op then
+        return nil, "không tạo được bộ lọc quét vật thể"
+    end
+
+    local parts, seen = {}, {}
+    local center = ray.Origin + dir * (maxD / 2)
+    local up = (math.abs(dir.Y) > 0.98) and Vector3.new(0, 0, 1) or Vector3.new(0, 1, 0)
+    local boxCFrame = CFrame.lookAt(center, center + dir, up)
+    local okBox, boxParts = pcall(function()
+        return workspace:GetPartBoundsInBox(boxCFrame, Vector3.new(corridor * 2, corridor * 2, maxD), op)
+    end)
+    if okBox and type(boxParts) == "table" then
+        for _, pt in ipairs(boxParts) do
+            if pt and not seen[pt] then
+                seen[pt] = true
+                parts[#parts + 1] = pt
+            end
+        end
+    else
+        -- Tương thích với môi trường thiếu GetPartBoundsInBox: quét từng đoạn dọc tia,
+        -- thay vì chỉ kiểm tra 220 studs đầu như phiên bản cũ.
+        local stepLen = 180
+        for startD = 0, maxD, stepLen do
+            local length = math.min(stepLen, maxD - startD)
+            if length > 0 then
+                local sample = ray.Origin + dir * (startD + length / 2)
+                local okRadius, around = pcall(function()
+                    return workspace:GetPartBoundsInRadius(sample, length / 2 + corridor, op)
                 end)
-                if okD and d and d < bestD then bestD, best = d, pt end
+                if okRadius and type(around) == "table" then
+                    for _, pt in ipairs(around) do
+                        if pt and not seen[pt] then
+                            seen[pt] = true
+                            parts[#parts + 1] = pt
+                        end
+                    end
+                end
             end
         end
     end
-    if not best then return nil, "quét " .. #parts .. " vật nhưng không vật nào nằm trước tia" end
-    return best, "quét dự phòng — vật này Raycast không thấy (CanQuery=false), lệch tia "
-        .. string.format("%.1f", bestD) .. "m"
+    if #parts == 0 then
+        return nil, string.format("không tìm thấy vật quanh tia trong %.0f studs", maxD)
+    end
+
+    local best, bestSurfaceD, bestOffset = nil, math.huge, math.huge
+    for _, pt in ipairs(parts) do
+        local okV, along, offset, radius = pcall(function()
+            local rel = pt.Position - ray.Origin
+            local t = rel:Dot(dir)
+            if t <= 0.5 or t > maxD then return nil end
+            local closest = ray.Origin + dir * t
+            local lateral = (pt.Position - closest).Magnitude
+            local half = math.max(pt.Size.X, pt.Size.Y, pt.Size.Z) / 2
+            if lateral > math.max(corridor, half + 2) then return nil end
+            return t, lateral, half
+        end)
+        if okV and along then
+            local surfaceD = math.max(0, along - radius)
+            if surfaceD < bestSurfaceD then
+                best, bestSurfaceD, bestOffset = pt, surfaceD, offset
+            end
+        end
+    end
+    if not best then
+        return nil, "quét " .. #parts .. " vật nhưng không vật nào nằm trên tia trong " .. string.format("%.0f", maxD) .. " studs"
+    end
+    return best, string.format("quét xa dự phòng · %.0f studs · lệch tâm %.1f studs", bestSurfaceD, bestOffset)
 end
 
 function S.NearestParts(n)
@@ -2594,7 +2692,7 @@ function S.NearestParts(n)
     return (list[1] and list[1].p or nil), table.concat(names, " · "), #list
 end
 
-function S.FillObjPanel(inst, hitPos, hitNormal, hitMat, how)
+function S.FillObjPanel(inst, hitPos, hitNormal, hitMat, how, quiet)
     if not inst then return false end
     objResultPanel.Visible = true
 
@@ -2637,8 +2735,10 @@ function S.FillObjPanel(inst, hitPos, hitNormal, hitMat, how)
     S.AnaLast.ok = true
     S.AnaLast.name = tostring(inst.Name)
     S.AnaLast.how = tostring(how or "")
-    S.AnaSay(tostring(how or "🎯 tia bắn trúng") .. ": " .. inst.Name .. " (" .. inst.ClassName .. ")"
-        .. (S.AnaNote and (" · " .. S.AnaNote) or ""))
+    if not quiet then
+        S.AnaSay(tostring(how or "🎯 tia bắn trúng") .. ": " .. inst.Name .. " (" .. inst.ClassName .. ")"
+            .. (S.AnaNote and (" · " .. S.AnaNote) or ""))
+    end
     return true
 end
 
@@ -2725,6 +2825,219 @@ local function PickObjectAt(mousePos, isRightClick, ignoreHubGui)
         end)
     end
 end
+
+function S.AnaAimEnsureDot()
+    if S.AnaUi.aimGui and S.AnaUi.aimGui.Parent then return S.AnaUi.aimGui end
+    local aimGui = New("ScreenGui", {
+        Name = "BananaCatHub_AnaAimDot",
+        IgnoreGuiInset = true,
+        ResetOnSpawn = false,
+        ZIndexBehavior = Enum.ZIndexBehavior.Global,
+        DisplayOrder = 10000,
+    }, targetGui)
+    aimGui:SetAttribute("BCHub_External", true)
+    local dot = New("Frame", {
+        Name = "CenterAimDot",
+        AnchorPoint = Vector2.new(0.5, 0.5),
+        Position = UDim2.new(0.5, 0, 0.5, 0),
+        Size = UDim2.new(0, 8, 0, 8),
+        BackgroundColor3 = Color3.fromRGB(255, 35, 35),
+        BorderSizePixel = 0,
+        Active = false,
+        Selectable = false,
+        ZIndex = 10000,
+    }, aimGui)
+    Corner(dot, UDim.new(1, 0))
+    New("UIStroke", {
+        Color = Color3.fromRGB(8, 8, 8),
+        Thickness = 1.5,
+        Transparency = 0,
+        ApplyStrokeMode = Enum.ApplyStrokeMode.Border,
+    }, dot)
+    S.AnaUi.aimGui = aimGui
+    S.AnaUi.aimDot = dot
+    return aimGui
+end
+
+function S.AnaAimPanelSetExternal(on)
+    if on then
+        if not S.AnaUi.aimGui then return false end
+        if objResultPanel.Parent == S.AnaUi.aimGui then return true end
+        S.AnaUi.objPanelHome = objResultPanel.Parent
+        S.AnaUi.objPanelHomeSize = objResultPanel.Size
+        S.AnaUi.objPanelHomePosition = objResultPanel.Position
+        objResultPanel.Parent = S.AnaUi.aimGui
+        local cam = S.AnaCam()
+        local viewW = cam and cam.ViewportSize.X or 720
+        local panelW = math.max(260, math.min(420, viewW - 24))
+        objResultPanel.Size = UDim2.new(0, panelW, 0, 190)
+        objResultPanel.Position = UDim2.new(0.5, -panelW / 2, 1, -202)
+        return true
+    end
+
+    local home = S.AnaUi.objPanelHome
+    if home and objResultPanel.Parent == S.AnaUi.aimGui then
+        objResultPanel.Parent = home
+        objResultPanel.Size = S.AnaUi.objPanelHomeSize
+        objResultPanel.Position = S.AnaUi.objPanelHomePosition
+    end
+    return true
+end
+
+function S.AnaAimCast(allowFallback)
+    local cam = S.AnaCam()
+    if not cam then return nil, nil, nil, nil, "camera chưa sẵn sàng" end
+    local viewport = cam.ViewportSize
+    local ray = cam:ViewportPointToRay(viewport.X * 0.5, viewport.Y * 0.5)
+    local filterList = {}
+    if player.Character then filterList[#filterList + 1] = player.Character end
+    if gui then filterList[#filterList + 1] = gui end
+
+    local maxD = tonumber(S.AnaCfg and S.AnaCfg.maxDist) or 10000
+    if maxD ~= maxD or maxD == math.huge or maxD <= 0 then maxD = 10000 end
+    maxD = math.clamp(maxD, 1, 10000)
+    local okParams, params = pcall(function()
+        local rp = RaycastParams.new()
+        rp.FilterType = Enum.RaycastFilterType.Exclude
+        rp.FilterDescendantsInstances = filterList
+        rp.IgnoreWater = (S.AnaCfg.ignoreWater == true)
+        return rp
+    end)
+    if okParams and params then
+        local okRay, result = pcall(function()
+            return workspace:Raycast(ray.Origin, ray.Direction * maxD, params)
+        end)
+        if okRay and result and result.Instance then
+            return result.Instance, result.Position, result.Normal, result.Material, "🔴 tia qua chấm tâm"
+        end
+    end
+
+    if allowFallback and S.AnaCfg.scanFallback then
+        local okScan, part, why = pcall(S.PickByRayScan, ray, filterList)
+        if okScan and part then
+            local pos, normal, material
+            pcall(function()
+                pos = part.Position
+                normal = part.CFrame.LookVector
+                material = part.Material
+            end)
+            return part, pos, normal, material, "🔴 " .. tostring(why or "quét dự phòng theo tia")
+        end
+    end
+    return nil, nil, nil, nil, "chấm tâm chưa trúng vật trong " .. string.format("%.0f", maxD) .. " studs"
+end
+
+function S.AnaAimStep(dt)
+    if not S.AnaUi.centerAimOn then return end
+    if main and main.Visible then
+        if S.AnaUi.aimDot then S.AnaUi.aimDot.Visible = false end
+        return
+    end
+    if S.AnaUi.aimDot and not S.AnaUi.aimDot.Visible then S.AnaUi.aimDot.Visible = true end
+    dt = tonumber(dt) or 0.016
+    S.AnaUi.aimAcc = (S.AnaUi.aimAcc or 0) + dt
+    if S.AnaUi.aimAcc < 0.12 then return end -- tối đa khoảng 8 lần dò/giây
+    local stepElapsed = S.AnaUi.aimAcc
+    S.AnaUi.aimAcc = 0
+
+    local inst, hitPos, hitNormal, hitMat, how = S.AnaAimCast(false)
+    if not inst and S.AnaCfg.scanFallback then
+        S.AnaUi.aimScanAcc = (S.AnaUi.aimScanAcc or 0) + stepElapsed
+        if S.AnaUi.aimScanAcc >= 0.5 then -- quét dự phòng xa, giới hạn 2 lần/giây
+            S.AnaUi.aimScanAcc = 0
+            inst, hitPos, hitNormal, hitMat, how = S.AnaAimCast(true)
+        end
+    else
+        S.AnaUi.aimScanAcc = 0
+    end
+
+    if not inst then
+        local now = os.clock()
+        if now - (S.AnaUi.aimNoTargetAt or 0) >= 1.5 then
+            S.AnaUi.aimNoTargetAt = now
+            S.AnaSay(S.AnaUi.aimTarget and "🔴 Chấm tâm chưa trúng vật mới · giữ vật đã định vị"
+                or "🔴 Chấm tâm chưa trúng vật · hướng vào vật để tự định vị")
+        end
+        return
+    end
+
+    S.AnaUi.aimScanAcc = 0
+    local now = os.clock()
+    local changed = (S.AnaUi.aimTarget ~= inst)
+    if changed or now - (S.AnaUi.aimRefreshAt or 0) >= 0.45 then
+        S.AnaUi.aimTarget = inst
+        S.AnaUi.aimRefreshAt = now
+        S.AnaNote = nil
+        if not hitPos then pcall(function() hitPos = inst.Position end) end
+        S.FillObjPanel(inst, hitPos, hitNormal, hitMat, how or "🔴 tia qua chấm tâm", true)
+        if changed then
+            S.AnaUi.aimNoTargetAt = now
+            S.AnaSay("🔴 Đang định vị: " .. tostring(inst.Name) .. " (" .. tostring(inst.ClassName) .. ")")
+        end
+    end
+end
+
+function S.AnaAimSet(on)
+    on = (on == true)
+    if on == (S.AnaUi.centerAimOn == true) then return on end
+    S.AnaUi.centerAimOn = on
+    if on then
+        S.AnaUi.aimAcc, S.AnaUi.aimScanAcc = 0, 0
+        S.AnaUi.aimRefreshAt, S.AnaUi.aimNoTargetAt = 0, 0
+        S.AnaUi.aimTarget = nil
+        local okDot = pcall(S.AnaAimEnsureDot)
+        local okBind = false
+        if okDot then
+            okBind = pcall(function()
+                RunService:UnbindFromRenderStep("BC_AnaAim")
+                RunService:BindToRenderStep("BC_AnaAim", Enum.RenderPriority.Camera.Value + 1, function(dt)
+                    pcall(S.AnaAimStep, dt)
+                end)
+            end)
+        end
+        local okPanel, panelReady = false, false
+        if okDot and okBind then
+            okPanel, panelReady = pcall(S.AnaAimPanelSetExternal, true)
+        end
+        if not okDot or not okBind or not okPanel or not panelReady then
+            S.AnaUi.centerAimOn = false
+            pcall(function() RunService:UnbindFromRenderStep("BC_AnaAim") end)
+            pcall(S.AnaAimPanelSetExternal, false)
+            pcall(function() if S.AnaUi.aimGui then S.AnaUi.aimGui:Destroy() end end)
+            S.AnaUi.aimGui, S.AnaUi.aimDot = nil, nil
+        else
+            if main then main.Visible = false end -- menu ở giữa màn hình không che tia ngắm
+            if togBtn then togBtn.Text = "" end
+            ReleaseHubFocus()
+        end
+    else
+        pcall(function() RunService:UnbindFromRenderStep("BC_AnaAim") end)
+        pcall(S.AnaAimPanelSetExternal, false)
+        pcall(function() if S.AnaUi.aimGui then S.AnaUi.aimGui:Destroy() end end)
+        S.AnaUi.aimGui, S.AnaUi.aimDot = nil, nil
+        S.AnaUi.aimTarget = nil
+        S.AnaUi.aimAcc, S.AnaUi.aimScanAcc = 0, 0
+    end
+
+    local active = (S.AnaUi.centerAimOn == true)
+    local btn = S.AnaUi.centerAimBtn
+    if btn and btn.Parent then
+        btn.Text = active and "🔴 Ngắm tâm đỏ: BẬT · tự định vị vật" or "🔴 Ngắm tâm đỏ: TẮT · tự định vị vật đang ngắm"
+        D.SetBg(btn, active and C.RED or C.GRAY)
+    end
+    if active then
+        S.AnaSay("🔴 Ngắm tâm đã bật · hướng chấm đỏ vào vật để định vị (tối đa 10.000 studs)")
+    end
+    return active
+end
+
+S.AnaUi.centerAimBtn.Activated:Connect(function()
+    local requested = not (S.AnaUi.centerAimOn == true)
+    local active = S.AnaAimSet(requested)
+    if requested and not active then
+        S.AnaSay("⚠️ Không bật được chế độ ngắm tâm — không tạo được điểm ngắm/bảng phân tích")
+    end
+end)
 
 trackConn(UserInputService.InputBegan:Connect(function(input, gp)
     if gp then return end   -- Roblox đã xử lý input này (nút GUI / TextBox focus)
