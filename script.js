@@ -5380,12 +5380,12 @@ end)
 function S.Rebuild() pcall(function() if S.RebuildHubList then S.RebuildHubList() end end)
 end
 
--- ---------- v5.4: CPU + TẦM NHÌN CÓ THỂ ĐIỀU CHỈNH ----------
+-- ---------- v5.4: CPU + VỎ CẦU CÓ THỂ ĐIỀU CHỈNH ----------
 do
     local STUDS_PER_METER = 1 / 0.28 -- quy đổi xấp xỉ theo kích thước chuẩn Roblox
     local modeList = {
         {id = "cpu", title = "🧠 CPU"},
-        {id = "range", title = "👁 Tầm nhìn"},
+        {id = "range", title = "🌐 Vỏ cầu"},
     }
     local Perf = {
         Modes = {cpu = false, range = false},
@@ -5395,6 +5395,8 @@ do
         RangeToken = 0,
         Worker = nil,
         RangeWatcher = nil,
+        RangeSphere = nil,
+        RangeAdornee = nil,
         Buttons = {},
         Status = nil,
     }
@@ -5403,6 +5405,44 @@ do
 
     function Perf.GetViewDistanceStuds()
         return Perf.ViewDistanceMeters * STUDS_PER_METER
+    end
+
+    function Perf.GetRangePosition()
+        local character = player.Character
+        local root = character and character:FindFirstChild("HumanoidRootPart")
+        return root and root.Position or nil
+    end
+
+    function Perf.ClearRangeSphere()
+        local sphere = Perf.RangeSphere
+        Perf.RangeSphere, Perf.RangeAdornee = nil, nil
+        if sphere then pcall(function() sphere:Destroy() end) end
+    end
+
+    function Perf.SyncRangeSphere()
+        if not Perf.Modes.range then Perf.ClearRangeSphere(); return end
+        local character = player.Character
+        local root = character and character:FindFirstChild("HumanoidRootPart")
+        if not root then Perf.ClearRangeSphere(); return end
+        if Perf.RangeSphere and (not Perf.RangeSphere.Parent or Perf.RangeAdornee ~= root) then
+            Perf.ClearRangeSphere()
+        end
+        if not Perf.RangeSphere then
+            local sphere = Instance.new("SphereHandleAdornment")
+            sphere.Name = "BananaCatHubRangeSphere"
+            sphere.Adornee = root
+            sphere.CFrame = CFrame.new()
+            sphere.Radius = Perf.GetViewDistanceStuds()
+            sphere.Color3 = C.BLUE
+            sphere.Transparency = 0.82
+            sphere.AlwaysOnTop = true
+            sphere.Visible = true
+            sphere.ZIndex = 4
+            sphere.Parent = root
+            Perf.RangeSphere, Perf.RangeAdornee = sphere, root
+        else
+            pcall(function() Perf.RangeSphere.Radius = Perf.GetViewDistanceStuds() end)
+        end
     end
 
     function Perf.HasActive()
@@ -5472,7 +5512,7 @@ do
         return nil
     end
 
-    function Perf.ApplyInstance(instance, cameraPosition)
+    function Perf.ApplyInstance(instance, centerPosition)
         local character = player.Character
         if character and (instance == character or instance:IsDescendantOf(character)) then
             Perf.RestoreInstance(instance)
@@ -5481,11 +5521,11 @@ do
 
         local modes = Perf.Modes
         local outOfRange = false
-        if modes.range and cameraPosition then
+        if modes.range and centerPosition then
             local anchor = Perf.FindAnchor(instance)
             if anchor then
                 pcall(function()
-                    outOfRange = (anchor.Position - cameraPosition).Magnitude >= Perf.GetViewDistanceStuds()
+                    outOfRange = (anchor.Position - centerPosition).Magnitude >= Perf.GetViewDistanceStuds()
                 end)
             end
         end
@@ -5583,7 +5623,7 @@ do
             local camera = workspace.CurrentCamera
             if camera then roots[#roots + 1] = camera end
             local visited = setmetatable({}, {__mode = "k"})
-            local cameraPosition = camera and camera.CFrame.Position or nil
+            local centerPosition = Perf.GetRangePosition()
             local batchSize = Perf.Modes.cpu and 90 or 220
             local processed = 0
 
@@ -5599,7 +5639,7 @@ do
                             if not visited[child] then
                                 visited[child] = true
                                 processed += 1
-                                pcall(Perf.ApplyInstance, child, cameraPosition)
+                                pcall(Perf.ApplyInstance, child, centerPosition)
                                 stack[#stack + 1] = child
                                 if processed % batchSize == 0 then task.wait() end
                             end
@@ -5612,7 +5652,7 @@ do
                 Perf.Worker = nil
                 if Perf.Status and Perf.Status.Parent then
                     Perf.Status.Text = string.format(
-                        "✅ Đã quét %d đối tượng · tầm nhìn %dm (~%d studs).",
+                        "✅ Đã quét %d đối tượng · bán kính %dm (~%d studs).",
                         processed, Perf.ViewDistanceMeters, math.floor(Perf.GetViewDistanceStuds() + 0.5)
                     )
                 end
@@ -5626,14 +5666,17 @@ do
         local token = Perf.RangeToken
         Perf.RangeWatcher = nil
         if not Perf.Modes.range then return end
-        local camera = workspace.CurrentCamera
-        local lastPosition = camera and camera.CFrame.Position or nil
+        local lastPosition = Perf.GetRangePosition()
         Perf.RangeWatcher = task.spawn(function()
             while token == Perf.RangeToken and Perf.Modes.range do
                 task.wait(0.3)
                 if token ~= Perf.RangeToken or not Perf.Modes.range then break end
-                local currentCamera = workspace.CurrentCamera
-                local position = currentCamera and currentCamera.CFrame.Position or nil
+                local position = Perf.GetRangePosition()
+                local character = player.Character
+                local root = character and character:FindFirstChild("HumanoidRootPart")
+                if root and (not Perf.RangeSphere or not Perf.RangeSphere.Parent or Perf.RangeAdornee ~= root) then
+                    Perf.SyncRangeSphere()
+                end
                 local movementThreshold = math.max(2, math.min(12, Perf.GetViewDistanceStuds() * 0.1))
                 if position and (not lastPosition or (position - lastPosition).Magnitude >= movementThreshold) and not Perf.Worker then
                     lastPosition = position
@@ -5648,13 +5691,14 @@ do
         if Perf.Modes[id] == nil then return end
         Perf.Modes[id] = not Perf.Modes[id]
         Perf.SyncRangeWatcher()
+        Perf.SyncRangeSphere()
         Perf.QueueScan(false)
         Perf.SyncPanel()
         local note
         if id == "cpu" then
             note = "🧠 CPU: giảm tải hiệu ứng và quét theo lô."
         else
-            note = "👁 Tầm nhìn " .. tostring(Perf.ViewDistanceMeters) .. " m (~"
+            note = "🌐 Vỏ cầu bán kính " .. tostring(Perf.ViewDistanceMeters) .. " m (~"
                 .. tostring(math.floor(Perf.GetViewDistanceStuds() + 0.5)) .. " studs); ngoài tầm sẽ ẩn, tới gần tự hiện."
         end
         D.Say((Perf.Modes[id] and "✅ " or "↩ ") .. note, C.YELLOW)
@@ -5663,7 +5707,7 @@ do
     function Perf.ApplyViewDistance(text)
         local value = tonumber(text)
         if not value or value ~= value or value == math.huge or value == -math.huge then
-            if Perf.Status and Perf.Status.Parent then Perf.Status.Text = "⚠️ Nhập tầm nhìn từ 5 đến 1000 mét." end
+            if Perf.Status and Perf.Status.Parent then Perf.Status.Text = "⚠️ Nhập bán kính từ 5 đến 1000 mét." end
             return
         end
         Perf.ViewDistanceMeters = math.clamp(math.floor(value + 0.5), 5, 1000)
@@ -5671,10 +5715,11 @@ do
             Perf.DistanceBox.Text = tostring(Perf.ViewDistanceMeters)
         end
         if Perf.Modes.range then
+            Perf.SyncRangeSphere()
             Perf.QueueScan(false)
         elseif Perf.Status and Perf.Status.Parent then
             Perf.Status.Text = string.format(
-                "👁 Đã đặt %dm (~%d studs). Bật Tầm nhìn để áp dụng.",
+                "🌐 Đã đặt bán kính %dm (~%d studs). Bật Vỏ cầu để áp dụng.",
                 Perf.ViewDistanceMeters, math.floor(Perf.GetViewDistanceStuds() + 0.5)
             )
         end
@@ -5683,6 +5728,7 @@ do
     function Perf.Reset()
         for id in pairs(Perf.Modes) do Perf.Modes[id] = false end
         Perf.SyncRangeWatcher()
+        Perf.SyncRangeSphere()
         Perf.QueueScan(false)
         Perf.SyncPanel()
     end
@@ -5693,6 +5739,7 @@ do
         Perf.RangeToken += 1
         if Perf.Worker then pcall(task.cancel, Perf.Worker); Perf.Worker = nil end
         if Perf.RangeWatcher then pcall(task.cancel, Perf.RangeWatcher); Perf.RangeWatcher = nil end
+        Perf.ClearRangeSphere()
         Perf.RestoreAll()
     end
 
@@ -5704,7 +5751,7 @@ do
     D.Shade(panel, Color3.fromRGB(255,255,255), Color3.fromRGB(188,192,205), 90)
     New("TextLabel", {
         Size = UDim2.new(1, -174, 0, 16), Position = UDim2.new(0, 8, 0, 4),
-        Text = "⚡ CPU · TẦM NHÌN", BackgroundTransparency = 1, TextColor3 = C.ACCENT,
+        Text = "⚡ CPU · VỎ CẦU", BackgroundTransparency = 1, TextColor3 = C.ACCENT,
         Font = Enum.Font.GothamBold, TextSize = 9, TextXAlignment = Enum.TextXAlignment.Left, ZIndex = 7,
     }, panel)
     Perf.FpsLabel = New("TextLabel", {
@@ -5735,7 +5782,7 @@ do
     Corner(resetButton, UDim.new(0, 5)); D.Tactile(resetButton, 0.08)
     New("TextLabel", {
         Size = UDim2.new(1, -16, 0, 18), Position = UDim2.new(0, 8, 0, 20),
-        Text = "CPU quét theo lô · vật ngoài tầm nhìn sẽ ẩn cục bộ, tới gần tự hiện lại.",
+        Text = "Vỏ cầu trong suốt, tâm tại bạn; vật ngoài bán kính ẩn cục bộ, tới gần tự hiện lại.",
         BackgroundTransparency = 1, TextColor3 = C.MUTED, Font = Enum.Font.GothamMedium,
         TextSize = 8, TextWrapped = true, TextXAlignment = Enum.TextXAlignment.Left, ZIndex = 7,
     }, panel)
@@ -5756,7 +5803,7 @@ do
 
     New("TextLabel", {
         Size = UDim2.new(0, 96, 0, 20), Position = UDim2.new(0, 8, 0, 72),
-        Text = "Tầm nhìn (m)", BackgroundTransparency = 1, TextColor3 = C.MUTED,
+        Text = "Bán kính (m)", BackgroundTransparency = 1, TextColor3 = C.MUTED,
         Font = Enum.Font.GothamMedium, TextSize = 8, TextXAlignment = Enum.TextXAlignment.Left, ZIndex = 7,
     }, panel)
     Perf.DistanceBox = New("TextBox", {
@@ -5779,7 +5826,7 @@ do
     }, panel)
     Perf.Status = New("TextLabel", {
         Name = "HubPerfStatus", Size = UDim2.new(1, -16, 0, 34), Position = UDim2.new(0, 8, 0, 112),
-        Text = "Đặt tầm nhìn (ví dụ 30 m), rồi bật nút Tầm nhìn. CPU có thể bật riêng.",
+        Text = "Đặt bán kính (ví dụ 30 m), bật Vỏ cầu; CPU có thể bật riêng.",
         BackgroundTransparency = 1, TextColor3 = C.MUTED, Font = Enum.Font.GothamMedium,
         TextSize = 8, TextWrapped = true, TextXAlignment = Enum.TextXAlignment.Left, TextYAlignment = Enum.TextYAlignment.Top, ZIndex = 7,
     }, panel)
@@ -5787,7 +5834,7 @@ do
     resetButton.Activated:Connect(function()
         ReleaseHubFocus()
         Perf.Reset()
-        D.Say("↩ Đang khôi phục hình ảnh gốc; chế độ CPU và tầm nhìn đã tắt.", C.YELLOW)
+        D.Say("↩ Đang khôi phục hình ảnh gốc; CPU và vỏ cầu đã tắt.", C.YELLOW)
     end)
     applyRangeButton.Activated:Connect(function()
         ReleaseHubFocus()
@@ -5803,9 +5850,7 @@ do
             if not Perf.HasActive() then return end
             task.defer(function()
                 if not Perf.HasActive() then return end
-                local currentCamera = workspace.CurrentCamera
-                local position = currentCamera and currentCamera.CFrame.Position or nil
-                pcall(Perf.ApplyInstance, instance, position)
+                pcall(Perf.ApplyInstance, instance, Perf.GetRangePosition())
             end)
         end))
     end
@@ -5814,6 +5859,13 @@ do
     trackConn(player.CharacterAdded:Connect(function(character)
         task.defer(function()
             for _, instance in ipairs(character:GetDescendants()) do Perf.RestoreInstance(instance) end
+            if Perf.Modes.range then
+                character:WaitForChild("HumanoidRootPart", 5)
+                if player.Character == character and Perf.Modes.range then
+                    Perf.SyncRangeSphere()
+                    Perf.QueueScan(false)
+                end
+            end
         end)
     end))
     Perf.SyncPanel()
