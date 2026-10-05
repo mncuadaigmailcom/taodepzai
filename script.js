@@ -1406,14 +1406,32 @@ local function GetRootPart()
         or char.PrimaryPart or char:FindFirstChild("UpperTorso")
         or char:FindFirstChild("Torso") return rootPart end
 
+local _groundParams = nil local _groundChar = nil
 local function GetGroundPosition() local char = player.Character
     if not char then return nil end local rootPart = GetRootPart()
     if not rootPart then return nil end
 
     local origin = rootPart.Position local direction = Vector3.new(0, -500, 0)
 
-    local params = RaycastParams.new() params.FilterType = Enum.RaycastFilterType.Exclude
-    params.FilterDescendantsInstances = {char} params.IgnoreWater = false
+    -- v5.4 EXTREME+: tái sử dụng RaycastParams thay vì tạo mới mỗi 0.1s
+    if not _groundParams or _groundChar ~= char then
+        _groundChar = char
+        local ok, p = pcall(function() return RaycastParams.new() end)
+        if ok and p then
+            pcall(function() p.FilterType = Enum.RaycastFilterType.Exclude end)
+            pcall(function() p.FilterDescendantsInstances = {char} end)
+            pcall(function() p.IgnoreWater = false end)
+            _groundParams = p
+        end
+    else
+        -- cập nhật filter nếu char đổi (đã check ở trên) nhưng vẫn đảm bảo
+        pcall(function() _groundParams.FilterDescendantsInstances = {char} end)
+    end
+    local params = _groundParams
+    if not params then
+        params = RaycastParams.new() params.FilterType = Enum.RaycastFilterType.Exclude
+        params.FilterDescendantsInstances = {char} params.IgnoreWater = false
+    end
 
     local result = workspace:Raycast(origin, direction, params) if result then
         return result.Position, result.Instance, result.Normal, result.Material end
@@ -1447,7 +1465,7 @@ function S.Coord.Bind(on)
     if not S.Coord._bound then return end
     if S.Coord._conn then return end
     S.Coord._conn = RunService.RenderStepped:Connect(function(stepDt) coordAcc = coordAcc + (tonumber(stepDt) or 0.016)
-        if coordAcc < 0.10 then return end coordAcc = 0 -- v5.3 EXTREME: 0.05->0.10 giảm 50% raycast + label update
+        if coordAcc < 0.15 then return end coordAcc = 0 -- v5.4 EXTREME+: 0.10->0.15 giảm thêm 33% raycast
         if not S.Coord.IsActive() then return end
         -- perf: nếu không active thì ngắt luôn để đỡ gọi mỗi frame
         if S.PagePerf and not S.PagePerf.ShouldRunForSupportTab() then
@@ -2014,16 +2032,24 @@ function SV.Detect() local m = move()
     if hws and hws > 0 and not applying then SV._lastWS = hws end if hws then SV.ws = hws end
     SV.src = src return SV.base, SV.src end
 
--- ---------- đo tốc độ HIỆN TẠI + giữ đỉnh CAO NHẤT — v5.3 EXTREME: giảm tần suất khi không ở tab Hỗ Trợ ----------
+-- ---------- đo tốc độ HIỆN TẠI + giữ đỉnh CAO NHẤT — v5.4 EXTREME+: giảm tần suất khi không ở tab Hỗ Trợ ----------
 function SV.Step(dt) dt = num(dt)
     if not dt or dt <= 0 then dt = 1 / 60 end if dt > 0.5 then dt = 0.5 end
-    -- v5.3: nếu không ở tab Hỗ Trợ thì chỉ đo mỗi 0.15s thay vì mỗi frame
+    -- v5.4: nếu không ở tab Hỗ Trợ thì chỉ đo mỗi 0.25s, menu đóng thì 0.5s
     SV._stepAcc = (SV._stepAcc or 0) + dt
     local needSupport = true
     if S.PagePerf and S.PagePerf.ShouldRunForSupportTab then
         needSupport = S.PagePerf.ShouldRunForSupportTab()
     end
-    if not needSupport and SV._stepAcc < 0.15 then return SV.live end
+    local threshold = 0.05
+    if not needSupport then
+        if S.PagePerf and not S.PagePerf.IsMainVisible() then
+            threshold = 0.50
+        else
+            threshold = 0.25
+        end
+    end
+    if SV._stepAcc < threshold then return SV.live end
     SV._stepAcc = 0
     local h = myHum() local x, y, z = readPos(myRoot())
     if x then if SV._px then
@@ -3720,14 +3746,14 @@ function MV._NcStep() if not MV.noclip then return end
     if MV._ncChar ~= c or not MV._ncLast or (now - MV._ncLast) > 0.5 then MV._ncLast = now
         MV._NcScan()                                  -- quét đầy đủ: bắt part mới / nhân vật mới
     end
-    -- v5.3 EXTREME: chỉ enforce CanCollide mỗi 0.15s thay vì mỗi frame, giảm 80% work
+    -- v5.4 EXTREME+: chỉ enforce CanCollide + assist mỗi 0.15s thay vì mỗi frame, giảm 85% work
     MV._ncEnforceAcc = (MV._ncEnforceAcc or 0) + (now - (MV._ncEnforceLast or now))
     MV._ncEnforceLast = now
-    if MV._ncEnforceAcc >= 0.15 or not MV._ncEnforceAcc then
+    if MV._ncEnforceAcc >= 0.15 then
         MV._ncEnforceAcc = 0
         MV._NcEnforce()                               -- thắng game bật lại CanCollide
+        MV._NcAssist()                                -- 🧲 bị chặn cứng -> tự đẩy xuyên
     end
-    MV._NcAssist()                                    -- 🧲 bị chặn cứng -> tự đẩy xuyên
 end function MV._NcBind(on)
     if on and not MV._ncBound then MV._ncBound = true
         local ok = pcall(function() RunService:BindToRenderStep("BC_NoClip", Enum.RenderPriority.Last.Value, function()
@@ -4328,7 +4354,12 @@ function MV.Safe.Step(dt) if not SF.on then return end
     if h then if h.PlatformStand ~= true then pcall(function() h.PlatformStand = true end) end if h.AutoRotate ~= false then pcall(function() h.AutoRotate = false end) end
     end local dtv = tonumber(dt) or 0.016
     SF._sc = (SF._sc or 0) + dtv local sinceThreat = tick() - (SF._lastThreatAt or 0)
-    local ivScan = (((SF.threats or 0) > 0) or sinceThreat < 1.0) and 0.10 or 0.30 if SF._sc >= ivScan then -- v5.3 EXTREME: 0.05->0.10, 0.15->0.30 giảm 50% scan
+    local ivScan = (((SF.threats or 0) > 0) or sinceThreat < 1.0) and 0.10 or 0.30
+    -- v5.4 EXTREME+: khi menu đóng thì scan thưa hơn nữa 0.20/0.50
+    if S.PagePerf and not S.PagePerf.IsMainVisible() then
+        ivScan = ivScan * 1.8
+    end
+    if SF._sc >= ivScan then -- v5.3 EXTREME: 0.05->0.10, 0.15->0.30 giảm 50% scan
         local okS = pcall(MV.Safe.Scan, r.Position, SF._sc) SF._sc = 0 if not okS then SF.threats, SF.nearest = 0, nil end
     end local now = tick()
     local contact = ((SF.threats or 0) > 0) or ((now - (SF._holdAt or 0)) < 0.35) local keys = (h and h.MoveDirection) or Vector3.new(0, 0, 0)
@@ -6525,11 +6556,15 @@ end
 function S.Loc.Bind(on)
     if on and not LOC._bound then LOC._bound = true pcall(function()
             RunService:BindToRenderStep("BC_Loc", Enum.RenderPriority.Camera.Value - 2, function(dt) LOC._acc = (LOC._acc or 0) + (tonumber(dt) or 0.016)
-                -- v5.3 EXTREME: 0.2->0.35 khi ở tab, 0.8->1.2 khi không ở tab
+                -- v5.4 EXTREME+: menu đóng -> 3s, không ở tab -> 1.5s, ở tab -> 0.35s
                 local interval = 0.35
-                if S.PagePerf and S.PagePerf.IsMainVisible() then
-                    local pt = D and D.playerTab
-                    if pt and not S.PagePerf.IsTabVisible(pt) then interval = 1.2 end
+                if S.PagePerf then
+                    if not S.PagePerf.IsMainVisible() then
+                        interval = 3.0
+                    else
+                        local pt = D and D.playerTab
+                        if pt and not S.PagePerf.IsTabVisible(pt) then interval = 1.5 end
+                    end
                 end
                 if LOC._acc < interval then return end LOC._acc = 0
                 pcall(function() LOC.Tick() end) LOC._listAcc = (LOC._listAcc or 0) + interval
@@ -7062,9 +7097,9 @@ end function S.Glow.Apply()
 end function S.Glow.Bind(on)
     if on and not GL._bound then GL._bound = true
         pcall(function() RunService:BindToRenderStep("BC_Glow", Enum.RenderPriority.Camera.Value - 5, function(dt) GL._acc = (GL._acc or 0) + (tonumber(dt) or 0.016)
-                -- v5.3 EXTREME: menu đóng thì 1.2s mới check, mở thì 0.5s
-                local interval = 0.5
-                if S.PagePerf and not S.PagePerf.IsMainVisible() then interval = 1.2 end
+                -- v5.4 EXTREME+: menu đóng thì 2.0s mới check, mở thì 0.8s
+                local interval = 0.8
+                if S.PagePerf and not S.PagePerf.IsMainVisible() then interval = 2.0 end
                 if GL._acc < interval then return end
                 GL._acc = 0 pcall(S.Glow.Apply)
             end) end)
@@ -7334,10 +7369,10 @@ do local PH = 200
                  or "📱 nút ảo 🛡: TẮT — đã ẩn cụm nút nổi", 1.8, C.ACCENT) end
     end) paint() end
 
--- ---------- TỰ LÀM MỚI 2 DANH SÁCH TRONG MENU (📍 + 👣) — v5.3 EXTREME: 2s->3s, chỉ chạy khi menu mở và ở tab liên quan ----------
+-- ---------- TỰ LÀM MỚI 2 DANH SÁCH TRONG MENU (📍 + 👣) — v5.4 EXTREME+: 3s->4s, chỉ chạy khi menu mở và ở tab liên quan ----------
 do local acc = 0
     RunService:BindToRenderStep("BC_HubList", Enum.RenderPriority.Camera.Value - 4, function(dt) acc = acc + (tonumber(dt) or 0.016)
-        if acc < 3 then return end acc = 0 pcall(function() -- v5.3 EXTREME: 2->3s giảm 33% work
+        if acc < 4 then return end acc = 0 pcall(function() -- v5.4 EXTREME+: 3->4s giảm thêm 25% work
             -- v5.2: nếu menu đóng thì dừng hẳn việc refresh list UI
             if S.PagePerf and not S.PagePerf.IsMainVisible() then return end
             if main and not main.Visible then return end
@@ -7639,14 +7674,14 @@ S.ObjTrack = {
     list = {},            -- danh sách gần nhất trước (dùng cho bảng + bay tới)
     lastScan = 0,
     rescanEvery = 1.5,    -- (giữ cho tương thích) giây: nhịp quét cũ
-    -- ===== v5.3 EXTREME: giảm sâu hơn nữa để mượt tối đa =====
-    scanIdle = 3.0,       -- giây: nghỉ giữa 2 lượt quét (v5.3: 2.0->3.0)
-    scanBudget = 120,     -- mỗi khung hình xử lý tối đa bấy nhiêu vật (v5.3: 180->120)
-    scanSliceMs = 0.8,    -- trần thời gian 1 lát quét (ms) — vượt là nhả ra cho khung hình (v5.3: 1.2->0.8)
-    makeBudget = 5,       -- mỗi khung hình tạo tối đa 5 định vị mới (v5.3: 8->5)
-    tickSliceMs = 1.0,    -- trần thời gian 1 lượt cập nhật nhãn (ms) (v5.3: 1.5->1.0)
-    labelBudget = 12,     -- mỗi lượt cập nhật tối đa 12 vật (v5.3: 20->12)
-    infoEvery = 0.8,      -- giây: làm mới khung 🎯 (v5.3: 0.5->0.8)
+    -- ===== v5.4 EXTREME+: giảm sâu nhất có thể mà vẫn giữ tính năng =====
+    scanIdle = 4.0,       -- giây: nghỉ giữa 2 lượt quét (v5.4: 3.0->4.0)
+    scanBudget = 80,      -- mỗi khung hình xử lý tối đa bấy nhiêu vật (v5.4: 120->80)
+    scanSliceMs = 0.6,    -- trần thời gian 1 lát quét (ms) (v5.4: 0.8->0.6)
+    makeBudget = 3,       -- mỗi khung hình tạo tối đa 3 định vị mới (v5.4: 5->3)
+    tickSliceMs = 0.8,    -- trần thời gian 1 lượt cập nhật nhãn (ms) (v5.4: 1.0->0.8)
+    labelBudget = 8,      -- mỗi lượt cập nhật tối đa 8 vật (v5.4: 12->8)
+    infoEvery = 1.0,      -- giây: làm mới khung 🎯 (v5.4: 0.8->1.0)
     labelEvery = 0.35,    -- giây: cập nhật khoảng cách + nhãn (v5.3: 0.25->0.35)
     pathKeys = {},        -- từ khoá dạng PATH dán vào (VD: workspace.rung cay.thancay)
     entries = {},         -- nhiều mục ghim cùng lúc: { {raw="cây",kind="name"}, {raw="Workspace.Rừng Cây",kind="path"} }
@@ -8136,17 +8171,21 @@ function OT.Step(dt) local step = tonumber(dt) or 0.016
         if shouldScan then
             if OT._pending ~= nil and #OT._pending > 0 then pcall(OT.DrainPending) end
             if not OT._passing then OT._scanAcc = (OT._scanAcc or 0) + step
-                if OT._scanAcc >= (OT.scanIdle or 2.0) then OT._scanAcc = 0
+                if OT._scanAcc >= (OT.scanIdle or 3.0) then OT._scanAcc = 0
                     pcall(OT.ScanBegin) end end
             if OT._passing then pcall(OT.ScanSlice) end
         else
-            -- không quét khi ở tab khác, nhưng vẫn drain pending chậm để không mất vật đã tìm
+            -- v5.4 EXTREME+: khi menu đóng hoặc không ở tab Người Chơi, scan rất thưa
+            local isMenuClosed = S.PagePerf and not S.PagePerf.IsMainVisible()
+            local drainThreshold = isMenuClosed and 2.5 or 1.5
             if OT._pending ~= nil and #OT._pending > 0 then
                 OT._scanAcc = (OT._scanAcc or 0) + step
-                if OT._scanAcc >= 1.0 then
+                if OT._scanAcc >= drainThreshold then
                     OT._scanAcc = 0
-                    pcall(OT.DrainPending, 2)
+                    pcall(OT.DrainPending, isMenuClosed and 1 or 2)
                 end
+            elseif isMenuClosed then
+                -- menu đóng và không có pending: không làm gì, tiết kiệm tối đa
             end
         end
     end end

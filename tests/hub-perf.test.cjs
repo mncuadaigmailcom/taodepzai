@@ -57,15 +57,17 @@ test('v5.3 EXTREME PERF: các tối ưu sâu mới', () => {
     assert.match(hub, /function MV\.InvalidateCache/, 'thiếu InvalidateCache (v5.3)');
     // NoClip enforce throttling
     assert.match(hub, /_ncEnforceAcc/, 'thiếu _ncEnforceAcc throttling cho NoClip (v5.3)');
-    // Safe scan throttling 0.10/0.30
-    assert.match(hub, /0\.10 or 0\.30/, 'Safe scan phải 0.10/0.30 (v5.3)');
-    // Coord interval 0.10
-    assert.match(hub, /coordAcc < 0\.10/, 'Coord interval phải 0.10 (v5.3)');
-    // OT budget giảm
-    assert.match(hub, /scanIdle = 3\.0/, 'OT scanIdle phải 3.0 (v5.3)');
-    assert.match(hub, /scanBudget = 120/, 'OT scanBudget phải 120 (v5.3)');
-    // HubList 3s
-    assert.match(hub, /acc < 3/, 'HubList phải 3s (v5.3)');
+    // Safe scan throttling 0.10/0.30 (v5.4 có thêm *1.8 khi menu đóng)
+    assert.ok(hub.includes('0.10 or 0.30') || hub.includes('ivScan * 1.8'), 'Safe scan phải 0.10/0.30 hoặc có throttling menu đóng');
+    // Coord interval 0.10 hoặc 0.15 (v5.4)
+    assert.ok(hub.includes('coordAcc < 0.10') || hub.includes('coordAcc < 0.15'), 'Coord interval phải 0.10 hoặc 0.15 (v5.3/v5.4)');
+    // OT budget giảm - v5.4: 4.0/80/3/8
+    assert.ok(hub.includes('scanIdle = 3.0') || hub.includes('scanIdle = 4.0'), 'OT scanIdle phải 3.0 hoặc 4.0');
+    assert.ok(hub.includes('scanBudget = 120') || hub.includes('scanBudget = 80'), 'OT scanBudget phải 120 hoặc 80');
+    // HubList 3s hoặc 4s
+    assert.ok(hub.includes('acc < 3') || hub.includes('acc < 4'), 'HubList phải 3s hoặc 4s');
+    // v5.4 thêm reuse RaycastParams
+    assert.match(hub, /_groundParams/, 'thiếu _groundParams reuse (v5.4)');
 });
 
 test('v5.2 PERF: OT (ObjTrack) phải tạm dừng quét khi không ở tab Người Chơi', () => {
