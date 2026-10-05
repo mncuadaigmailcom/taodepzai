@@ -512,6 +512,7 @@ local function SwitchTab(index)
                     D.pageTitle.TextTransparency = 0 end
             end end) end
     BcFit()   -- v4.4c: tab vừa hiện -> đo lại để GUI nằm vừa đúng ô của tab
+    pcall(function() if S.PagePerf and S.PagePerf.OnTabChanged then S.PagePerf.OnTabChanged() end end)
 end
 
 local function OpenFirstPage() local idx, best = 1, nil
@@ -579,6 +580,74 @@ S = { dragMenu     = false,
     parkCodeGuis = true,
     embeds       = {},       -- registry: {host, gui, recs={{child,origParent,origPos,origSize}}, conns={}}
 }
+
+-- v5.2 PERF: Quản lý tạm dừng tính năng theo trang để mượt hơn (không mất tính năng)
+S.PagePerf = S.PagePerf or {
+    currentTab = nil,
+    mainVisible = true,
+    _paused = {},
+    _lastMainVisible = true,
+}
+function S.PagePerf.IsMainVisible()
+    local ok, vis = pcall(function() return main and main.Visible == true end)
+    return ok and vis == true
+end
+function S.PagePerf.GetActiveTabName()
+    local ok, name = pcall(function()
+        if D and D.activeName then return tostring(D.activeName) end
+        if activeTab and activeTab.Name then return tostring(activeTab.Name) end
+        return nil
+    end)
+    if ok then return name end
+    return nil
+end
+function S.PagePerf.IsTabVisible(tab)
+    if not tab then return false end
+    local ok, vis = pcall(function() return tab.Visible == true end)
+    return ok and vis == true
+end
+function S.PagePerf.ShouldRunForPlayerTab()
+    if not S.PagePerf.IsMainVisible() then
+        return false
+    end
+    local pt = D and D.playerTab
+    if not pt then return false end
+    return S.PagePerf.IsTabVisible(pt)
+end
+function S.PagePerf.ShouldRunForSupportTab()
+    if not S.PagePerf.IsMainVisible() then return false end
+    local st = nil
+    pcall(function()
+        if S.AnaUi and S.AnaUi.supportTabIndex and tabContent and tabContent[S.AnaUi.supportTabIndex] then
+            st = tabContent[S.AnaUi.supportTabIndex]
+        end
+    end)
+    if not st then
+        local ok, t = pcall(function() return supportTab end)
+        if ok then st = t end
+    end
+    if not st then return false end
+    return S.PagePerf.IsTabVisible(st)
+end
+function S.PagePerf.OnTabChanged()
+    pcall(function()
+        S.PagePerf.currentTab = S.PagePerf.GetActiveTabName()
+        S.PagePerf.mainVisible = S.PagePerf.IsMainVisible()
+        if S.Coord and S.Coord.RefreshBind then pcall(S.Coord.RefreshBind) end
+        if S.SpeedMeter and S.SpeedMeter.OnTabChanged then pcall(S.SpeedMeter.OnTabChanged) end
+        if S.ObjTrack and S.ObjTrack.OnPerfTick then pcall(S.ObjTrack.OnPerfTick) end
+        if S.Loc and S.Loc.OnPerfTick then pcall(S.Loc.OnPerfTick) end
+    end)
+end
+function S.PagePerf.OnMainVisibilityChanged()
+    pcall(function()
+        S.PagePerf.mainVisible = S.PagePerf.IsMainVisible()
+        if S.Coord and S.Coord.RefreshBind then pcall(S.Coord.RefreshBind) end
+        if S.SpeedMeter and S.SpeedMeter.OnTabChanged then pcall(S.SpeedMeter.OnTabChanged) end
+        if S.ObjTrack and S.ObjTrack.OnPerfTick then pcall(S.ObjTrack.OnPerfTick) end
+        if S.Loc and S.Loc.OnPerfTick then pcall(S.Loc.OnPerfTick) end
+    end)
+end
 
 S.WRAP_MARK_OLD = "-- ===== AUTO-GENERATED SIZE WRAPPER" S.WRAP_MARK_NEW = "-- ===== AUTO-GENERATED FIT WRAPPER"
 function S.SanitizeCode(c) if type(c) ~= "string" then return c end
@@ -1350,9 +1419,36 @@ local function coordNA(all) coordLbls = coordLbls or {xValLbl, yValLbl, zValLbl,
         lookValLbl.Text = "Look: N/A" stateValLbl.Text = "State: N/A"
         hpValLbl.Text = "HP: N/A" end end
 
-local coordUpdateConn = RunService.RenderStepped:Connect(function(stepDt) coordAcc = coordAcc + (tonumber(stepDt) or 0.016)
-    if coordAcc < 0.05 then return end coordAcc = 0
-    if not (main and main.Visible) then return end if not (supportTab and supportTab.Visible) then return end
+-- v5.2 PERF: S.Coord quản lý kết nối tọa độ — chỉ chạy khi ở tab Hỗ Trợ
+S.Coord = S.Coord or { _conn = nil, _bound = false }
+function S.Coord.IsActive()
+    if S.PagePerf and S.PagePerf.ShouldRunForSupportTab then
+        return S.PagePerf.ShouldRunForSupportTab()
+    end
+    local ok1 = pcall(function() return main and main.Visible end)
+    local ok2 = pcall(function() return supportTab and supportTab.Visible end)
+    return ok1 and ok2
+end
+function S.Coord.Bind(on)
+    on = (on == true)
+    if on and not S.Coord._bound then
+        S.Coord._bound = true
+    elseif (not on) and S.Coord._bound then
+        S.Coord._bound = false
+        if S.Coord._conn then pcall(function() S.Coord._conn:Disconnect() end) S.Coord._conn = nil end
+        return
+    end
+    if not S.Coord._bound then return end
+    if S.Coord._conn then return end
+    S.Coord._conn = RunService.RenderStepped:Connect(function(stepDt) coordAcc = coordAcc + (tonumber(stepDt) or 0.016)
+        if coordAcc < 0.05 then return end coordAcc = 0
+        if not S.Coord.IsActive() then return end
+        -- perf: nếu không active thì ngắt luôn để đỡ gọi mỗi frame
+        if S.PagePerf and not S.PagePerf.ShouldRunForSupportTab() then
+            -- vẫn giữ kết nối nhưng không làm gì, sẽ được RefreshBind ngắt ở tab change
+            return
+        end
+        if not (main and main.Visible) then return end if not (supportTab and supportTab.Visible) then return end
     local char = player.Character if not char then
         coordNA(true) return end
 
@@ -1394,7 +1490,20 @@ local coordUpdateConn = RunService.RenderStepped:Connect(function(stepDt) coordA
     if placeLbl.Text == "Place: ..." and (os.clock() - (D.placeTryAt or -99)) >= 10 then D.placeTryAt = os.clock()
         pcall(function() local info = game:GetService("MarketplaceService"):GetProductInfo(game.PlaceId)
             placeLbl.Text = "Place: "..game.PlaceId.." — "..info.Name end)
-    end end) trackConn(coordUpdateConn)
+    end end)
+    S.Coord._conn = S.Coord._conn or nil
+    if S.Coord._conn then trackConn(S.Coord._conn) end
+end
+function S.Coord.RefreshBind()
+    if S.Coord.IsActive() then
+        S.Coord.Bind(true)
+    else
+        if S.Coord._conn then pcall(function() S.Coord._conn:Disconnect() end) S.Coord._conn = nil end
+        S.Coord._bound = false
+    end
+end
+-- Khởi tạo: chỉ bind khi đang ở tab Hỗ Trợ
+pcall(function() S.Coord.RefreshBind() end)
 
 local currentHighlight = nil
 
@@ -1919,24 +2028,37 @@ function SV.Step(dt) dt = num(dt)
 local function setText(lbl, s) if lbl and lbl.Text ~= s then lbl.Text = s end
 end
 
--- ---------- vẽ số liệu ra widget + HUD ----------
+-- ---------- vẽ số liệu ra widget + HUD — v5.2 PERF: chỉ vẽ label khi ở tab Hỗ Trợ ----------
 function SV.Sync() local base = num(SV.base) or 0
     local ratio = (base > 0) and (SV.ws / base) or 0 local scale = math.max(SV.max, base, 1)
     local pct = SV.live / scale
-    if pct < 0 then pct = 0 elseif pct > 1 then pct = 1 end   -- KHÔNG dùng math.clamp (chỉ có trong Luau)
+    if pct < 0 then pct = 0 elseif pct > 1 then pct = 1 end
     local bpct = base / scale if bpct < 0 then bpct = 0 elseif bpct > 1 then bpct = 1 end
-    setText(SV.baseLbl, string.format("🎯 Mặc định game: %s studs/s · nguồn: %s", fmt(base), tostring(SV.src))) setText(SV.wsLbl, string.format("🚶 WalkSpeed hiện tại: %s%s", fmt(SV.ws),
-        (ratio > 0) and string.format("  (×%.2f mặc định)", ratio) or "")) setText(SV.liveLbl, string.format("⚡ Tốc độ thật: %s studs/s", fmt(SV.live)))
-    setText(SV.maxLbl, string.format("🏁 Cao nhất: %s studs/s", fmt(SV.max))) if SV.btn then
-        setText(SV.btn, SV.on and "🎯 Định vị tốc độ: BẬT" or "🎯 Định vị tốc độ: TẮT") if SV._btnOn ~= SV.on then
-            SV._btnOn = SV.on SV.btn.BackgroundColor3 = SV.on and C.GREEN or C.GRAY
-        end end if SV.barFill and SV._barPct ~= pct then
-        SV._barPct = pct SV.barFill.Size = UDim2.new(pct, 0, 1, 0)
-    end if SV.barBase and SV._barBase ~= bpct then
-        SV._barBase = bpct SV.barBase.Position = UDim2.new(bpct, -1, 0, 0)
-    end if SV.hud then
+    local isSupportVisible = true
+    if S.PagePerf and S.PagePerf.ShouldRunForSupportTab then
+        isSupportVisible = S.PagePerf.ShouldRunForSupportTab()
+    end
+    if isSupportVisible then
+        setText(SV.baseLbl, string.format("🎯 Mặc định game: %s studs/s · nguồn: %s", fmt(base), tostring(SV.src))) setText(SV.wsLbl, string.format("🚶 WalkSpeed hiện tại: %s%s", fmt(SV.ws),
+            (ratio > 0) and string.format("  (×%.2f mặc định)", ratio) or "")) setText(SV.liveLbl, string.format("⚡ Tốc độ thật: %s studs/s", fmt(SV.live)))
+        setText(SV.maxLbl, string.format("🏁 Cao nhất: %s studs/s", fmt(SV.max))) if SV.btn then
+            setText(SV.btn, SV.on and "🎯 Định vị tốc độ: BẬT" or "🎯 Định vị tốc độ: TẮT") if SV._btnOn ~= SV.on then
+                SV._btnOn = SV.on SV.btn.BackgroundColor3 = SV.on and C.GREEN or C.GRAY
+            end end if SV.barFill and SV._barPct ~= pct then
+            SV._barPct = pct SV.barFill.Size = UDim2.new(pct, 0, 1, 0)
+        end if SV.barBase and SV._barBase ~= bpct then
+            SV._barBase = bpct SV.barBase.Position = UDim2.new(bpct, -1, 0, 0)
+        end
+    end
+    if SV.hud then
         if SV.hud.Visible ~= SV.on then SV.hud.Visible = SV.on end setText(SV.hudLbl, string.format("🎯 %s (mặc định game) · 🚶 %s\n⚡ %s · 🏁 %s studs/s",
             fmt(base), fmt(SV.ws), fmt(SV.live), fmt(SV.max))) end end
+function SV.OnTabChanged()
+    -- v5.2: khi đổi tab, sync lại để label hiện đúng nếu vừa quay lại tab Hỗ Trợ
+    if S.PagePerf and S.PagePerf.ShouldRunForSupportTab() then
+        pcall(SV.Sync)
+    end
+end
 
 function SV.Status() return string.format("🎯 %s · ⚡ %s · 🏁 %s", fmt(SV.base), fmt(SV.live), fmt(SV.max))
 end
@@ -6331,6 +6453,15 @@ end function S.Loc.TickOne(p) local it = LOC._items[p]
     if down then mid[#mid + 1] = "☠️ Hạ gục ⏱ " .. locTime(LOC.DownSecs(p)) end if h then mid[#mid + 1] = string.format("❤️ %d/%d", locRound(h.Health or 0), locRound(h.MaxHealth or 100)) end mid[#mid + 1] = dist and string.format("📏 %dm", locRound(dist)) or "📏 --m"
     it.lbl.Text = p.Name .. (fr and "  💗 Bạn Bè" or "") .. "\n" .. table.concat(mid, " · ")   -- v4.34: Name vốn là chuỗi, khỏi tostring
 end function S.Loc.Tick()
+    -- v5.2 PERF: nếu menu mở nhưng không ở tab Người Chơi thì tạm dừng cập nhật ESP để mượt
+    if S.PagePerf and S.PagePerf.IsMainVisible() then
+        local pt = D and D.playerTab
+        if pt and not S.PagePerf.IsTabVisible(pt) then
+            -- menu mở ở tab khác: chỉ cập nhật list 1 lần/giây, không cập nhật ESP thế giới liên tục
+            -- để mượt hơn, bỏ qua TickOne nặng, chỉ giữ list
+            return
+        end
+    end
     for p, _ in pairs(LOC._items) do if not LOC.Wanted(p) then
             LOC.Kill(p) else
             pcall(LOC.TickOne, p) end
@@ -6338,12 +6469,26 @@ end function S.Loc.Tick()
     if not ok or not list then return end for _, p in ipairs(list) do
         if LOC.Wanted(p) and not LOC._items[p] and LOC.CharOf(p) then pcall(function() LOC.Make(p) end)
         end end
-end function S.Loc.Bind(on)
+end function S.Loc.OnPerfTick()
+    -- v5.2: được gọi khi đổi tab / đóng menu để quyết định có cần giảm tần suất không
+    -- Không cần làm gì thêm vì Tick đã tự check IsTabVisible
+end
+function S.Loc.Bind(on)
     if on and not LOC._bound then LOC._bound = true pcall(function()
             RunService:BindToRenderStep("BC_Loc", Enum.RenderPriority.Camera.Value - 2, function(dt) LOC._acc = (LOC._acc or 0) + (tonumber(dt) or 0.016)
-                if LOC._acc < 0.2 then return end LOC._acc = 0
-                pcall(function() LOC.Tick() end) LOC._listAcc = (LOC._listAcc or 0) + 0.2
-                if LOC._listAcc >= 1 then LOC._listAcc = 0 if LOC.RefreshList then pcall(LOC.RefreshList) end
+                -- v5.2: khi không ở tab Người Chơi thì tăng interval lên 0.5s thay vì 0.2s
+                local interval = 0.2
+                if S.PagePerf and S.PagePerf.IsMainVisible() then
+                    local pt = D and D.playerTab
+                    if pt and not S.PagePerf.IsTabVisible(pt) then interval = 0.8 end
+                end
+                if LOC._acc < interval then return end LOC._acc = 0
+                pcall(function() LOC.Tick() end) LOC._listAcc = (LOC._listAcc or 0) + interval
+                if LOC._listAcc >= 1.5 then LOC._listAcc = 0
+                    -- chỉ refresh list UI khi đang ở tab Người Chơi
+                    if not S.PagePerf or S.PagePerf.ShouldRunForPlayerTab() then
+                        if LOC.RefreshList then pcall(LOC.RefreshList) end
+                    end
                 end end)
         end) elseif (not on) and LOC._bound then
         LOC._bound = false pcall(function() RunService:UnbindFromRenderStep("BC_Loc") end)
@@ -7137,14 +7282,30 @@ do local PH = 200
                  or "📱 nút ảo 🛡: TẮT — đã ẩn cụm nút nổi", 1.8, C.ACCENT) end
     end) paint() end
 
--- ---------- TỰ LÀM MỚI 2 DANH SÁCH TRONG MENU (📍 + 👣) ----------
+-- ---------- TỰ LÀM MỚI 2 DANH SÁCH TRONG MENU (📍 + 👣) — v5.2 PERF: chỉ chạy khi menu mở và ở tab liên quan ----------
 do local acc = 0
     RunService:BindToRenderStep("BC_HubList", Enum.RenderPriority.Camera.Value - 4, function(dt) acc = acc + (tonumber(dt) or 0.016)
         if acc < 2 then return end acc = 0 pcall(function()
+            -- v5.2: nếu menu đóng thì dừng hẳn việc refresh list UI
+            if S.PagePerf and not S.PagePerf.IsMainVisible() then return end
+            if main and not main.Visible then return end
             local visible = false local function open(t) if t and t.Visible == true then return true end return false end
             if open(D.playerTab) or open(D.hubTab) then visible = true end if not visible then return end
-            if S.Loc.RefreshList then S.Loc.RefreshList() end if S.Spec.RefreshList then S.Spec.RefreshList() end if S.GlassRefreshList then S.GlassRefreshList() end
-            if S.ObjTrack and S.ObjTrack.RefreshList then pcall(S.ObjTrack.RefreshList) end   -- v5.1: 🌳
+            -- v5.2: chỉ refresh list khi tab tương ứng đang mở, tránh làm việc thừa
+            local playerVisible = open(D.playerTab)
+            local hubVisible = open(D.hubTab)
+            if playerVisible then
+                if S.Loc.RefreshList then S.Loc.RefreshList() end
+                if S.Spec.RefreshList then S.Spec.RefreshList() end
+                if S.GlassRefreshList then S.GlassRefreshList() end
+                if S.ObjTrack and S.ObjTrack.RefreshList then pcall(S.ObjTrack.RefreshList) end
+            end
+            if hubVisible then
+                -- hub list ít nặng hơn nhưng vẫn chỉ refresh khi ở hub tab
+                if S.Loc.RefreshList and not playerVisible then
+                    -- nếu chỉ ở hub tab, không cần refresh Loc (đã có ở player tab)
+                end
+            end
         end) end)
 end
 
@@ -7896,16 +8057,50 @@ function OT.Rescan(force) if not OT.on and not (force and (#OT.keys > 0 or #(OT.
 --  • tạo định vị mới: rải ra makeBudget vật / khung hình
 --  • quét: chia lát scanBudget vật, tối đa scanSliceMs mỗi khung hình
 --  • nhãn: xoay vòng labelBudget vật mỗi labelEvery giây
+-- v5.2 PERF: chỉ quét khi ở tab Người Chơi, giữ highlight cũ khi ở tab khác
 function OT.Step(dt) local step = tonumber(dt) or 0.016
-    OT._acc = (OT._acc or 0) + step if OT._acc >= OT.labelEvery then
-        OT._acc = 0 pcall(OT.Tick)
-    end if OT.on then if OT._pending ~= nil and #OT._pending > 0 then pcall(OT.DrainPending) end
-        if not OT._passing then OT._scanAcc = (OT._scanAcc or 0) + step
-            if OT._scanAcc >= (OT.scanIdle or 2.0) then OT._scanAcc = 0
-                pcall(OT.ScanBegin) end end
-        if OT._passing then pcall(OT.ScanSlice) end   -- quét tiếp lát nữa
+    -- v5.2: kiểm tra có đang ở tab Người Chơi không
+    local shouldScan = true
+    if S.PagePerf and S.PagePerf.IsMainVisible() then
+        local pt = D and D.playerTab
+        if pt and not S.PagePerf.IsTabVisible(pt) then
+            shouldScan = false
+        end
+    elseif S.PagePerf and not S.PagePerf.IsMainVisible() then
+        -- menu đóng: vẫn cập nhật nhãn nhưng không quét mới để tiết kiệm
+        shouldScan = false
+    end
+    if shouldScan then
+        OT._acc = (OT._acc or 0) + step if OT._acc >= OT.labelEvery then
+            OT._acc = 0 pcall(OT.Tick)
+        end
+    else
+        -- khi không ở tab Người Chơi: chỉ cập nhật nhãn mỗi 0.8s thay vì 0.25s
+        OT._acc = (OT._acc or 0) + step if OT._acc >= (OT.labelEvery * 3) then
+            OT._acc = 0 pcall(OT.Tick)
+        end
+    end
+    if OT.on then
+        if shouldScan then
+            if OT._pending ~= nil and #OT._pending > 0 then pcall(OT.DrainPending) end
+            if not OT._passing then OT._scanAcc = (OT._scanAcc or 0) + step
+                if OT._scanAcc >= (OT.scanIdle or 2.0) then OT._scanAcc = 0
+                    pcall(OT.ScanBegin) end end
+            if OT._passing then pcall(OT.ScanSlice) end
+        else
+            -- không quét khi ở tab khác, nhưng vẫn drain pending chậm để không mất vật đã tìm
+            if OT._pending ~= nil and #OT._pending > 0 then
+                OT._scanAcc = (OT._scanAcc or 0) + step
+                if OT._scanAcc >= 1.0 then
+                    OT._scanAcc = 0
+                    pcall(OT.DrainPending, 2)
+                end
+            end
+        end
     end end
-
+function OT.OnPerfTick()
+    -- được gọi khi đổi tab, không cần làm gì thêm vì Step đã tự check
+end
 function OT.Bind() if OT._bound then return end
     OT._bound = true pcall(function()
         RunService:BindToRenderStep("BC_ObjTrack", Enum.RenderPriority.Camera.Value - 6, function(dt) pcall(OT.Step, dt)
@@ -8409,11 +8604,14 @@ local function ToggleMainFrame() main.Visible = not main.Visible
             D.openTween:Play() D.openTween.Completed:Connect(function() D.openTween = nil
                 pcall(BcFit)   -- đo lại để GUI đang nhúng vừa đúng ô tab
             end) end)
-    end end
+    end
+    pcall(function() if S.PagePerf and S.PagePerf.OnMainVisibilityChanged then S.PagePerf.OnMainVisibilityChanged() end end)
+end
 
 closeBtn.Activated:Connect(function() pcall(function() if D.openTween then D.openTween:Cancel() D.openTween = nil end end)
     main.Visible = false togBtn.Text = ""
     ReleaseHubFocus()   -- v4.5: đóng bằng ✕ cũng phải trả input cho game (trước đây chỉ có nút  làm)
+    pcall(function() if S.PagePerf and S.PagePerf.OnMainVisibilityChanged then S.PagePerf.OnMainVisibilityChanged() end end)
 end)
 
 dragLockBtn.Activated:Connect(function() S.dragMenu = not S.dragMenu
