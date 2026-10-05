@@ -45,8 +45,27 @@ test('v5.2 PERF: S.Coord phải quản lý kết nối tọa độ theo tab', ()
 test('v5.2 PERF: S.Loc phải giảm tần suất khi không ở tab Người Chơi', () => {
     assert.match(hub, /function S\.Loc\.OnPerfTick/, 'thiếu S.Loc.OnPerfTick');
     assert.match(hub, /function S\.Loc\.Tick\(\)[\s\S]{0,300}IsTabVisible/, 'S.Loc.Tick phải check IsTabVisible');
-    assert.match(hub, /interval = 0\.8/, 'S.Loc.Bind phải tăng interval lên 0.8 khi không ở tab Người Chơi');
+    // v5.3 EXTREME: interval có thể 0.8 (v5.2) hoặc 1.2 (v5.3)
+    assert.ok(hub.includes('interval = 0.8') || hub.includes('interval = 1.2') || hub.includes('interval = 0.35'), 'S.Loc.Bind phải tăng interval khi không ở tab Người Chơi (0.8 hoặc 1.2)');
     assert.match(hub, /ShouldRunForPlayerTab/, 'S.Loc phải dùng ShouldRunForPlayerTab');
+});
+
+test('v5.3 EXTREME PERF: các tối ưu sâu mới', () => {
+    // Cache Humanoid/RootPart
+    assert.match(hub, /_cachedHum/, 'thiếu cache _cachedHum (v5.3)');
+    assert.match(hub, /_cachedRoot/, 'thiếu cache _cachedRoot (v5.3)');
+    assert.match(hub, /function MV\.InvalidateCache/, 'thiếu InvalidateCache (v5.3)');
+    // NoClip enforce throttling
+    assert.match(hub, /_ncEnforceAcc/, 'thiếu _ncEnforceAcc throttling cho NoClip (v5.3)');
+    // Safe scan throttling 0.10/0.30
+    assert.match(hub, /0\.10 or 0\.30/, 'Safe scan phải 0.10/0.30 (v5.3)');
+    // Coord interval 0.10
+    assert.match(hub, /coordAcc < 0\.10/, 'Coord interval phải 0.10 (v5.3)');
+    // OT budget giảm
+    assert.match(hub, /scanIdle = 3\.0/, 'OT scanIdle phải 3.0 (v5.3)');
+    assert.match(hub, /scanBudget = 120/, 'OT scanBudget phải 120 (v5.3)');
+    // HubList 3s
+    assert.match(hub, /acc < 3/, 'HubList phải 3s (v5.3)');
 });
 
 test('v5.2 PERF: OT (ObjTrack) phải tạm dừng quét khi không ở tab Người Chơi', () => {

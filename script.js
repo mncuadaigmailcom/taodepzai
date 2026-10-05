@@ -1394,7 +1394,13 @@ local lastPos = Vector3.new() local lastSize = Vector3.new()
 local lastRot = Vector3.new() local lastLook = Vector3.new()
 local lastState = "" local lastHp = -1
 
-local function GetRootPart() local char = player.Character
+local function GetRootPart()
+    -- v5.3 EXTREME: ưu tiên cache MV.Root() để tránh FindFirstChild mỗi frame
+    if S.Move and S.Move.Root then
+        local ok, r = pcall(S.Move.Root)
+        if ok and r and r.Parent then return r end
+    end
+    local char = player.Character
     if not char then return nil end local humanoid = char:FindFirstChildOfClass("Humanoid")
     local rootPart = (humanoid and humanoid.RootPart) or char:FindFirstChild("HumanoidRootPart")
         or char.PrimaryPart or char:FindFirstChild("UpperTorso")
@@ -1441,7 +1447,7 @@ function S.Coord.Bind(on)
     if not S.Coord._bound then return end
     if S.Coord._conn then return end
     S.Coord._conn = RunService.RenderStepped:Connect(function(stepDt) coordAcc = coordAcc + (tonumber(stepDt) or 0.016)
-        if coordAcc < 0.05 then return end coordAcc = 0
+        if coordAcc < 0.10 then return end coordAcc = 0 -- v5.3 EXTREME: 0.05->0.10 giảm 50% raycast + label update
         if not S.Coord.IsActive() then return end
         -- perf: nếu không active thì ngắt luôn để đỡ gọi mỗi frame
         if S.PagePerf and not S.PagePerf.ShouldRunForSupportTab() then
@@ -2008,15 +2014,23 @@ function SV.Detect() local m = move()
     if hws and hws > 0 and not applying then SV._lastWS = hws end if hws then SV.ws = hws end
     SV.src = src return SV.base, SV.src end
 
--- ---------- đo tốc độ HIỆN TẠI + giữ đỉnh CAO NHẤT ----------
+-- ---------- đo tốc độ HIỆN TẠI + giữ đỉnh CAO NHẤT — v5.3 EXTREME: giảm tần suất khi không ở tab Hỗ Trợ ----------
 function SV.Step(dt) dt = num(dt)
     if not dt or dt <= 0 then dt = 1 / 60 end if dt > 0.5 then dt = 0.5 end
+    -- v5.3: nếu không ở tab Hỗ Trợ thì chỉ đo mỗi 0.15s thay vì mỗi frame
+    SV._stepAcc = (SV._stepAcc or 0) + dt
+    local needSupport = true
+    if S.PagePerf and S.PagePerf.ShouldRunForSupportTab then
+        needSupport = S.PagePerf.ShouldRunForSupportTab()
+    end
+    if not needSupport and SV._stepAcc < 0.15 then return SV.live end
+    SV._stepAcc = 0
     local h = myHum() local x, y, z = readPos(myRoot())
     if x then if SV._px then
             local dx, dy, dz = x - SV._px, y - SV._py, z - SV._pz local d = math.sqrt(dx * dx + dy * dy + dz * dz)
-            if d <= 25 then                                  -- > 25 studs/frame = teleport/respawn/lag -> bỏ mẫu
+            if d <= 25 then
                 local inst = d / dt
-                if d > 0.001 then                            -- chỉ tính mẫu CÓ dịch chuyển (đứng yên không phá số liệu)
+                if d > 0.001 then
                     SV._n = (SV._n or 0) + 1 SV.live = (SV._n <= 1) and inst or (SV.live + (inst - SV.live) * 0.35)
                     if inst >= 0.5 and inst > SV.max then SV.max = inst end end
             end end
@@ -3622,10 +3636,37 @@ local function mvClamp(n, lo, hi, dft) n = tonumber(n)
     if n == nil or n ~= n then return dft end if n < lo then return lo end
     if n > hi then return hi end return n end
 
-function MV.Char() return player.Character end function MV.Hum()
-    local c = player.Character return c and c:FindFirstChildOfClass("Humanoid") or nil
-end function MV.Root()
-    local c = player.Character return c and c:FindFirstChild("HumanoidRootPart") or nil end
+function MV.Char() return player.Character end
+-- v5.3 EXTREME PERF: cache Humanoid và RootPart để không FindFirstChild mỗi frame
+MV._cachedChar = nil MV._cachedHum = nil MV._cachedRoot = nil MV._cacheAt = 0
+function MV.Hum()
+    local now = os.clock()
+    if MV._cachedChar == player.Character and MV._cachedHum and MV._cachedHum.Parent and (now - MV._cacheAt) < 1.0 then
+        return MV._cachedHum
+    end
+    local c = player.Character
+    local h = c and c:FindFirstChildOfClass("Humanoid") or nil
+    MV._cachedChar = c MV._cachedHum = h MV._cacheAt = now
+    if h then
+        -- cache luôn Root từ Humanoid.RootPart nếu có
+        local ok, rp = pcall(function() return h.RootPart end)
+        if ok and rp then MV._cachedRoot = rp end
+    end
+    return h
+end
+function MV.Root()
+    local now = os.clock()
+    if MV._cachedChar == player.Character and MV._cachedRoot and MV._cachedRoot.Parent and (now - MV._cacheAt) < 1.0 then
+        return MV._cachedRoot
+    end
+    local c = player.Character
+    local r = c and c:FindFirstChild("HumanoidRootPart") or nil
+    MV._cachedChar = c MV._cachedRoot = r MV._cacheAt = now
+    return r
+end
+function MV.InvalidateCache()
+    MV._cachedChar, MV._cachedHum, MV._cachedRoot, MV._cacheAt = nil, nil, nil, 0
+end
 
 -- ---------- 🧱 XUYÊN TƯỜNG (NoClip) ----------
 function MV._NcPart(p) if not (p and p.IsA and p:IsA("BasePart")) then return end
@@ -3675,10 +3716,17 @@ function MV._NcAssist() if MV.fly or not (MV.noclip and MV.ncPass ~= false) then
     pcall(function() r.CFrame = CFrame.new(px + ux * stepLen, y, pz + uz * stepLen) end) end
 function MV._NcStep() if not MV.noclip then return end
     local c = MV.Char() if not c then return end
-    local now = os.clock() if MV._ncChar ~= c or not MV._ncLast or (now - MV._ncLast) > 0.5 then MV._ncLast = now
+    local now = os.clock()
+    if MV._ncChar ~= c or not MV._ncLast or (now - MV._ncLast) > 0.5 then MV._ncLast = now
         MV._NcScan()                                  -- quét đầy đủ: bắt part mới / nhân vật mới
     end
-    MV._NcEnforce()                                   -- MỖI FRAME: thắng game bật lại CanCollide
+    -- v5.3 EXTREME: chỉ enforce CanCollide mỗi 0.15s thay vì mỗi frame, giảm 80% work
+    MV._ncEnforceAcc = (MV._ncEnforceAcc or 0) + (now - (MV._ncEnforceLast or now))
+    MV._ncEnforceLast = now
+    if MV._ncEnforceAcc >= 0.15 or not MV._ncEnforceAcc then
+        MV._ncEnforceAcc = 0
+        MV._NcEnforce()                               -- thắng game bật lại CanCollide
+    end
     MV._NcAssist()                                    -- 🧲 bị chặn cứng -> tự đẩy xuyên
 end function MV._NcBind(on)
     if on and not MV._ncBound then MV._ncBound = true
@@ -4280,7 +4328,7 @@ function MV.Safe.Step(dt) if not SF.on then return end
     if h then if h.PlatformStand ~= true then pcall(function() h.PlatformStand = true end) end if h.AutoRotate ~= false then pcall(function() h.AutoRotate = false end) end
     end local dtv = tonumber(dt) or 0.016
     SF._sc = (SF._sc or 0) + dtv local sinceThreat = tick() - (SF._lastThreatAt or 0)
-    local ivScan = (((SF.threats or 0) > 0) or sinceThreat < 1.0) and 0.05 or 0.15 if SF._sc >= ivScan then
+    local ivScan = (((SF.threats or 0) > 0) or sinceThreat < 1.0) and 0.10 or 0.30 if SF._sc >= ivScan then -- v5.3 EXTREME: 0.05->0.10, 0.15->0.30 giảm 50% scan
         local okS = pcall(MV.Safe.Scan, r.Position, SF._sc) SF._sc = 0 if not okS then SF.threats, SF.nearest = 0, nil end
     end local now = tick()
     local contact = ((SF.threats or 0) > 0) or ((now - (SF._holdAt or 0)) < 0.35) local keys = (h and h.MoveDirection) or Vector3.new(0, 0, 0)
@@ -5063,6 +5111,7 @@ S.MoveActionState = { fly     = function() return S.Move.fly     end,
 }
 
 function MV.Refresh()
+    MV.InvalidateCache()
     MV._NcForgetLost()      -- v4.22: chỉ quên part đã mất (giữ giá trị gốc của part đang bật 🧱)
     if MV.speed then MV.ApplyChar() end -- không ép tốc độ mặc định nếu chỉ đang bay
     if MV.noclip then MV._NcStep() end if MV.fly then
@@ -6476,11 +6525,11 @@ end
 function S.Loc.Bind(on)
     if on and not LOC._bound then LOC._bound = true pcall(function()
             RunService:BindToRenderStep("BC_Loc", Enum.RenderPriority.Camera.Value - 2, function(dt) LOC._acc = (LOC._acc or 0) + (tonumber(dt) or 0.016)
-                -- v5.2: khi không ở tab Người Chơi thì tăng interval lên 0.5s thay vì 0.2s
-                local interval = 0.2
+                -- v5.3 EXTREME: 0.2->0.35 khi ở tab, 0.8->1.2 khi không ở tab
+                local interval = 0.35
                 if S.PagePerf and S.PagePerf.IsMainVisible() then
                     local pt = D and D.playerTab
-                    if pt and not S.PagePerf.IsTabVisible(pt) then interval = 0.8 end
+                    if pt and not S.PagePerf.IsTabVisible(pt) then interval = 1.2 end
                 end
                 if LOC._acc < interval then return end LOC._acc = 0
                 pcall(function() LOC.Tick() end) LOC._listAcc = (LOC._listAcc or 0) + interval
@@ -7013,7 +7062,10 @@ end function S.Glow.Apply()
 end function S.Glow.Bind(on)
     if on and not GL._bound then GL._bound = true
         pcall(function() RunService:BindToRenderStep("BC_Glow", Enum.RenderPriority.Camera.Value - 5, function(dt) GL._acc = (GL._acc or 0) + (tonumber(dt) or 0.016)
-                if GL._acc < 0.5 then return end      -- 2 lần/giây là đủ để canh, không tốn gì
+                -- v5.3 EXTREME: menu đóng thì 1.2s mới check, mở thì 0.5s
+                local interval = 0.5
+                if S.PagePerf and not S.PagePerf.IsMainVisible() then interval = 1.2 end
+                if GL._acc < interval then return end
                 GL._acc = 0 pcall(S.Glow.Apply)
             end) end)
     elseif (not on) and GL._bound then GL._bound = false
@@ -7282,10 +7334,10 @@ do local PH = 200
                  or "📱 nút ảo 🛡: TẮT — đã ẩn cụm nút nổi", 1.8, C.ACCENT) end
     end) paint() end
 
--- ---------- TỰ LÀM MỚI 2 DANH SÁCH TRONG MENU (📍 + 👣) — v5.2 PERF: chỉ chạy khi menu mở và ở tab liên quan ----------
+-- ---------- TỰ LÀM MỚI 2 DANH SÁCH TRONG MENU (📍 + 👣) — v5.3 EXTREME: 2s->3s, chỉ chạy khi menu mở và ở tab liên quan ----------
 do local acc = 0
     RunService:BindToRenderStep("BC_HubList", Enum.RenderPriority.Camera.Value - 4, function(dt) acc = acc + (tonumber(dt) or 0.016)
-        if acc < 2 then return end acc = 0 pcall(function()
+        if acc < 3 then return end acc = 0 pcall(function() -- v5.3 EXTREME: 2->3s giảm 33% work
             -- v5.2: nếu menu đóng thì dừng hẳn việc refresh list UI
             if S.PagePerf and not S.PagePerf.IsMainVisible() then return end
             if main and not main.Visible then return end
@@ -7587,15 +7639,15 @@ S.ObjTrack = {
     list = {},            -- danh sách gần nhất trước (dùng cho bảng + bay tới)
     lastScan = 0,
     rescanEvery = 1.5,    -- (giữ cho tương thích) giây: nhịp quét cũ
-    -- ===== TỐI ƯU CHỐNG KHỰNG (v5.1.2): quét chia nhỏ theo từng khung hình =====
-    scanIdle = 2.0,       -- giây: nghỉ giữa 2 lượt quét (trước là 1,5)
-    scanBudget = 180,     -- mỗi khung hình xử lý tối đa bấy nhiêu vật
-    scanSliceMs = 1.2,    -- trần thời gian 1 lát quét (ms) — vượt là nhả ra cho khung hình
-    makeBudget = 8,       -- mỗi khung hình tạo tối đa 8 định vị mới (rải ra, không dồn)
-    tickSliceMs = 1.5,    -- trần thời gian 1 lượt cập nhật nhãn (ms)
-    labelBudget = 20,     -- mỗi lượt cập nhật tối đa 20 vật (xoay vòng)
-    infoEvery = 0.5,      -- giây: làm mới khung 🎯 (trước là mỗi 0,2s)
-    labelEvery = 0.25,    -- giây: cập nhật khoảng cách + nhãn
+    -- ===== v5.3 EXTREME: giảm sâu hơn nữa để mượt tối đa =====
+    scanIdle = 3.0,       -- giây: nghỉ giữa 2 lượt quét (v5.3: 2.0->3.0)
+    scanBudget = 120,     -- mỗi khung hình xử lý tối đa bấy nhiêu vật (v5.3: 180->120)
+    scanSliceMs = 0.8,    -- trần thời gian 1 lát quét (ms) — vượt là nhả ra cho khung hình (v5.3: 1.2->0.8)
+    makeBudget = 5,       -- mỗi khung hình tạo tối đa 5 định vị mới (v5.3: 8->5)
+    tickSliceMs = 1.0,    -- trần thời gian 1 lượt cập nhật nhãn (ms) (v5.3: 1.5->1.0)
+    labelBudget = 12,     -- mỗi lượt cập nhật tối đa 12 vật (v5.3: 20->12)
+    infoEvery = 0.8,      -- giây: làm mới khung 🎯 (v5.3: 0.5->0.8)
+    labelEvery = 0.35,    -- giây: cập nhật khoảng cách + nhãn (v5.3: 0.25->0.35)
     pathKeys = {},        -- từ khoá dạng PATH dán vào (VD: workspace.rung cay.thancay)
     entries = {},         -- nhiều mục ghim cùng lúc: { {raw="cây",kind="name"}, {raw="Workspace.Rừng Cây",kind="path"} }
     -- trạng thái nội bộ cho quét chia lát + vòng xoay
