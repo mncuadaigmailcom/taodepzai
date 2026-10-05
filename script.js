@@ -4200,8 +4200,14 @@ function MV.Safe.Step(dt) if not SF.on then return end
     end end function MV.Safe.Set(on)
     if on == true and MV.fly then MV.SetFly(false) end -- không để hai BodyVelocity tranh lực
     SF.on = (on == true) if SF.on then
-        if SF.noclip and SF._ncPrev == nil then SF._ncPrev = MV.noclip == true
-            pcall(function() MV.SetNoclip(true) end) end
+        if SF.noclip and SF._ncPrev == nil then
+            if MV._glassFlyActive == true and MV._glassFlyNcPrev ~= nil then
+                SF._ncPrev = MV._glassFlyNcPrev
+            else
+                SF._ncPrev = MV.noclip == true
+            end
+            pcall(function() MV.SetNoclip(true) end)
+        end
         pcall(MV.Safe._EnsureBV) MV.flySpeed = mvClamp(SF.speed, 1, 2000, 60)
         SF._root = MV.Root() pcall(MV._Watchdog) SF._lastFrameAt = tick()
         pcall(MV.Safe.Bind) pcall(function() MV.Safe.UpdateShield(MV.Root() and MV.Root().Position or Vector3.new(0, 0, 0)) end)
@@ -4218,7 +4224,13 @@ function MV.Safe.Step(dt) if not SF.on then return end
     end return SF.on
 end function MV.Safe.SetNoclipAuto(b) SF.noclip = (b == true)
     if SF.on then if SF.noclip then
-            if SF._ncPrev == nil then SF._ncPrev = MV.noclip == true end pcall(function() MV.SetNoclip(true) end)
+            if SF._ncPrev == nil then
+                if MV._glassFlyActive == true and MV._glassFlyNcPrev ~= nil then
+                    SF._ncPrev = MV._glassFlyNcPrev
+                else
+                    SF._ncPrev = MV.noclip == true
+                end
+            end pcall(function() MV.SetNoclip(true) end)
         elseif SF._ncPrev ~= nil then local was = SF._ncPrev
             SF._ncPrev = nil pcall(function() MV.SetNoclip(was) end) end
     end return SF.noclip
@@ -4669,8 +4681,15 @@ function MV.FlyToGlass(idx) local list = MV.GetPlacedGlasses() local n = math.fl
         for i, item in ipairs(list) do if tonumber(item.id) == n then rec, n = item, i break end
         end end
     if not rec then return false, "không tìm thấy tấm kính" end if not MV.Root() then return false, "chưa có nhân vật để bay" end
-    if MV.fly then pcall(function() MV.SetFly(false) end) end if MV._playerFlyActive then pcall(function() MV.StopPlayerFly() end) end if MV._glassFlyNcPrev == nil and (not MV.Safe or MV.Safe.noclip ~= true) then
-        MV._glassFlyNcPrev = MV.noclip == true end
+    if MV.fly then pcall(function() MV.SetFly(false) end) end if MV._playerFlyActive then pcall(function() MV.StopPlayerFly() end) end
+    local safeOwnsNoclip = MV.Safe and MV.Safe.on == true and MV.Safe.noclip == true
+    if MV._glassFlyNcPrev == nil then
+        if safeOwnsNoclip and MV.Safe._ncPrev ~= nil then
+            MV._glassFlyNcPrev = MV.Safe._ncPrev
+        else
+            MV._glassFlyNcPrev = MV.noclip == true
+        end
+    end
     MV._glassFlyTarget = rec MV._glassFlyIdx = n
     MV._glassFlyActive = true pcall(function() MV.SetNoclip(true) end)
     pcall(function() MV._EnsureGlassFlyBV() end) pcall(function() RunService:UnbindFromRenderStep("BC_GlassFly") end)
