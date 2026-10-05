@@ -17,7 +17,7 @@ local camera = workspace.CurrentCamera
 local targetGui = playerGui pcall(function()
     -- Executor có gethui thì dùng nó; LocalScript chuẩn phải ở PlayerGui.
     if type(gethui) == "function" then local hui = gethui()
-        if hui then targetGui = hui end end
+        if hui and typeof(hui) == "Instance" then targetGui = hui end end
 end)
 
 do local old = _G.BananaCatHub_MV
@@ -52,7 +52,11 @@ pcall(function() local old = _G.BananaCatHub_SpecCam
         end _G.BananaCatHub_SpecCam = nil
     end pcall(function() RunService:UnbindFromRenderStep("BC_Spec") end) end)
 
-for _, parent in ipairs({targetGui, playerGui, game:GetService("CoreGui")}) do pcall(function()
+local cleanupParents = {}
+local function addCleanupParent(parent) if parent then cleanupParents[#cleanupParents + 1] = parent end end
+addCleanupParent(targetGui) addCleanupParent(playerGui)
+pcall(function() addCleanupParent(game:GetService("CoreGui")) end)
+for _, parent in ipairs(cleanupParents) do pcall(function()
         local old = parent:FindFirstChild("BananaCatHub_Crosshair") if old then old:Destroy() end
     end)
     pcall(function()   -- v5.1: dọn định vị vật của lần chạy trước (tránh chồng Highlight)
@@ -277,12 +281,21 @@ local function ReleaseHubFocus() pcall(function()
     end) pcall(function() playerGui:ReleaseFocus() end)
 end
 
-if targetGui:FindFirstChild("ExMenu") then targetGui.ExMenu:Destroy()
-end
+local okOldGui = pcall(function()
+    local old = targetGui:FindFirstChild("ExMenu") if old then old:Destroy() end
+end)
+if not okOldGui then targetGui = playerGui end
 
-local gui = New("ScreenGui", { Name="ExMenu",
+local guiProps = { Name="ExMenu",
     IgnoreGuiInset=true, ResetOnSpawn=false,
-    ZIndexBehavior=Enum.ZIndexBehavior.Sibling, }, targetGui)
+    ZIndexBehavior=Enum.ZIndexBehavior.Sibling, }
+local gui
+local guiOk = pcall(function() gui = New("ScreenGui", guiProps, targetGui) end)
+if not guiOk or not gui or gui.Parent ~= targetGui then
+    pcall(function() if gui then gui:Destroy() end end)
+    targetGui = playerGui
+    gui = New("ScreenGui", guiProps, playerGui)
+end
 
 local togBtn = New("TextButton", { Size=UDim2.new(0,48,0,48),
     Position=UDim2.new(1,-60,1,-60), Text="",
