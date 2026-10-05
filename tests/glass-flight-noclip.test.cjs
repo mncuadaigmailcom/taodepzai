@@ -59,7 +59,8 @@ test('bay tới kính bật noclip và gọi cleanup khi bind thất bại, tớ
         'nếu không có kính thì phải thoát trước khi bật noclip');
     assert.ok(missingCharacter >= 0 && missingCharacter < enableNoclip,
         'nếu chưa có nhân vật thì phải thoát trước khi bật noclip');
-    assert.match(flyToGlass, /MV\._glassFlyActive = true pcall\(function\(\) MV\.SetNoclip\(true\) end\)/);
+    assert.match(flyToGlass, /MV\._glassFlyActive = true pcall\(function\(\) MV\._EnsureSpeed\(\) end\)/);
+    assert.match(flyToGlass, /pcall\(function\(\) MV\.SetNoclip\(true\) end\)/);
     assert.match(flyToGlass, /if not okBind then MV\.StopGlassFly\(\)/);
     assert.match(glassFlyStep, /if not part or not part\.Parent then\s+MV\.StopGlassFly\(\)/);
     assert.match(glassFlyStep, /if dist <= 0\.75 then[\s\S]*?MV\.StopGlassFly\(\)/);

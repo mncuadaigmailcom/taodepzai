@@ -3830,9 +3830,12 @@ MV.CamSpeed = CS
 
 function MV._DestroySpeedParts() if MV._sv then MV._sv:Destroy(); MV._sv = nil end
 end function MV._EnsureSpeed()
-    local r, h = MV.Root(), MV.Hum() if not MV.sprint then return nil end
-    if MV.fly or (MV.Safe and MV.Safe.on) then MV._DestroySpeedParts()
-        CS.root = nil return nil end
+    if not MV.sprint then return nil end
+    -- Bay mục tiêu có BodyVelocity riêng; tránh để chạy camera ghi đè vận tốc ngang.
+    if MV.fly or MV._playerFlyActive or MV._glassFlyActive or MV._objFlyActive or (MV.Safe and MV.Safe.on) then
+        MV._DestroySpeedParts() CS.root = nil return nil
+    end
+    local r, h = MV.Root(), MV.Hum()
     if not r or not h or h.Health <= 0 then MV._DestroySpeedParts()
         CS.root = nil return nil
     end if CS.root ~= r then
@@ -4681,7 +4684,9 @@ function MV.FlyToGlass(idx) local list = MV.GetPlacedGlasses() local n = math.fl
         for i, item in ipairs(list) do if tonumber(item.id) == n then rec, n = item, i break end
         end end
     if not rec then return false, "không tìm thấy tấm kính" end if not MV.Root() then return false, "chưa có nhân vật để bay" end
-    if MV.fly then pcall(function() MV.SetFly(false) end) end if MV._playerFlyActive then pcall(function() MV.StopPlayerFly() end) end
+    if MV.fly then pcall(function() MV.SetFly(false) end) end
+    if MV._playerFlyActive then pcall(function() MV.StopPlayerFly() end) end
+    if MV._objFlyActive then pcall(function() MV.StopObjectFly() end) end
     local safeOwnsNoclip = MV.Safe and MV.Safe.on == true and MV.Safe.noclip == true
     if MV._glassFlyNcPrev == nil then
         if safeOwnsNoclip and MV.Safe._ncPrev ~= nil then
@@ -4691,7 +4696,8 @@ function MV.FlyToGlass(idx) local list = MV.GetPlacedGlasses() local n = math.fl
         end
     end
     MV._glassFlyTarget = rec MV._glassFlyIdx = n
-    MV._glassFlyActive = true pcall(function() MV.SetNoclip(true) end)
+    MV._glassFlyActive = true pcall(function() MV._EnsureSpeed() end)
+    pcall(function() MV.SetNoclip(true) end)
     pcall(function() MV._EnsureGlassFlyBV() end) pcall(function() RunService:UnbindFromRenderStep("BC_GlassFly") end)
     local okBind = pcall(function() RunService:BindToRenderStep("BC_GlassFly", Enum.RenderPriority.Camera.Value - 1, function(dt) pcall(MV._GlassFlyStep, dt)
         end) end)
@@ -4771,13 +4777,20 @@ function MV._PlayerFlyStep(dt) if not MV._playerFlyActive then return end
 
 function MV.FlyToPlayer(p) if not p or not p.Parent then return false, "người chơi không tồn tại" end
     if p == player then return false, "không thể bay tới chính mình" end if not MV.Root() then return false, "chưa có nhân vật" end
-    if MV.fly then MV.SetFly(false) end if MV._playerFlyNcPrev == nil and (not MV.Safe or MV.Safe._ncPrev == nil) then
+    if MV.fly then MV.SetFly(false) end
+    if MV._glassFlyActive then pcall(function() MV.StopGlassFly() end) end
+    if MV._objFlyActive then pcall(function() MV.StopObjectFly() end) end
+    if MV._playerFlyNcPrev == nil and (not MV.Safe or MV.Safe._ncPrev == nil) then
         MV._playerFlyNcPrev = MV.noclip == true end
     MV._playerFlyTarget = p MV._playerFlyActive = true MV._playerFlyPos = nil
+    pcall(function() MV._EnsureSpeed() end)
     pcall(function() MV.SetNoclip(true) end) pcall(function() MV._EnsurePlayerFlyBV() end)
-    pcall(function() RunService:UnbindFromRenderStep("BC_PlayerFly") end) pcall(function()
+    pcall(function() RunService:UnbindFromRenderStep("BC_PlayerFly") end)
+    local okBind = pcall(function()
         RunService:BindToRenderStep("BC_PlayerFly", Enum.RenderPriority.Camera.Value - 1, function(dt) pcall(MV._PlayerFlyStep, dt)
         end) end)
+    if not okBind then MV.StopPlayerFly()
+        return false, "executor không bind được bay tới người chơi" end
     MV._Watchdog() return true, p end
 
 -- ---------- v5.1: 🚀 BAY TỚI VẬT ĐANG ĐỊNH VỊ (bám theo vật, tự dừng nếu vật biến mất) ----------
@@ -4850,7 +4863,8 @@ function MV.FlyToObject(target, speed) if target == nil then return false, "chư
     end) if not part then return false, "vật không còn trong game" end if speed ~= nil then pcall(function() MV.SetObjectFlySpeed(speed) end) end
     if MV.fly then pcall(function() MV.SetFly(false) end) end if MV._playerFlyActive then pcall(function() MV.StopPlayerFly() end) end
     if MV._glassFlyActive then pcall(function() MV.StopGlassFly() end) end if MV._objFlyNcPrev == nil then MV._objFlyNcPrev = (MV.noclip == true) end
-    MV._objFlyTarget = target MV._objFlyActive = true pcall(function() MV.SetNoclip(true) end)
+    MV._objFlyTarget = target MV._objFlyActive = true pcall(function() MV._EnsureSpeed() end)
+    pcall(function() MV.SetNoclip(true) end)
     pcall(function() MV._EnsureObjFlyBV() end) pcall(function() RunService:UnbindFromRenderStep("BC_ObjFly") end)
     local okBind = pcall(function() RunService:BindToRenderStep("BC_ObjFly", Enum.RenderPriority.Camera.Value - 1, function(dt)
             pcall(MV._ObjectFlyStep, dt) end) end)
