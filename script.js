@@ -8144,51 +8144,78 @@ function OT.Rescan(force) if not OT.on and not (force and (#OT.keys > 0 or #(OT.
 --  • tạo định vị mới: rải ra makeBudget vật / khung hình
 --  • quét: chia lát scanBudget vật, tối đa scanSliceMs mỗi khung hình
 --  • nhãn: xoay vòng labelBudget vật mỗi labelEvery giây
--- v5.2 PERF: chỉ quét khi ở tab Người Chơi, giữ highlight cũ khi ở tab khác
+-- v5.5: YÊU CẦU MỚI - khi đã nhập tên vật thì hoạt động LIÊN TỤC kể cả lưu tên, chỉ dừng khi xóa hết tên
+--       + vẫn tối ưu: ở tab khác thì quét thưa hơn, menu đóng thì thưa hơn nữa, nhưng KHÔNG dừng hẳn
 function OT.Step(dt) local step = tonumber(dt) or 0.016
-    -- v5.2: kiểm tra có đang ở tab Người Chơi không
-    local shouldScan = true
-    if S.PagePerf and S.PagePerf.IsMainVisible() then
+    -- v5.5: nếu đã bật và có keys thì LUÔN quét liên tục, không dừng khi đổi tab
+    -- chỉ điều chỉnh tần suất để tiết kiệm
+    local hasKeys = OT.on and (#OT.keys > 0 or #(OT.pathKeys or {}) > 0)
+    local isPlayerTab = true
+    local isMenuOpen = true
+    if S.PagePerf then
+        isMenuOpen = S.PagePerf.IsMainVisible()
         local pt = D and D.playerTab
-        if pt and not S.PagePerf.IsTabVisible(pt) then
-            shouldScan = false
-        end
-    elseif S.PagePerf and not S.PagePerf.IsMainVisible() then
-        -- menu đóng: vẫn cập nhật nhãn nhưng không quét mới để tiết kiệm
-        shouldScan = false
-    end
-    if shouldScan then
-        OT._acc = (OT._acc or 0) + step if OT._acc >= OT.labelEvery then
-            OT._acc = 0 pcall(OT.Tick)
-        end
-    else
-        -- khi không ở tab Người Chơi: chỉ cập nhật nhãn mỗi 0.8s thay vì 0.25s
-        OT._acc = (OT._acc or 0) + step if OT._acc >= (OT.labelEvery * 3) then
-            OT._acc = 0 pcall(OT.Tick)
+        if pt then
+            isPlayerTab = S.PagePerf.IsTabVisible(pt)
         end
     end
-    if OT.on then
-        if shouldScan then
-            if OT._pending ~= nil and #OT._pending > 0 then pcall(OT.DrainPending) end
-            if not OT._passing then OT._scanAcc = (OT._scanAcc or 0) + step
-                if OT._scanAcc >= (OT.scanIdle or 3.0) then OT._scanAcc = 0
-                    pcall(OT.ScanBegin) end end
-            if OT._passing then pcall(OT.ScanSlice) end
-        else
-            -- v5.4 EXTREME+: khi menu đóng hoặc không ở tab Người Chơi, scan rất thưa
-            local isMenuClosed = S.PagePerf and not S.PagePerf.IsMainVisible()
-            local drainThreshold = isMenuClosed and 2.5 or 1.5
-            if OT._pending ~= nil and #OT._pending > 0 then
-                OT._scanAcc = (OT._scanAcc or 0) + step
-                if OT._scanAcc >= drainThreshold then
-                    OT._scanAcc = 0
-                    pcall(OT.DrainPending, isMenuClosed and 1 or 2)
-                end
-            elseif isMenuClosed then
-                -- menu đóng và không có pending: không làm gì, tiết kiệm tối đa
+
+    -- Tính interval cho Tick (cập nhật nhãn)
+    local tickInterval = OT.labelEvery or 0.35
+    if not hasKeys then
+        -- không có keys: không cần tick nhiều
+        tickInterval = tickInterval * 3
+    elseif not isMenuOpen then
+        -- menu đóng nhưng vẫn có keys: tick thưa hơn nhưng vẫn chạy
+        tickInterval = tickInterval * 2.5
+    elseif not isPlayerTab then
+        -- ở tab khác nhưng menu mở và có keys: tick thưa hơn 1 chút
+        tickInterval = tickInterval * 1.8
+    end
+
+    OT._acc = (OT._acc or 0) + step
+    if OT._acc >= tickInterval then
+        OT._acc = 0
+        pcall(OT.Tick)
+    end
+
+    if hasKeys then
+        -- LUÔN quét liên tục khi có keys, chỉ thay đổi idle time
+        local scanIdle = OT.scanIdle or 4.0
+        if not isMenuOpen then
+            scanIdle = scanIdle * 1.5  -- menu đóng: 4.0 -> 6.0s
+        elseif not isPlayerTab then
+            scanIdle = scanIdle * 1.2  -- tab khác: 4.0 -> 4.8s
+        end
+
+        if OT._pending ~= nil and #OT._pending > 0 then
+            -- đang có vật chờ tạo highlight: tạo dần
+            local drainQuota = isMenuOpen and (isPlayerTab and nil or 2) or 1
+            pcall(OT.DrainPending, drainQuota)
+        end
+
+        if not OT._passing then
+            OT._scanAcc = (OT._scanAcc or 0) + step
+            if OT._scanAcc >= scanIdle then
+                OT._scanAcc = 0
+                pcall(OT.ScanBegin)
             end
         end
-    end end
+
+        if OT._passing then
+            pcall(OT.ScanSlice)
+        end
+    else
+        -- không có keys: không quét, chỉ drain pending nếu còn sót
+        if OT._pending ~= nil and #OT._pending > 0 then
+            OT._scanAcc = (OT._scanAcc or 0) + step
+            if OT._scanAcc >= 1.0 then
+                OT._scanAcc = 0
+                pcall(OT.DrainPending, 2)
+            end
+        end
+    end
+end
 function OT.OnPerfTick()
     -- được gọi khi đổi tab, không cần làm gì thêm vì Step đã tự check
 end

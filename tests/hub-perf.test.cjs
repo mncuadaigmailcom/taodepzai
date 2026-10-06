@@ -70,11 +70,16 @@ test('v5.3 EXTREME PERF: các tối ưu sâu mới', () => {
     assert.match(hub, /_groundParams/, 'thiếu _groundParams reuse (v5.4)');
 });
 
-test('v5.2 PERF: OT (ObjTrack) phải tạm dừng quét khi không ở tab Người Chơi', () => {
+test('v5.5: OT (ObjTrack) phải hoạt động LIÊN TỤC khi đã nhập tên vật', () => {
     assert.match(hub, /function OT\.OnPerfTick/, 'thiếu OT.OnPerfTick');
-    assert.match(hub, /function OT\.Step[\s\S]{0,500}shouldScan/, 'OT.Step phải có shouldScan');
-    assert.match(hub, /shouldScan = false/, 'OT.Step phải set shouldScan=false khi không ở tab Người Chơi');
+    // v5.5: khi đã nhập tên thì quét liên tục, không dừng khi đổi tab
+    assert.match(hub, /hasKeys.*OT\.on/, 'OT.Step phải có hasKeys check để quét liên tục');
+    assert.match(hub, /LIÊN TỤC/, 'thiếu comment v5.5 về quét liên tục');
+    // Phải vẫn check IsTabVisible nhưng không set shouldScan=false nữa, mà chỉ điều chỉnh scanIdle
+    assert.ok(hub.includes('scanIdle * 1.2') || hub.includes('scanIdle * 1.5'), 'OT phải điều chỉnh scanIdle khi không ở tab nhưng vẫn quét');
     assert.match(hub, /IsTabVisible\(pt\)/, 'OT.Step phải check IsTabVisible cho playerTab');
+    // Đảm bảo không còn logic cũ dừng hẳn khi không ở tab
+    assert.doesNotMatch(hub, /vẫn cập nhật nhãn nhưng không quét mới để tiết kiệm/, 'vẫn còn logic cũ dừng quét khi menu đóng - phải quét liên tục v5.5');
 });
 
 test('v5.2 PERF: BC_HubList phải kiểm tra main.Visible và PagePerf', () => {
