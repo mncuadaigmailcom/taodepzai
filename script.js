@@ -7673,16 +7673,16 @@ S.ObjTrack = {
     items = {},           -- [instance] = { hl, bb, lbl, box, part, dist }
     list = {},            -- danh sách gần nhất trước (dùng cho bảng + bay tới)
     lastScan = 0,
-    rescanEvery = 1.5,    -- (giữ cho tương thích) giây: nhịp quét cũ
-    -- ===== v5.4 EXTREME+: giảm sâu nhất có thể mà vẫn giữ tính năng =====
-    scanIdle = 4.0,       -- giây: nghỉ giữa 2 lượt quét (v5.4: 3.0->4.0)
-    scanBudget = 80,      -- mỗi khung hình xử lý tối đa bấy nhiêu vật (v5.4: 120->80)
-    scanSliceMs = 0.6,    -- trần thời gian 1 lát quét (ms) (v5.4: 0.8->0.6)
-    makeBudget = 3,       -- mỗi khung hình tạo tối đa 3 định vị mới (v5.4: 5->3)
-    tickSliceMs = 0.8,    -- trần thời gian 1 lượt cập nhật nhãn (ms) (v5.4: 1.0->0.8)
-    labelBudget = 8,      -- mỗi lượt cập nhật tối đa 8 vật (v5.4: 12->8)
-    infoEvery = 1.0,      -- giây: làm mới khung 🎯 (v5.4: 0.8->1.0)
-    labelEvery = 0.35,    -- giây: cập nhật khoảng cách + nhãn (v5.3: 0.25->0.35)
+    rescanEvery = 0.8,    -- (v5.6 FAST) giây: nhịp quét cũ giảm để phát hiện nhanh hơn
+    -- ===== v5.6 FAST: TĂNG TỐC phát hiện vật thể - quét nhanh hơn nhưng vẫn mượt =====
+    scanIdle = 1.0,       -- giây: nghỉ giữa 2 lượt quét (v5.6: 4.0->1.0 tăng tốc 4x)
+    scanBudget = 300,     -- mỗi khung hình xử lý tối đa bấy nhiêu vật (v5.6: 80->300 tăng 3.75x)
+    scanSliceMs = 2.0,    -- trần thời gian 1 lát quét (ms) (v5.6: 0.6->2.0 cho phép quét nhiều hơn)
+    makeBudget = 15,      -- mỗi khung hình tạo tối đa 15 định vị mới (v5.6: 3->15 tăng 5x)
+    tickSliceMs = 1.5,    -- trần thời gian 1 lượt cập nhật nhãn (ms) (v5.6: 0.8->1.5)
+    labelBudget = 25,     -- mỗi lượt cập nhật tối đa 25 vật (v5.6: 8->25 tăng 3x)
+    infoEvery = 0.25,     -- giây: làm mới khung 🎯 (v5.6: 1.0->0.25 tăng tốc 4x)
+    labelEvery = 0.12,    -- giây: cập nhật khoảng cách + nhãn (v5.6: 0.35->0.12 tăng tốc 3x)
     pathKeys = {},        -- từ khoá dạng PATH dán vào (VD: workspace.rung cay.thancay)
     entries = {},         -- nhiều mục ghim cùng lúc: { {raw="cây",kind="name"}, {raw="Workspace.Rừng Cây",kind="path"} }
     -- trạng thái nội bộ cho quét chia lát + vòng xoay
@@ -7860,7 +7860,8 @@ function OT.AddEntry(raw) raw = tostring(raw or ""):gsub("^%s+", ""):gsub("%s+$"
         if not ok or inst == nil then kind = "name" end   -- chưa resolve được -> vẫn nhận, xét như tên
     end OT.entries[#OT.entries + 1] = { raw = raw, kind = kind }
     OT._tagSig = nil OT.RebuildKeys()
-    OT.on = true OT.Bind()
+    OT.on = true OT._fastUntil = tick() + 4  -- v5.6 FAST: vừa thêm mục là quét siêu tốc
+    OT.Bind()
     pcall(OT.Rescan, true)          -- quét ngay: vừa ghim mục là thấy vật luôn (khỏi chờ 2s)
     if OT.RefreshTags then pcall(OT.RefreshTags) end return true, kind
 end
@@ -8160,16 +8161,18 @@ function OT.Step(dt) local step = tonumber(dt) or 0.016
         end
     end
 
+    -- v5.6 FAST: kiểm tra chế độ siêu tốc (vừa gõ tên)
+    local isFast = OT._fastUntil and tick() < OT._fastUntil
+
     -- Tính interval cho Tick (cập nhật nhãn)
-    local tickInterval = OT.labelEvery or 0.35
-    if not hasKeys then
-        -- không có keys: không cần tick nhiều
+    local tickInterval = OT.labelEvery or 0.12
+    if isFast then
+        tickInterval = 0.06  -- siêu tốc: cập nhật nhãn mỗi 0.06s
+    elseif not hasKeys then
         tickInterval = tickInterval * 3
     elseif not isMenuOpen then
-        -- menu đóng nhưng vẫn có keys: tick thưa hơn nhưng vẫn chạy
         tickInterval = tickInterval * 2.5
     elseif not isPlayerTab then
-        -- ở tab khác nhưng menu mở và có keys: tick thưa hơn 1 chút
         tickInterval = tickInterval * 1.8
     end
 
@@ -8181,16 +8184,23 @@ function OT.Step(dt) local step = tonumber(dt) or 0.016
 
     if hasKeys then
         -- LUÔN quét liên tục khi có keys, chỉ thay đổi idle time
-        local scanIdle = OT.scanIdle or 4.0
-        if not isMenuOpen then
-            scanIdle = scanIdle * 1.5  -- menu đóng: 4.0 -> 6.0s
+        local scanIdle = OT.scanIdle or 1.0
+        if isFast then
+            scanIdle = 0.3  -- v5.6 FAST: vừa gõ xong quét mỗi 0.3s để phát hiện tức thì
+        elseif not isMenuOpen then
+            scanIdle = scanIdle * 1.5  -- menu đóng: 1.0 -> 1.5s
         elseif not isPlayerTab then
-            scanIdle = scanIdle * 1.2  -- tab khác: 4.0 -> 4.8s
+            scanIdle = scanIdle * 1.2  -- tab khác: 1.0 -> 1.2s
         end
 
         if OT._pending ~= nil and #OT._pending > 0 then
-            -- đang có vật chờ tạo highlight: tạo dần
-            local drainQuota = isMenuOpen and (isPlayerTab and nil or 2) or 1
+            -- đang có vật chờ tạo highlight: tạo SIÊU TỐC khi vừa gõ
+            local drainQuota
+            if isFast then
+                drainQuota = nil  -- nil = dùng makeBudget (15) - tạo nhanh nhất
+            else
+                drainQuota = isMenuOpen and (isPlayerTab and nil or 5) or 2
+            end
             pcall(OT.DrainPending, drainQuota)
         end
 
@@ -8209,9 +8219,9 @@ function OT.Step(dt) local step = tonumber(dt) or 0.016
         -- không có keys: không quét, chỉ drain pending nếu còn sót
         if OT._pending ~= nil and #OT._pending > 0 then
             OT._scanAcc = (OT._scanAcc or 0) + step
-            if OT._scanAcc >= 1.0 then
+            if OT._scanAcc >= 0.5 then
                 OT._scanAcc = 0
-                pcall(OT.DrainPending, 2)
+                pcall(OT.DrainPending, 5)
             end
         end
     end
@@ -8241,13 +8251,16 @@ function OT.Set(on) on = on and true or false
 
 function OT.Toggle() return OT.Set(not OT.on) end
 
--- Gõ tên là tự bật định vị (chờ 0,35s sau phím cuối cho khỏi quét liên tục)
+-- Gõ tên là tự bật định vị (chờ 0,2s sau phím cuối - v5.6 FAST: giảm từ 0,35s xuống 0,2s để phản hồi nhanh hơn)
 function OT.SetQuery(q) OT.query = tostring(q or "")
     OT.RebuildKeys()   -- gộp ô nhập đang gõ + các mục đã ghim
-    S.Debounce("objtrack", 0.35, function() if #OT.keys == 0 and #(OT.pathKeys or {}) == 0 then
+    -- v5.6 FAST: kích hoạt chế độ quét SIÊU TỐC trong 4s khi vừa gõ
+    OT._fastUntil = tick() + 4
+    S.Debounce("objtrack", 0.2, function() if #OT.keys == 0 and #(OT.pathKeys or {}) == 0 then
             if OT.on then OT.Set(false) end OT.Clear()
             if OT.RefreshList then pcall(OT.RefreshList) end return
         end OT.on = true
+        OT._fastUntil = tick() + 4  -- v5.6: vừa bật là quét siêu tốc
         OT.Bind() local n = OT.Rescan(true)
         if n == 0 then pcall(function()
                 if D.Say then D.Say("⚠️ không thấy vật nào khớp \"" .. tostring(OT.query) .. "\" — thử tên ngắn hơn (VD: cây)", C.RED)

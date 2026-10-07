@@ -61,13 +61,15 @@ test('v5.3 EXTREME PERF: các tối ưu sâu mới', () => {
     assert.ok(hub.includes('0.10 or 0.30') || hub.includes('ivScan * 1.8'), 'Safe scan phải 0.10/0.30 hoặc có throttling menu đóng');
     // Coord interval 0.10 hoặc 0.15 (v5.4)
     assert.ok(hub.includes('coordAcc < 0.10') || hub.includes('coordAcc < 0.15'), 'Coord interval phải 0.10 hoặc 0.15 (v5.3/v5.4)');
-    // OT budget giảm - v5.4: 4.0/80/3/8
-    assert.ok(hub.includes('scanIdle = 3.0') || hub.includes('scanIdle = 4.0'), 'OT scanIdle phải 3.0 hoặc 4.0');
-    assert.ok(hub.includes('scanBudget = 120') || hub.includes('scanBudget = 80'), 'OT scanBudget phải 120 hoặc 80');
+    // OT budget - v5.4: 4.0/80/3/8, v5.6 FAST: 1.0/300/15/25
+    assert.ok(hub.includes('scanIdle = 3.0') || hub.includes('scanIdle = 4.0') || hub.includes('scanIdle = 1.0'), 'OT scanIdle phải 3.0, 4.0 hoặc 1.0 (v5.6 FAST)');
+    assert.ok(hub.includes('scanBudget = 120') || hub.includes('scanBudget = 80') || hub.includes('scanBudget = 300'), 'OT scanBudget phải 120, 80 hoặc 300 (v5.6 FAST)');
     // HubList 3s hoặc 4s
     assert.ok(hub.includes('acc < 3') || hub.includes('acc < 4'), 'HubList phải 3s hoặc 4s');
     // v5.4 thêm reuse RaycastParams
     assert.match(hub, /_groundParams/, 'thiếu _groundParams reuse (v5.4)');
+    // v5.6 FAST: phải có chế độ siêu tốc
+    assert.ok(hub.includes('_fastUntil') || hub.includes('siêu tốc') || hub.includes('SIÊU TỐC'), 'thiếu _fastUntil siêu tốc (v5.6 FAST)');
 });
 
 test('v5.5: OT (ObjTrack) phải hoạt động LIÊN TỤC khi đã nhập tên vật', () => {
@@ -80,6 +82,18 @@ test('v5.5: OT (ObjTrack) phải hoạt động LIÊN TỤC khi đã nhập tên
     assert.match(hub, /IsTabVisible\(pt\)/, 'OT.Step phải check IsTabVisible cho playerTab');
     // Đảm bảo không còn logic cũ dừng hẳn khi không ở tab
     assert.doesNotMatch(hub, /vẫn cập nhật nhãn nhưng không quét mới để tiết kiệm/, 'vẫn còn logic cũ dừng quét khi menu đóng - phải quét liên tục v5.5');
+});
+
+test('v5.6 FAST: OT phải tăng tốc độ phát hiện vật thể', () => {
+    // Kiểm tra các giá trị FAST mới
+    assert.ok(hub.includes('scanIdle = 1.0') || hub.includes('scanIdle = 0.3'), 'OT scanIdle phải 1.0 hoặc 0.3 (v5.6 FAST)');
+    assert.ok(hub.includes('scanBudget = 300') || hub.includes('scanBudget = 250'), 'OT scanBudget phải lớn (300) để quét nhanh');
+    assert.ok(hub.includes('makeBudget = 15') || hub.includes('makeBudget = 12'), 'OT makeBudget phải lớn (15) để tạo highlight nhanh');
+    assert.ok(hub.includes('labelEvery = 0.12') || hub.includes('labelEvery = 0.15'), 'OT labelEvery phải nhỏ (0.12) để cập nhật nhanh');
+    assert.match(hub, /_fastUntil/, 'thiếu _fastUntil cho chế độ siêu tốc');
+    assert.match(hub, /0\.2.*objtrack|Debounce.*0\.2/, 'Debounce phải 0.2s thay vì 0.35s để phản hồi nhanh hơn');
+    // Đảm bảo vẫn giữ tính năng liên tục
+    assert.match(hub, /hasKeys.*OT\.on/, 'vẫn phải giữ hasKeys để quét liên tục');
 });
 
 test('v5.2 PERF: BC_HubList phải kiểm tra main.Visible và PagePerf', () => {
