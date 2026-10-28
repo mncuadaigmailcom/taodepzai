@@ -36,10 +36,9 @@ Chạy kiểm thử: `node --test tests/portal.test.cjs` (17 test) và
 
 Bốn nhiệm vụ xếp một cột. Người dùng **phải nhập tên** (≤ 32 ký tự) và hoàn thành **đủ 4 nhiệm vụ** trong
 phiên 3 phút (không cần theo thứ tự); mỗi nhiệm vụ theo dõi riêng 5 giây rời tab, quay lại sớm chỉ báo lỗi
-nhiệm vụ đó. Sau 4/4, trang lấy **thời điểm của nhiệm vụ hoàn thành cuối cùng** + số quay 3 số (đổi bằng nút
-"Quay số mới") + mã mạng + tên để tạo key.
+nhiệm vụ đó. Sau 4/4, trang lấy **thời điểm của nhiệm vụ hoàn thành cuối cùng** + thông số trộn nội bộ (đổi bằng nút "Đổi key mới", không hiển thị trên trang) + mã mạng + tên để tạo key.
 
-Key **ổn định sau F5** nếu vẫn cùng tên và cùng phiên; đổi tên / quay số mới / làm mới phiên sẽ tạo key khác.
+Key **ổn định sau F5** nếu vẫn cùng tên và cùng phiên; đổi tên / bấm "Đổi key mới" / làm mới phiên sẽ tạo key khác.
 Tên được lưu trong trình duyệt và **giữ lại khi làm mới phiên**; trạng thái nhiệm vụ và mốc thời gian thì bị
 xoá sau 3 phút hoặc khi bấm nút làm mới. Key đã sao chép đi vẫn đọc lại được sau khi làm mới.
 

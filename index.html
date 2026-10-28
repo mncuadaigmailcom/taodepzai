@@ -478,19 +478,13 @@
             font-weight: 800;
             transition: all .25s cubic-bezier(.25, .8, .25, 1);
         }
-        .spin-box { margin-bottom: 14px; padding: 12px; border: 1px solid rgba(196, 181, 253, .25); border-radius: 14px; background: rgba(99, 102, 241, .08); }
-        .spin-head { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; margin-bottom: 10px; flex-wrap: wrap; }
-        .spin-label { margin-bottom: 0; }
-        .spin-hint { color: #a5b4fc; font-size: 11px; }
-        .spin-row { display: flex; align-items: center; gap: 10px; }
-        .spin-reels { display: flex; gap: 6px; }
-        .spin-mix { margin: 10px 0 0; color: #c7d2fe; font-size: 11.5px; line-height: 1.5; }
-        .spin-mix b { color: #fde68a; font-weight: 800; }
-        .reel { width: 38px; height: 46px; display: grid; place-items: center; border-radius: 10px; background: linear-gradient(180deg, #1e1b4b, #312e81 50%, #1e1b4b); border: 1px solid rgba(165, 180, 252, .45); color: #fde68a; font: 800 24px/1 ui-monospace, SFMono-Regular, Menlo, monospace; box-shadow: inset 0 6px 10px rgba(0, 0, 0, .45), 0 0 12px rgba(250, 204, 21, .12); }
-        .reel.spinning { color: #c7d2fe; filter: blur(.6px); animation: reel-rung .14s linear infinite; }
-        @keyframes reel-rung { 0% { transform: translateY(-3px); } 50% { transform: translateY(3px); } 100% { transform: translateY(-3px); } }
-        #spin-btn { flex: 1; min-height: 46px; border: 0; border-radius: 12px; background: linear-gradient(135deg, #f59e0b, #ef4444); color: white; font-weight: 800; cursor: pointer; box-shadow: 0 6px 18px rgba(239, 68, 68, .3); }
-        #spin-btn:disabled, #copy-key-btn:disabled { opacity: .6; cursor: wait; }
+        .change-key-box { margin-bottom: 14px; padding: 12px; border: 1px solid rgba(196, 181, 253, .25); border-radius: 14px; background: rgba(99, 102, 241, .08); }
+        .change-key-head { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; margin-bottom: 10px; flex-wrap: wrap; }
+        .change-key-label { margin-bottom: 0; }
+        .change-key-hint { color: #a5b4fc; font-size: 11px; }
+        .change-key-note { margin: 10px 0 0; color: #c7d2fe; font-size: 11.5px; line-height: 1.5; }
+        #change-key-btn { width: 100%; min-height: 46px; border: 0; border-radius: 12px; background: linear-gradient(135deg, #f59e0b, #ef4444); color: white; font-weight: 800; cursor: pointer; box-shadow: 0 6px 18px rgba(239, 68, 68, .3); }
+        #change-key-btn:disabled, #copy-key-btn:disabled { opacity: .6; cursor: wait; }
         #copy-key-btn, #copy-btn { background: linear-gradient(135deg, #6366f1, #a855f7); color: white; box-shadow: 0 6px 20px rgba(99, 102, 241, .35); }
         #back-btn { border-color: rgba(255, 255, 255, .1); background: rgba(255, 255, 255, .08); }
         @media (hover: hover) and (pointer: fine) {
@@ -639,18 +633,13 @@
                 <summary>Thông tin người chơi (nhấn để xem)</summary>
                 <p class="player-summary" id="player-summary" hidden></p>
             </details>
-            <div class="spin-box">
-                <div class="spin-head">
-                    <span class="field-label spin-label">VÒNG QUAY 3 SỐ</span>
-                    <span class="spin-hint">Mỗi lần quay tạo ra một key khác</span>
+            <div class="change-key-box">
+                <div class="change-key-head">
+                    <span class="field-label change-key-label">ĐỔI KEY</span>
+                    <span class="change-key-hint">Mỗi lần đổi tạo ra một key Free_v5_ khác</span>
                 </div>
-                <div class="spin-row">
-                    <div class="spin-reels" id="spin-reels" role="status" aria-live="polite" aria-label="Số vòng quay">
-                        <span class="reel" id="reel-0">0</span><span class="reel" id="reel-1">0</span><span class="reel" id="reel-2">0</span>
-                    </div>
-                    <button id="spin-btn" type="button">🎰 Quay số mới</button>
-                </div>
-                <p class="spin-mix" id="spin-mix">🔒 Key v5 gồm nonce 16 byte + tag 256 bit, trộn <b>số quay</b> + thời điểm hoàn thành + tên + mã mạng; hạn 24 giờ tính từ nhiệm vụ hoàn thành cuối.</p>
+                <button id="change-key-btn" type="button">🔄 Đổi key mới</button>
+                <p class="change-key-note" id="change-key-note">🔒 Key mới vẫn dùng cho đúng tên tài khoản ở trên và hết hạn sau 24 giờ. Thông số trộn bên trong key được ẩn, không hiển thị trên trang.</p>
             </div>
             <label class="field-label" for="key-value">KEY FREE_V5_ — DÁN VÀO Ô KEY CỦA SCRIPT</label>
             <textarea class="key-value" id="key-value" readonly spellcheck="false"></textarea>
@@ -915,10 +904,8 @@
         const thongBao = document.getElementById('notification-box');
         const nutReset = document.getElementById('nut-reset-thu-cong');
         const giaoDienChinh = document.getElementById('giao-dien-chinh');
-        const cuonSo = [0, 1, 2].map(i => document.getElementById(`reel-${i}`));
-        const nutQuay = document.getElementById('spin-btn');
+        const nutDoiKey = document.getElementById('change-key-btn');
         const nutCopyKey = document.getElementById('copy-key-btn');
-        let henGioQuay = null;
         const loiHenGio = new Map();
         let toastTimer;
         let congVuaMo = null;
@@ -1046,13 +1033,13 @@
             thanThietBi = ip ? thanTuIp(ip) : (cu || thanTuIp(IP_DU_PHONG));
             dangLayIp = false;
             kiemTraMoKhoa();
-            if (thanThietBi !== cu && manHinhTrang.classList.contains('show') && !henGioQuay) {
+            if (thanThietBi !== cu && manHinhTrang.classList.contains('show')) {
                 capNhatMa();
                 hienThiTenNguoiChoi();
             }
         }
 
-        // Nonce 16 byte giữ trong phiên (key ổn định sau F5); quay số mới / làm mới phiên thì đổi nonce.
+        // Nonce 16 byte giữ trong phiên (key ổn định sau F5); bấm "Đổi key mới" / làm mới phiên thì đổi nonce.
         const sangHex = dsByte => dsByte.map(b => b.toString(16).padStart(2, '0')).join('');
         function layNonce() {
             const raw = luu.get(NONCE_KEY);
@@ -1065,7 +1052,7 @@
         // Tên hiện tại có phải lấy từ link mã hoá của script Roblox không (để đặt cờ tuRoblox trong key v5).
         function tenTuLink() { return luu.get(PLAYER_NAME_SOURCE_KEY) === '1'; }
 
-        // Số quay được giữ trong phiên để mã ổn định sau F5; bấm "Quay số mới" để đổi.
+        // Thông số trộn (gọi nội bộ là số quay) được giữ trong phiên để mã ổn định sau F5; bấm "Đổi key mới" để đổi. Không hiển thị trên trang.
         function laySoQuay() {
             const raw = luu.get(SO_QUAY_KEY);
             const so = Number(raw);
@@ -1180,7 +1167,6 @@
 
         function dongHopThoai(focusTarget) {
             if (!manHinhTrang.classList.contains('show')) return;
-            if (henGioQuay) dungQuay(); // Đóng giữa chừng: hủy lượt quay, giữ số cũ.
             manHinhTrang.classList.remove('show');
             manHinhTrang.setAttribute('aria-hidden', 'true');
             giaoDienChinh.removeAttribute('aria-hidden');
@@ -1202,9 +1188,8 @@
                 loiHenGio.delete(nv.id);
             });
             luu.remove('session_expire');
-            luu.remove(SO_QUAY_KEY); // Phiên mới -> số quay mới.
+            luu.remove(SO_QUAY_KEY); // Phiên mới -> thông số trộn mới (không hiển thị).
             luu.remove(NONCE_KEY);
-            dungQuay();
             congVuaMo = null;
             veLai();
             if (lyDo === 'manual') notify('🔄 Đã làm mới phiên và cả 4 cổng!', 'success');
@@ -1282,51 +1267,22 @@
             if (thayDoi) veLai();
         }
 
-        function hienThiSoQuay(so) {
-            String(so).padStart(3, '0').split('').forEach((chuSo, i) => { cuonSo[i].textContent = chuSo; });
-        }
-
         function capNhatMa() {
             const lanCuoi = lanHoanThanhCuoi();
             if (!lanCuoi || !playerNameInput.value.trim() || !thanThietBi) return false;
-            const so = laySoQuay();
-            hienThiSoQuay(so);
+            const so = laySoQuay(); // thông số trộn nội bộ, không hiển thị trên trang
             // Không hiện ngày/giờ ở đâu cả: mọi thông tin chỉ nằm (đã mã hoá) trong key.
             keyField.value = taoMaDemo(playerNameInput.value, lanCuoi, so, dinhDangMaThietBi(thanThietBi), tenTuLink(), layNonce());
             return true;
         }
 
-        function dungQuay() {
-            clearInterval(henGioQuay);
-            henGioQuay = null;
-            cuonSo.forEach(o => o.classList.remove('spinning'));
-            nutQuay.disabled = false;
-            nutCopyKey.disabled = false;
-        }
-
-        function quaySoMoi() {
-            if (henGioQuay || kiemTraHanSuDung() || !lanHoanThanhCuoi()) return;
-            const soMoi = soNgauNhien3();
-            const chuSoMoi = String(soMoi).padStart(3, '0');
-            const xong = () => {
-                dungQuay();
-                luu.set(SO_QUAY_KEY, soMoi);
-                luu.set(NONCE_KEY, sangHex(taoNonce()));
-                if (capNhatMa()) notify(`🎰 Quay được số ${chuSoMoi}. Đã tạo key mới!`, 'success');
-            };
-            if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) return xong();
-            nutQuay.disabled = true;
-            nutCopyKey.disabled = true; // Không sao chép nhầm key cũ khi đang quay.
-            cuonSo.forEach(o => o.classList.add('spinning'));
-            let buoc = 0;
-            henGioQuay = setInterval(() => {
-                buoc += 1;
-                cuonSo.forEach((o, i) => {
-                    if (buoc < 8 + i * 5) o.textContent = String(Math.floor(Math.random() * 10));
-                    else { o.textContent = chuSoMoi[i]; o.classList.remove('spinning'); }
-                });
-                if (buoc >= 18) xong();
-            }, 70);
+        // Đổi key mới: đổi thông số trộn nội bộ + nonce 16 byte -> key Free_v5_ khác hẳn.
+        // Không quay số, không hiển thị thông số trộn; key cũ đã sao chép vẫn còn hạn riêng.
+        function doiKeyMoi() {
+            if (kiemTraHanSuDung() || !lanHoanThanhCuoi()) return;
+            luu.set(SO_QUAY_KEY, soNgauNhien3());
+            luu.set(NONCE_KEY, sangHex(taoNonce()));
+            if (capNhatMa()) notify('🔄 Đã đổi key mới! Hãy sao chép key vừa hiện.', 'success');
         }
 
         function hienThiTenNguoiChoi() {
@@ -1373,7 +1329,7 @@
         }
 
         nutGiaiBai.addEventListener('click', moHopThoai);
-        nutQuay.addEventListener('click', quaySoMoi);
+        nutDoiKey.addEventListener('click', doiKeyMoi);
         nutReset.addEventListener('click', () => resetPhien('manual'));
         document.getElementById('copy-key-btn').addEventListener('click', () => saoChep(keyField, 'key Free_v5_'));
         document.getElementById('copy-btn').addEventListener('click', () => saoChep(scriptField, 'script'));
@@ -1404,11 +1360,11 @@
                 if (!playerNameInput.disabled) playerNameInput.value = luu.get(PLAYER_NAME_KEY) || '';
                 if (manHinhTrang.classList.contains('show')) {
                     hienThiTenNguoiChoi();
-                    if (!henGioQuay) capNhatMa();
+                    capNhatMa();
                 }
             }
             if ((event.key === SO_QUAY_KEY || event.key === NONCE_KEY) &&
-                manHinhTrang.classList.contains('show') && !henGioQuay) capNhatMa();
+                manHinhTrang.classList.contains('show')) capNhatMa();
             if (!kiemTraHanSuDung()) veLai(); // Đồng bộ nếu trang được mở ở nhiều tab.
         });
         setInterval(() => {

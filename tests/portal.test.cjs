@@ -579,6 +579,32 @@ test('công cụ kiểm tra key mô phỏng đúng KiemTraKey của key-system.l
     assert.match(kiemTraKey(maSua, { cauHinh, tenRoblox: 'Player_01', bayGio }).loi, /không hợp lệ/);
 });
 
+test('nút Đổi key mới tạo key khác, không còn hiển thị vòng quay/số quay', async () => {
+    // Giao diện: không còn reels, nút quay số; chỉ có nút Đổi key mới
+    assert.doesNotMatch(html, /reel-|spin-btn|Quay số mới|VÒNG QUAY|🎰/);
+    assert.match(html, /id="change-key-btn"[^>]*>🔄 Đổi key mới<\/button>/);
+    assert.match(html, /Mỗi lần đổi tạo ra một key Free_v5_ khác/);
+
+    const site = createPortal(new Map(), 1_000_000, `?mahoa=${maHoaTen('Player_01')}`);
+    await duBonNhiemVu(site);
+    await site.click('nut-giai-bai');
+    const keyCu = site.nhanKey();
+    assert.match(keyCu, /^Free_v5_/);
+
+    await site.click('change-key-btn');
+    const keyMoi = site.nhanKey();
+    assert.notEqual(keyMoi, keyCu, 'Đổi key phải cho key khác hẳn');
+    assert.match(keyMoi, /^Free_v5_[A-Za-z0-9_-]+$/);
+    const tt = giaiMaKey(keyMoi);
+    assert.equal(tt.ten, 'Player_01');
+    assert.equal(tt.tuRoblox, true);
+    // Key cũ vẫn giải được (chỉ giao diện đổi, giao thức Free_v5_ không đổi)
+    assert.equal(giaiMaKey(keyCu).ten, 'Player_01');
+    // Đổi tiếp lần nữa vẫn cho key khác
+    await site.click('change-key-btn');
+    assert.notEqual(site.nhanKey(), keyMoi);
+});
+
 test('bốn nhiệm vụ xếp thành một cột từ trên xuống dưới ở mọi màn hình', () => {
     assert.equal((html.match(/<article class="task-placeholder"/g) || []).length, 4);
     assert.match(css, /\.main-container\s*\{[^}]*max-width:\s*460px;/);
