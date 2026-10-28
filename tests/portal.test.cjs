@@ -9,7 +9,7 @@ const { giaiMaDemo, giaiMaKey } = require('../tools/decode-demo.cjs');
 
 const REPO = path.join(__dirname, '..');
 const html = fs.readFileSync(path.join(REPO, 'index.html'), 'utf8');
-const kuLua = fs.readFileSync(path.join(REPO, 'script.js'), 'utf8');
+const kuLua = fs.readFileSync(path.join(REPO, 'key-system.lua'), 'utf8');
 const script = html.split('<script>')[1]?.split('</script>')[0];
 assert.ok(script, 'Trang phải có JavaScript');
 const css = html.split('<style>')[1].split('</style>')[0];
@@ -178,26 +178,34 @@ test('trang chỉ có một khối script/style, không còn khối chèn lạ h
     assert.equal((html.match(/<script>/g) || []).length, 1, 'index.html chỉ được có 1 khối <script>');
     assert.equal((html.match(/<style>/g) || []).length, 1, 'index.html chỉ được có 1 khối <style>');
     assert.doesNotMatch(html, /window\.parent\.postMessage|fake-ad|video-ad-overlay/);
-    assert.match(html, /<meta charset="UTF-8">\n {4}<meta name="description"/);
+    assert.match(html, /<meta charset="UTF-8">\r?\n {4}<meta name="description"/);
     assert.doesNotMatch(html, /tdz4\|tron\||Free_v4_'|MA_DEMO_PREFIX = 'Free_v4_'/);
+    assert.doesNotMatch(kuLua, /CHAP_NHAN_KEY_V4\s*=|CHAP_NHAN_KEY_V2\s*=|local function GiaiMaV2|notevn\.com/);
+    assert.doesNotMatch(html, /notevn/);
 });
 
-test('mật khẩu, nhãn miền và cấu trúc v5 phải khớp giữa trang và script.js', () => {
+test('mật khẩu, nhãn miền và cấu trúc v5 phải khớp giữa trang và key-system.lua (chỉ Free_v5_)', () => {
     assert.equal(script.includes(`const BI_MAT = '${BI_MAT}'`), true, 'index.html phải dùng đúng BI_MAT');
-    assert.equal(kuLua.includes(`"${BI_MAT}"`), true, 'script.js phải dùng đúng BI_MAT');
+    assert.equal(kuLua.includes(`"${BI_MAT}"`), true, 'key-system.lua phải dùng đúng BI_MAT');
     assert.equal(script.includes("const MA_DEMO_PREFIX = 'Free_v5_'"), true);
     assert.equal(kuLua.includes('KEY_PREFIX         = "Free_v5_"'), true);
     assert.equal(script.includes("[...utf8('tdz5|tron|')"), true);
     assert.equal(kuLua.includes('"tdz5|tron|"'), true);
-    // Cấu trúc v5 trong script.js: nonce 16, tag 32, lệch 1 byte (cờ tên-từ-Roblox)
-    assert.match(kuLua, /\[5\] = \{ nonce = 16, tag = 32, lech = 1, nhan = "tdz5" \}/);
+    // Cấu trúc v5 duy nhất trong key-system.lua: nonce 16 byte, tag 32 byte
+    assert.match(kuLua, /local NONCE_B, TAG_B = 16, 32/);
+    assert.match(kuLua, /ma:match\("\^Free_v5_\(\.\*\)\$"\)/);
+    assert.doesNotMatch(kuLua, /"Free_v4_"|"Free_v2_"|local function GiaiMaV2|CAU_TRUC_KEY\s*=/);
     // Trang phải dùng nonce 16 byte và tag đủ 32 byte
     assert.match(script, /function taoNonce\(so = 16\)/);
     assert.match(script, /const tag = hmacSha256\(khoaCon, \[\.\.\.utf8\('tdz5\|tag\|'\), \.\.\.nonce, \.\.\.banRo\]\)/);
     assert.match(script, /luu\.set\(NONCE_KEY, sangHex\(moi\)\)/);
     assert.equal(script.includes('/^[0-9a-f]{32}$/'), true, 'nonce lưu trong phiên phải là 32 ký tự hex (16 byte)');
-    assert.equal(/Lấy key" trong script Roblox: \?mahoa=/.test(script) || script.includes("thamSo.get('mahoa')"), true);
-    assert.equal(kuLua.includes('"mahoa=" .. MaHoaTen'), true, 'script.js phải phát link ?mahoa=');
+    assert.equal(script.includes("thamSo.get('mahoa')"), true);
+    assert.equal(kuLua.includes('"mahoa=" .. MaHoaTen'), true, 'key-system.lua phải phát link ?mahoa=');
+    // Link lấy key: TRỰC TIẾP tới trang, nhấn 1 lần là sao chép (không nhấn đúp, không rút gọn)
+    assert.equal(kuLua.includes('LINK_LAY_KEY = "https://mncuadaigmailcom.github.io/taodepzai/"'), true);
+    assert.doesNotMatch(kuLua, /THOI_GIAN_NHAN_DUP|DongHoNhan|notevn|bit\.ly|tinyurl/);
+    assert.match(kuLua, /nutLayKey\.MouseButton1Click:Connect\(function\(\)\s*\n\s*local link = LinkLayKey\(\)/);
 });
 
 test('chỉ tạo key v5 khi đã nhập tên và hoàn thành đủ bốn nhiệm vụ', async () => {
@@ -511,56 +519,64 @@ test('bốn cặp key liên tiếp đều hợp lệ với bộ giải mã dùng
     assert.equal(giaiMaKey(maLanDau).ten, 'Test_Vong_Lap');
 });
 
-test('công cụ kiểm tra key mô phỏng đúng KiemTraKey của script.js', async () => {
+test('công cụ kiểm tra key mô phỏng đúng KiemTraKey của key-system.lua (chỉ Free_v5_)', async () => {
     const { kiemTraKey, docCauHinh, thanMaThietBi } = require('../tools/kiem-tra-key.cjs');
     const cauHinh = docCauHinh();
     assert.equal(cauHinh.KEY_PREFIX, 'Free_v5_');
     assert.equal(cauHinh.HAN_KEY_GIAY, 24 * 60 * 60);
+    assert.equal(cauHinh.YEU_CAU_TEN_TU_ROBLOX, true, 'bản mới bắt buộc key từ link Roblox');
+    assert.equal(cauHinh.CHAP_NHAN_TEN_HIEN_THI, false);
 
-    const site = createPortal();
-    await enterName(site, 'Player_01');
+    // Key tạo từ link ?mahoa= (đúng luồng nút "Lấy key") -> hợp lệ
+    const site = createPortal(new Map(), 1_000_000, `?mahoa=${maHoaTen('Player_01')}`);
     await duBonNhiemVu(site);
     await site.click('nut-giai-bai');
     const ma = site.nhanKey();
+    assert.match(ma, /^Free_v5_/);
     const bayGio = Math.floor(Number(site.store.get('completedAtnv4')) / 1000);
-
     const ok = kiemTraKey(ma, { cauHinh, tenRoblox: 'Player_01', bayGio });
     assert.equal(ok.ok, true);
     assert.equal(ok.conLai, cauHinh.HAN_KEY_GIAY);
-    assert.equal(ok.thongTin.tuRoblox, false);
+    assert.equal(ok.thongTin.tuRoblox, true);
 
     const saiTen = kiemTraKey(ma, { cauHinh, tenRoblox: 'Nguoi_Khac', bayGio });
     assert.equal(saiTen.ok, false);
     assert.match(saiTen.loi, /không phải của tài khoản Nguoi_Khac/);
     assert.equal(kiemTraKey(ma, { cauHinh, tenRoblox: '  player_01  ', bayGio }).ok, true, 'tên so không phân biệt hoa thường');
+    // DisplayName trùng cũng KHÔNG được nhận ở bản mới
+    assert.equal(kiemTraKey(ma, { cauHinh, tenRoblox: 'Nguoi_Khac', tenHienThi: 'Player_01', bayGio }).ok, false);
 
     const hetHan = kiemTraKey(ma, { cauHinh, tenRoblox: 'Player_01', bayGio: bayGio + cauHinh.HAN_KEY_GIAY + 1 });
     assert.match(hetHan.loi, /hết hạn/);
     const tuongLai = kiemTraKey(ma, { cauHinh, tenRoblox: 'Player_01', bayGio: bayGio - 3600 });
     assert.match(tuongLai.loi, /tương lai/);
 
+    // Key gõ tay trên web (không qua link Roblox) bị từ chối ở cấu hình mặc định mới
+    const tay = createPortal();
+    await enterName(tay, 'Player_01');
+    await duBonNhiemVu(tay);
+    await tay.click('nut-giai-bai');
+    const maTay = tay.nhanKey();
+    assert.equal(giaiMaKey(maTay).tuRoblox, false);
+    assert.match(kiemTraKey(maTay, { cauHinh, tenRoblox: 'Player_01', bayGio }).loi, /tên gõ tay/);
+    assert.equal(kiemTraKey(maTay, { cauHinh: { ...cauHinh, YEU_CAU_TEN_TU_ROBLOX: false }, tenRoblox: 'Player_01', bayGio }).ok, true);
+
     // KIEM_TRA_THIET_BI: trong test trang không lấy được IP nên mã mạng là 0.0.0.0
     const cauHinhMang = { ...cauHinh, KIEM_TRA_THIET_BI: true };
-    assert.equal(kiemTraKey(ma, {
-        cauHinh: cauHinhMang, tenRoblox: 'Player_01', bayGio, maThietBiHienTai: thanMaThietBi('0.0.0.0')
-    }).ok, true);
-    assert.match(kiemTraKey(ma, {
-        cauHinh: cauHinhMang, tenRoblox: 'Player_01', bayGio, maThietBiHienTai: thanMaThietBi('198.51.100.9')
-    }).loi, /mạng khác/);
+    assert.equal(kiemTraKey(ma, { cauHinh: cauHinhMang, tenRoblox: 'Player_01', bayGio, maThietBiHienTai: thanMaThietBi('0.0.0.0') }).ok, true);
+    assert.match(kiemTraKey(ma, { cauHinh: cauHinhMang, tenRoblox: 'Player_01', bayGio, maThietBiHienTai: thanMaThietBi('198.51.100.9') }).loi, /mạng khác/);
 
-    // YEU_CAU_TEN_TU_ROBLOX: key gõ tay bị từ chối khi script bật cờ này
-    assert.match(kiemTraKey(ma, {
-        cauHinh: { ...cauHinh, YEU_CAU_TEN_TU_ROBLOX: true }, tenRoblox: 'Player_01', bayGio
-    }).loi, /tên gõ tay/);
-
-    // Key v2 cũ: chỉ được nhận khi còn bật CHAP_NHAN_KEY_V2 (và không có mã kiểm tra)
+    // Mọi key bản cũ đều bị từ chối, kể cả v2 tự bịa và v4
     const banRo = JSON.stringify(['Player_01', 'nv4', Number(site.store.get('completedAtnv4'))]);
-    const maV2 = 'Free_v2_' + Buffer.from([...Buffer.from(banRo, 'utf8')]
-        .map((b, i) => b ^ ((i * 73 + 0xA5) & 255))).toString('base64url');
-    const cauHinhV2 = { ...cauHinh, CHAP_NHAN_KEY_V2: true, KIEM_TRA_THIET_BI: false };
-    assert.equal(kiemTraKey(maV2, { cauHinh: cauHinhV2, tenRoblox: 'Player_01', bayGio }).ok, true);
-    assert.match(kiemTraKey(maV2, { cauHinh: { ...cauHinhV2, CHAP_NHAN_KEY_V2: false }, tenRoblox: 'Player_01', bayGio }).loi,
-        /cũ không còn dùng được/);
+    const maV2 = 'Free_v2_' + Buffer.from([...Buffer.from(banRo, 'utf8')].map((b, i) => b ^ ((i * 73 + 0xA5) & 255))).toString('base64url');
+    assert.match(kiemTraKey(maV2, { cauHinh, tenRoblox: 'Player_01', bayGio }).loi, /Chỉ nhận key Free_v5_/);
+    assert.throws(() => giaiMaKey(maV2), /chỉ nhận Free_v5_|Không hỗ trợ/);
+    assert.match(kiemTraKey('Free_v4_' + 'A'.repeat(40), { cauHinh, tenRoblox: 'Player_01', bayGio }).loi, /Chỉ nhận key Free_v5_/);
+
+    // Sửa 1 ký tự của key v5 -> tag lệch -> từ chối
+    const giua = Math.floor(ma.length / 2);
+    const maSua = ma.slice(0, giua) + (ma[giua] === 'A' ? 'B' : 'A') + ma.slice(giua + 1);
+    assert.match(kiemTraKey(maSua, { cauHinh, tenRoblox: 'Player_01', bayGio }).loi, /không hợp lệ/);
 });
 
 test('bốn nhiệm vụ xếp thành một cột từ trên xuống dưới ở mọi màn hình', () => {

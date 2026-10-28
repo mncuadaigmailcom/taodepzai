@@ -1,14 +1,7 @@
 <!DOCTYPE html>
 <html lang="vi">
 <head>
-<style>
- .fake-ad { background:#fff3cd; color:#856404; border:1px solid #ffeeba; padding:12px; margin:10px auto; border-radius:6px; text-align:center; font-family:sans-serif; position:relative; z-index:99999; display:flex; flex-direction:column; justify-content:center; align-items:center; } .fake-ad-tag { position:absolute; top:2px; left:5px; font-size:9px; background:#ccc; color:#fff; padding:1px 3px; border-radius:2px; } .fake-ad-title { font-size:13px; display:block; margin-bottom:4px; font-weight:bold; } .fake-ad-close { position:absolute; top:4px; right:6px; background:none; border:none; font-weight:bold; cursor:pointer; } .video-ad-overlay { position:fixed; top:0; left:0; width:100%; height:100%; background:rgba(0,0,0,0.96); color:white; z-index:99999999; display:flex; flex-direction:column; justify-content:center; align-items:center; font-family:sans-serif; padding:20px; text-align:center; } .video-box { width:100%; max-width:320px; height:180px; background:#000; display:flex; flex-direction:column; gap:12px; justify-content:center; align-items:center; border:2px solid #00b0ff; margin-bottom:15px; border-radius:6px; color:#00b0ff; font-weight:bold; } .video-progress { width:82%; height:7px; background:#1b1b20; border-radius:4px; overflow:hidden; border:1px solid #2a2a32; } .video-progress-bar { width:0%; height:100%; background:linear-gradient(90deg,#00b0ff,#00e676); transition:width 1s linear; } .video-ad-badge { font-size:11px; color:#8e8e93; letter-spacing:0.5px; } .video-timer-text { font-size:14px; margin-bottom:15px; } .video-btn { padding:10px 20px; background:#00e676; border:none; color:#052e16; font-weight:bold; border-radius:4px; cursor:pointer; } .video-btn:disabled { background:#3a3a40!important; color:#8e8e93!important; cursor:not-allowed!important; opacity:0.6; }  .fake-ad { width: calc(100% - 20px); } 
-
-</style>
-<script>(function() { const origLog = console.log; const origErr = console.error; const origWarn = console.warn; console.log = function(...args) { window.parent.postMessage({ type: 'log', data: args.join(' ') }, '*'); origLog.apply(console, args); }; console.error = function(...args) { window.parent.postMessage({ type: 'error', data: args.join(' ') }, '*'); origErr.apply(console, args); }; console.warn = function(...args) { window.parent.postMessage({ type: 'warn', data: args.join(' ') }, '*'); origWarn.apply(console, args); }; window.onerror = function(m, s, l) { window.parent.postMessage({ type: 'error', data: m + " (Dòng " + l + ")" }, '*'); }; })();</script>
-
-
-    <meta charset="UTF-8">
+<meta charset="UTF-8">
     <meta name="description" content="Trang tạo key Free_v5_ cho script Taodepzai: nhập tên, hoàn thành 4 nhiệm vụ, nhận key mã hoá HMAC-SHA256 (bản demo).">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
     <meta name="theme-color" content="#090d1a">
@@ -203,6 +196,8 @@
             line-height: 1.6;
             transform: translateZ(15px);
         }
+        .steps-v5 { display:grid; gap:8px; margin:0 0 14px; padding:12px 14px; border:1px solid var(--glass-border); border-radius:12px; background:rgba(255,255,255,.03); font-size:13px; line-height:1.55; color:var(--text-muted); }
+        .steps-v5 b { color:var(--text-main); }
         .demo-banner {
             margin: 0 0 24px;
             color: #fcd34d;
@@ -556,10 +551,15 @@
         </header>
 
         <div class="desc-box">
-            <strong>Hướng dẫn:</strong> Nhập tên người chơi và hoàn thành <strong>cả 4 nhiệm vụ</strong> (không cần theo thứ tự). Với từng nhiệm vụ, mở liên kết, ở tab mới ít nhất 5 giây rồi quay lại. Key Free_v5_ dùng thời điểm hoàn thành nhiệm vụ cuối cùng; phiên tự làm mới sau 3 phút.
+            <strong>Hướng dẫn:</strong> Nhập tên người chơi và hoàn thành <strong>cả 4 nhiệm vụ</strong> (không cần theo thứ tự). Mở trang này bằng nút “Lấy key” trong game (link trực tiếp, tên tự điền). Với từng nhiệm vụ, mở liên kết, ở tab mới ít nhất 5 giây rồi quay lại. Key Free_v5_ dùng thời điểm hoàn thành nhiệm vụ cuối cùng; phiên tự làm mới sau 3 phút.
         </div>
         <p class="demo-banner" id="demo-banner">✦ Trang tạo key <b>Free_v5_</b> — mã hoá HMAC-SHA256, tag 256 bit, hạn 24 giờ. Tên người chơi được giấu trong key; bốn liên kết hiện là mẫu.</p>
-        <p class="player-help" id="key-version-note">Key cũ <strong>Free_v2_</strong> / <strong>Free_v4_</strong> chỉ còn dùng được nếu script bật chấp nhận bản cũ — nên lấy lại key <strong>Free_v5_</strong> mới tại đây.</p>
+        <p class="player-help" id="key-version-note">Hệ thống chỉ tạo và chỉ nhận <strong>Free_v5_</strong> — mọi key bản cũ (Free_v2_, Free_v4_…) đều bị script từ chối.</p>
+        <div class="steps-v5" aria-label="Cách lấy key">
+            <div><b>Bước 1:</b> Trong game, nhấn nút <b>Lấy key</b> (1 lần) — link trực tiếp tới trang này được sao chép, tên Roblox tự điền.</div>
+            <div><b>Bước 2:</b> Hoàn thành đủ <b>4 nhiệm vụ</b> bên dưới (mỗi nhiệm vụ ở tab mới ít nhất 5 giây).</div>
+            <div><b>Bước 3:</b> Sao chép key <b>Free_v5_</b> hiện ra, quay lại game và dán vào ô nhập key. Key có hạn 24 giờ.</div>
+        </div>
 
         <div class="player-box">
             <label class="player-label" for="player-name">
@@ -681,7 +681,7 @@
         // Chỉ thay các URL/tên bên dưới khi có liên kết thật. Key Free_v5_ là bản demo; ai đọc mã nguồn cũng tạo được key.
         // Mã tạo trên trình duyệt không phải cơ chế phát hành hay bảo vệ key thật.
         const DANG_LA_BAN_MAU = true; // Đổi false khi đã thay cả 4 liên kết mẫu.
-        const SCRIPT_CUA_BAN = `loadstring(game:HttpGet("https://raw.githubusercontent.com/HieudepzaiHub/main/abc"))()`;
+        const SCRIPT_CUA_BAN = `loadstring(game:HttpGet("https://raw.githubusercontent.com/mncuadaigmailcom/taodepzai/main/key-system.lua"))()`;
         const NHIEM_VU = [
             { id: 'nv1', so: '01', ten: 'Google', url: 'https://www.google.com/' },
             { id: 'nv2', so: '02', ten: 'GitHub', url: 'https://github.com/' },
@@ -719,11 +719,11 @@
         //   khoá con = HMAC-SHA256(BI_MAT, chuỗi trộn) -> mỗi mạng / tên / mili giây cho một khoá khác
         //   tag  = HMAC-SHA256(khoá con, 'tdz5|tag|' + nonce + bản rõ) — giữ đủ 32 byte (256 bit)
         //   khoá = HMAC-SHA256(BI_MAT, 'tdz5|enc|' + nonce + tag); bản mã = bản rõ XOR SHA256(khoá + j) (j = 0, 1, ...)
-        // Phải khớp CAU_TRUC_KEY / GiaiMaMoi(noiDung, 5) trong script.js.
+        // Phải khớp CAU_TRUC_KEY / GiaiMaMoi(noiDung, 5) trong key-system.lua.
         // Nhìn key không đọc được tên, ngày giờ hay mã thiết bị; mỗi lần quay (nonce mới) cho key khác hẳn.
         // Giới hạn: bí mật nằm trong mã nguồn trang, người đọc code vẫn tự tạo được key (cần máy chủ nếu muốn tuyệt đối).
         const MA_DEMO_PREFIX = 'Free_v5_';
-        const BI_MAT = 'z!V~~RO3mS2dCMvW-GE@#v2XYYuLsNoQKS5U0pGeAY5EOkd_'; // Phải khớp BI_MAT_V4 trong script.js
+        const BI_MAT = 'z!V~~RO3mS2dCMvW-GE@#v2XYYuLsNoQKS5U0pGeAY5EOkd_'; // Phải khớp BI_MAT trong key-system.lua
         const BANG_THIET_BI = '0123456789ABCDEFGHJKMNPQRSTVWXYZ'; // Crockford base32
         const SHA256_K = [
             0x428a2f98, 0x71374491, 0xb5c0fbcf, 0xe9b5dba5, 0x3956c25b, 0x59f111f1, 0x923f82a4, 0xab1c5ed5,
@@ -815,7 +815,7 @@
             return [...nonce];
         }
 
-        // ms -> 'YYYY-MM-DD HH:MM:SS.mmm' theo giờ UTC (giống NgayGioUtc trong script.js)
+        // ms -> 'YYYY-MM-DD HH:MM:SS.mmm' theo giờ UTC (giống NgayGioUtc trong key-system.lua)
         function ngayGioUtc(ms) {
             const d = new Date(ms);
             const so = (n, dai = 2) => String(n).padStart(dai, '0');
@@ -824,7 +824,7 @@
         }
 
         // Chuỗi trộn v5: mã mạng + tên + ngày tháng năm giờ phút giây mili giây + số quay + cờ tên-từ-Roblox
-        // (giống ChuoiTron trong script.js với v5: d = 1)
+        // (giống ChuoiTron trong key-system.lua với v5: d = 1)
         function chuoiTron(banRo, co) {
             const soQuay = banRo[2] * 256 + banRo[3];
             const ms = banRo.slice(4, 10).reduce((v, b) => v * 256 + b, 0);
@@ -851,7 +851,7 @@
         }
 
         // Giải tên từ link "Lấy key": ?mahoa=<nonce 8 byte | tag 12 byte | tên XOR dòng khoá>
-        // Khớp MaHoaTen / NHAN_TEN_TAG / NHAN_TEN_KHOA trong script.js (nhãn 'tdz4|ten|…' dùng chung mọi phiên bản).
+        // Khớp MaHoaTen / NHAN_TEN_TAG / NHAN_TEN_KHOA trong key-system.lua (nhãn 'tdz4|ten|…' dùng chung mọi phiên bản).
         function tuBase64Url(chuoi) {
             const t = String(chuoi ?? '').replace(/-/g, '+').replace(/_/g, '/');
             if (!/^[A-Za-z0-9+/]*$/.test(t) || t.length % 4 === 1) return null;
@@ -880,7 +880,7 @@
             if (!ten || ten !== ten.trim() || ten.length > 32) return null;
             return ten;
         }
-        // Mã thiết bị theo IP: phải khớp NGUON_IP / ChuanHoaIp / ThanMaThietBi("ip:" .. ip) trong script.js
+        // Mã thiết bị theo IP: phải khớp NGUON_IP / ChuanHoaIp / ThanMaThietBi("ip:" .. ip) trong key-system.lua
         const NGUON_IP = ['https://api.ipify.org', 'https://ipv4.icanhazip.com', 'https://v4.ident.me']; // chỉ IPv4
         const IP_DU_PHONG = '0.0.0.0'; // khi không lấy được IP (mất mạng, bị chặn)
         function chuanHoaIp(chuoi) {
@@ -961,8 +961,7 @@
             luu.set(PLAYER_NAME_SOURCE_KEY, '0'); // Người dùng gõ tay -> tên không còn lấy từ link Roblox.
             kiemTraMoKhoa();
         });
-        // Trường hợp làm xong nhiệm vụ rồi mới nhập tên: chỉ khoá khi người dùng rời ô nhập
-        // (hoặc bấm Enter) để không khoá nhầm tên đang gõ dở/gõ sai.
+        // Làm xong nhiệm vụ rồi mới nhập tên vẫn được; đổi tên thì key đổi theo tên mới.
         playerNameInput.addEventListener('blur', () => capNhatKhoaTen());
         playerNameInput.addEventListener('keydown', event => { if (event.key === 'Enter') playerNameInput.blur(); });
         if (!DANG_LA_BAN_MAU) {
@@ -1131,19 +1130,18 @@
         }
 
         function capNhatKhoaTen() {
-            // Nếu người dùng đang gõ trong ô tên thì chưa khoá; chờ họ rời ô nhập.
-            const khoa = tenDaKhoa() && document.activeElement !== playerNameInput;
+            // Thiết kế lại (chỉ Free_v5_): KHÔNG khoá cứng ô tên. Đổi tên bất cứ lúc nào
+            // thì key tạo ra sẽ đổi theo tên mới (key cũ đã sao chép vẫn đọc được tên cũ).
+            const khoa = false;
             playerNameInput.disabled = khoa;
             if (khoa) {
-                playerHelp.classList.add('ok');
-                playerHelp.innerHTML = '🔒 <strong>Tên đã khoá</strong> vì bạn đã nhập tên và hoàn thành đủ 4 nhiệm vụ. Muốn đổi tên: chờ hết phiên 3 phút hoặc bấm <strong>Làm mới phiên &amp; tất cả nhiệm vụ</strong>.';
             } else {
                 if (playerHelp.classList.contains('ok')) playerHelp.innerHTML = HUONG_DAN_TEN_LUC_MO;
                 playerHelp.classList.remove('ok');
                 const duNhiemVu = NHIEM_VU.every(nv => trangThai(nv) === 'success');
                 if (duNhiemVu && !playerNameInput.value.trim()) {
                     playerHelp.classList.add('loi');
-                    playerHelp.innerHTML = '⚠ Đã đủ 4 nhiệm vụ: nhập <strong>đúng tên</strong> rồi rời ô nhập — tên sẽ bị <strong>khoá</strong> cho đến khi hết phiên hoặc làm mới.';
+                    playerHelp.innerHTML = '⚠ Đã đủ 4 nhiệm vụ: nhập <strong>đúng tên Roblox</strong> — key sẽ được tạo theo đúng tên đang hiển thị.';
                 } else if (playerHelp.classList.contains('loi')) {
                     playerHelp.classList.remove('loi');
                     playerHelp.innerHTML = HUONG_DAN_TEN_LUC_MO;
@@ -1475,9 +1473,5 @@
     </script>
 
 
-<script>
-
-
-</script>
 </body>
 </html>
